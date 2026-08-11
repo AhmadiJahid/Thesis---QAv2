@@ -83,3 +83,9 @@ Thumbs.db
 !experiments/**/*.md
 !requirements*.txt
 !*.md
+
+# Text that is source, not data. The `*.txt` rule above catches dataset dumps, but a
+# prompt file or a run's own text output is source and would otherwise vanish with no
+# trace — an ignored file never appears in `git status`, so the mistake is silent.
+!**/prompt*.txt
+!experiments/**/*.txt
