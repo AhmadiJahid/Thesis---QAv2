@@ -1,0 +1,18 @@
+{
+  "_note": "Shared config for components/router/run_router.py. Per-model model_id, prompt file, decoding, loader and response-parsing settings live in components/router/models/<model>/config.json; everything that is not model-specific lives here. v1 carried these as argparse defaults inside each copy of router.py.",
+
+  "seed": 42,
+  "num_runs": 1,
+  "sample_size_per_hop": null,
+
+  "hops": [1, 2, 3],
+  "questions_template_key": "metaqa_questions_template",
+
+  "output_subdir_few_shot": "router/average_few_shot",
+  "output_subdir_zero_shot": "router/average_zero_shot",
+  "zero_shot_prompt_marker": "zero_shot",
+
+  "progress_every": 10,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

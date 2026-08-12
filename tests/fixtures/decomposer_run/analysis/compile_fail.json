@@ -1,0 +1,8 @@
+[
+  {
+    "question": "a step whose relation cannot be inferred",
+    "hop_count": 1,
+    "decomposition": "1. Please summarise the plot.",
+    "error_reason": "cannot_infer_relation"
+  }
+]

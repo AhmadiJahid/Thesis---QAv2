@@ -1,0 +1,28 @@
+{
+  "component": "router",
+  "model_name": "qwen3_4b",
+  "model_id": "Qwen/Qwen3-4B-Instruct-2507",
+  "prompt_file": "prompt.md",
+  "generation": {
+    "max_new_tokens": 10,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "use_fast_tokenizer": true,
+    "trust_remote_code": false,
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto",
+    "print_gpu_info": false
+  },
+  "parsing": {
+    "answer_regex": null,
+    "answer_regex_ignorecase": false,
+    "fallback_labels": "number_words",
+    "default_hop": 2,
+    "debug_print_response": true
+  },
+  "notes": "v1 router.py for this folder hard-coded max_new_tokens=10, skipped the answer-prefix regex (digit first), used ONE/TWO/THREE word labels as the fallback, and printed the full response on a parse miss. Those four deltas are now the config fields above. 4B parameters is above the ~600M router ceiling in configs/model_limits.json."
+}

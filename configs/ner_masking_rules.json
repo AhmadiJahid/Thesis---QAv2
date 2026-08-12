@@ -1,0 +1,67 @@
+{
+  "_note": "Span rules for MusiQue/scripts/ner_mask_musique_question_chunks.py. These were module-level literals in v1; the values here are copied verbatim so masking output is unchanged, but they now live in a committed config that a run snapshot can record. Changing any of them changes the masked pool and therefore every retrieval result computed from it.",
+
+  "uniform_token": "[MASK]",
+  "fallback_typed": "[ENTITY]",
+
+  "typed_priority": {
+    "[PERSON]": 6,
+    "[ORG]": 5,
+    "[PLACE]": 4,
+    "[DATE]": 3,
+    "[NUM]": 2,
+    "[ENTITY]": 1
+  },
+
+  "label_to_placeholder": {
+    "PER": "[PERSON]",
+    "PERSON": "[PERSON]",
+    "ORG": "[ORG]",
+    "LOC": "[PLACE]",
+    "GPE": "[PLACE]",
+    "FAC": "[PLACE]",
+    "DATE": "[DATE]",
+    "TIME": "[DATE]",
+    "CARDINAL": "[NUM]",
+    "ORDINAL": "[NUM]",
+    "QUANTITY": "[NUM]",
+    "PERCENT": "[NUM]",
+    "MONEY": "[NUM]",
+    "MISC": "[ENTITY]",
+    "NORP": "[ENTITY]",
+    "EVENT": "[ENTITY]",
+    "WORK_OF_ART": "[ENTITY]",
+    "PRODUCT": "[ENTITY]",
+    "LAW": "[ENTITY]",
+    "LANGUAGE": "[ENTITY]"
+  },
+
+  "generic_rejections": [
+    "senate",
+    "president of the senate",
+    "house",
+    "parliament",
+    "government",
+    "earth",
+    "world"
+  ],
+
+  "literal_keep_lower": [
+    "lok sabha",
+    "doctor who",
+    "la liga",
+    "united states",
+    "us",
+    "u.s."
+  ],
+
+  "literal_type_hints": {
+    "united states": "[PLACE]",
+    "u.s.": "[PLACE]",
+    "us": "[PLACE]",
+    "india": "[PLACE]",
+    "england": "[PLACE]"
+  },
+
+  "max_merge_gap_chars": 4
+}

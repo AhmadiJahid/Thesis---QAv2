@@ -1,0 +1,41 @@
+{
+  "_note": "Config for the two similarity probes: scripts/test_similarity_few_shot.py (eyeball the top-k neighbours of a handful of probe questions) and scripts/test_similarity_router.py (three-way raw/masked comparison scored by majority vote). v1 hard-coded the model registry, the k values, the majority-vote window and - in test_similarity_few_shot.py - the probe questions themselves. The first probe question below is fabricated: v1's first probe was a verbatim row from its MetaQA eval question file, and a probe should not be built from an evaluation row. v1 also appended a fifth probe read at runtime from the first line of that same eval file; that dynamic case was dropped for the same reason, so the probe list is fully declared here.",
+
+  "seed": 42,
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "cache_dir_key": "embedding_cache_dir",
+
+  "few_shot_probe": {
+    "embed_model": "minilm",
+    "compare_models": ["minilm", "e5-small"],
+    "pool_key": "few_shot_decompositions",
+    "top_k": 6,
+    "question_preview_chars": 70,
+    "probe_questions": [
+      {"hop_key": "2hop", "question": "which movies share an actor with Glass Harbor"},
+      {"hop_key": "2hop", "question": "what are the genres of the movies acted by Velibor Topic"},
+      {"hop_key": "3hop", "question": "who starred in the films whose screenwriters also wrote Young Goethe in Love"},
+      {"hop_key": "3hop", "question": "what are the languages spoken in the movies directed by the A Man Apart director"}
+    ],
+    "run_subdir": "similarity_probe_few_shot"
+  },
+
+  "router_probe": {
+    "embed_model": "e5-small",
+    "pool_raw_key": "few_shot_router",
+    "pool_masked_key": "few_shot_router_masked",
+    "questions_template_key": "metaqa_questions_template",
+    "hops": [1, 2, 3],
+    "retrieve_k": 6,
+    "majority_vote_k": 3,
+    "sample_size_per_hop": null,
+    "per_question_preview_rows": 15,
+    "masking_config": "masking.json",
+    "run_subdir": "similarity_probe_router"
+  },
+
+  "paths_config": "paths.json"
+}

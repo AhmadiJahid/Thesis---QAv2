@@ -1,0 +1,2 @@
+{"id": "2hop__t001_a", "index": 0, "question": "Who directed the film scored by the composer of Glass Harbor?", "question_masked_typed": "Who directed the film scored by the composer of [ENTITY]?", "question_masked_uniform": "Who directed the film scored by the composer of [MASK]?"}
+{"id": "2hop__t002_b", "index": 1, "question": "In which town was the founder of Tinwell Press born?", "question_masked_typed": "In which town was the founder of [ORG] born?", "question_masked_uniform": "In which town was the founder of [MASK] born?"}

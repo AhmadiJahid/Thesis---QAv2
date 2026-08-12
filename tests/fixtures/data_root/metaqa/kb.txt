@@ -1,0 +1,17 @@
+Glass Harbor|directed_by|Ada Mireles
+Glass Harbor|written_by|Bo Fenwick
+Glass Harbor|starred_actors|Cyril Danner
+Glass Harbor|in_language|Esperanto
+Glass Harbor|release_year|1998
+Glass Harbor|has_genre|Mystery
+Winter Marbles|directed_by|Ada Mireles
+Winter Marbles|starred_actors|Dara Volkov
+Winter Marbles|in_language|Volapuk
+Winter Marbles|has_genre|Drama
+The Tin Compass|directed_by|Ada Mireles
+The Tin Compass|starred_actors|Cyril Danner
+The Tin Compass|in_language|Esperanto
+Paper Lanterns|directed_by|Elin Marsh
+Paper Lanterns|written_by|Bo Fenwick
+Paper Lanterns|starred_actors|Dara Volkov
+Paper Lanterns|has_genre|Comedy

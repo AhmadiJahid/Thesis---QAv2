@@ -1,0 +1,19 @@
+{
+  "_note": "Config for scripts/musique_decompositions_evaluator.py. The composite-score weights and the step-count error scale were hard-coded literals in v1 (0.4/0.3/0.2/0.1 and /3.0); they are parameters of the metric, so they live here where a run's config snapshot records them.",
+
+  "seed": 42,
+  "gold_key": "musique_dev_gold_clean",
+  "run_subdir": "musique_decomposition_eval",
+  "out_prefix": "eval",
+  "limit": null,
+
+  "composite_score_weights": {
+    "step_f1_macro": 0.4,
+    "ordered_step_accuracy_macro": 0.3,
+    "reference_validity_micro": 0.2,
+    "step_count_error": 0.1
+  },
+  "composite_step_count_error_scale": 3.0,
+
+  "paths_config": "paths.json"
+}

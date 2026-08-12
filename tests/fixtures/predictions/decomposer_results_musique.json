@@ -1,0 +1,30 @@
+[
+  {
+    "query_id": "2hop__d001_a",
+    "question": "Who leads the union that organised the Marlow Bay strike?",
+    "hop_count": 2,
+    "decomposition": "1. Which union organised the Marlow Bay strike?\n2. Who leads [#1]?",
+    "few_shot_source": "reranked"
+  },
+  {
+    "query_id": "3hop1__d002_b",
+    "question": "What is the capital of the country where the River Anwen rises?",
+    "hop_count": 3,
+    "decomposition": "1. Where does the River Anwen rise?\n2. Which country contains [#1]?\n3. What is the capital of that country?",
+    "few_shot_source": "reranked"
+  },
+  {
+    "query_id": "4hop1__d003_c",
+    "question": "In what year did the college attended by the founder of the publisher of Quiet Ledger open?",
+    "hop_count": 4,
+    "decomposition": "1. Who published Quiet Ledger?\n2. Who founded [#1]?\n3. Which college did [#2] attend?\n4. In what year did [#3] open?",
+    "few_shot_source": "reranked"
+  },
+  {
+    "query_id": "2hop__d999_z",
+    "question": "A fabricated question that has no gold row, to exercise the missing-gold counter.",
+    "hop_count": 2,
+    "decomposition": "1. Something?\n2. Something else about [#1]?",
+    "few_shot_source": "reranked"
+  }
+]

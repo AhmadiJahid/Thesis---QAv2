@@ -1,0 +1,34 @@
+{
+  "_note": "Shared config for components/decomposer/run_decomposer.py. Per-model prompt style, generation, loader, few-shot and post-processing settings live in components/decomposer/models/<model>/config.json. v1 carried these as argparse defaults inside each copy of decomposer.py.",
+
+  "seed": 42,
+  "guided": false,
+  "sample_size": null,
+
+  "hops": [1, 2, 3],
+  "questions_template_key": "metaqa_questions_template",
+  "unguided_hop_placeholder": "Unknown",
+
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "embed_model": "e5-small",
+
+  "retrieval": {
+    "input": null,
+    "mode": "typed",
+    "k": 5,
+    "modes": ["raw", "typed", "uniform"],
+    "hop_fallback": 2
+  },
+
+  "few_shot_pool_key": "few_shot_decompositions",
+  "embedding_cache_key": "embedding_cache_dir",
+  "masking_config": "masking.json",
+
+  "output_subdir": "decomposer",
+  "progress_every": 10,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

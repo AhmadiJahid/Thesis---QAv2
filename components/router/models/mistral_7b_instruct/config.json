@@ -1,0 +1,28 @@
+{
+  "component": "router",
+  "model_name": "mistral_7b_instruct",
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "prompt_file": "prompt.md",
+  "generation": {
+    "max_new_tokens": 128,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "use_fast_tokenizer": true,
+    "trust_remote_code": false,
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto",
+    "print_gpu_info": true
+  },
+  "parsing": {
+    "answer_regex": "(?:Output|A):\\s*([123])",
+    "answer_regex_ignorecase": true,
+    "fallback_labels": "hop_words",
+    "default_hop": 2,
+    "debug_print_response": false
+  },
+  "notes": "v1 router.py for this folder used max_new_tokens=128 and printed GPU name/VRAM before loading; both are config fields now. 7.2B parameters is above the ~600M router ceiling in configs/model_limits.json."
+}

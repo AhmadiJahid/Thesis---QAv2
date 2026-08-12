@@ -1,0 +1,41 @@
+{
+  "_note": "Config for scripts/pool_sweep_orchestrator.py. Ported from v1 configs/pool_sweep.json. Asymmetric grid: imbalanced sizes up to 8k, balanced capped at 3k because the 4-hop train pool has only ~1.2k rows (v1 note; unverified in v2 - the pool file is not present yet). Data paths are keys into configs/paths.json datasets rather than repo-relative literals, and the decomposer is named by its model folder instead of a script path.",
+
+  "imbalanced_sizes": [1000, 2000, 4000, 8000],
+  "balanced_sizes": [1000, 2000, 3000],
+
+  "retrieval_modes": ["raw", "typed", "uniform"],
+  "retriever_variants": ["biencoder_only", "biencoder_plus_ce"],
+
+  "num_trials": 1,
+  "base_pool_seed": 42,
+  "pool_trial_seeds": [42],
+
+  "dev_seed": 42,
+  "dev_per_hop": 250,
+
+  "embed_model": "e5-small",
+  "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+  "decomposer_model_folder": "mistral_7b_instruct",
+  "decomposer_quantization": "4bit",
+
+  "device": "cuda",
+
+  "input_pool_key": "musique_pool_enriched",
+  "gold_key": "musique_dev_gold_clean",
+
+  "similarity_top_k": 20,
+  "rerank_k": 5,
+  "retrieval_k": 5,
+
+  "runs_subdir": "pool_sweep",
+
+  "configs": {
+    "musique_prep": "musique_prep.json",
+    "similarity": "similarity.json",
+    "decomposer": "decomposer.json",
+    "musique_eval": "musique_eval.json"
+  },
+
+  "paths_config": "paths.json"
+}

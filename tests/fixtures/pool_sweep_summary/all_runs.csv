@@ -1,0 +1,9 @@
+run_key,size,balance,trial,pool_seed,variant,mode,num_evaluated,exact_match_rate,step_precision_macro,step_recall_macro,step_f1_macro,ordered_step_accuracy_macro,rouge_l_precision_macro,rouge_l_recall_macro,rouge_l_f1_macro,reference_validity_macro,reference_validity_micro,step_count_abs_error_mae,hop_count_exact_match_rate,hop_count_abs_error_mae,composite_score,eval_metrics_path,predictions_path
+size1000_imbalanced_trial0__biencoder_only__raw,1000,imbalanced,0,42,biencoder_only,raw,3,0.0,0.20,0.20,0.20,0.15,0.30,0.30,0.30,1.0,1.0,0.5,0.60,0.5,0.35,,
+size1000_imbalanced_trial0__biencoder_plus_ce__raw,1000,imbalanced,0,42,biencoder_plus_ce,raw,3,0.10,0.25,0.25,0.25,0.20,0.34,0.34,0.34,1.0,1.0,0.4,0.65,0.4,0.40,,
+size2000_imbalanced_trial0__biencoder_only__raw,2000,imbalanced,0,42,biencoder_only,raw,3,0.05,0.22,0.22,0.22,0.18,0.32,0.32,0.32,1.0,1.0,0.45,0.62,0.45,0.37,,
+size2000_imbalanced_trial0__biencoder_plus_ce__raw,2000,imbalanced,0,42,biencoder_plus_ce,raw,3,0.15,0.28,0.28,0.28,0.24,0.36,0.36,0.36,1.0,1.0,0.35,0.68,0.35,0.43,,
+size1000_balanced_trial0__biencoder_only__raw,1000,balanced,0,42,biencoder_only,raw,3,0.05,0.23,0.23,0.23,0.19,0.33,0.33,0.33,1.0,1.0,0.42,0.63,0.42,0.38,,
+size1000_balanced_trial0__biencoder_plus_ce__raw,1000,balanced,0,42,biencoder_plus_ce,raw,3,0.12,0.27,0.27,0.27,0.22,0.35,0.35,0.35,1.0,1.0,0.38,0.66,0.38,0.42,,
+size2000_balanced_trial0__biencoder_only__raw,2000,balanced,0,42,biencoder_only,raw,3,0.08,0.24,0.24,0.24,0.20,0.34,0.34,0.34,1.0,1.0,0.40,0.64,0.40,0.39,,
+size2000_balanced_trial0__biencoder_plus_ce__raw,2000,balanced,0,42,biencoder_plus_ce,raw,3,0.18,0.30,0.30,0.30,0.26,0.38,0.38,0.38,1.0,1.0,0.32,0.70,0.32,0.45,,

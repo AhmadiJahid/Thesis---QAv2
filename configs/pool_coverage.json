@@ -1,0 +1,21 @@
+{
+  "_note": "Config for scripts/check_pool_coverage.py (how similar are the eval questions to their hop-specific few-shot pool). The similarity thresholds, the top-k window and the embedding model registry were literals in v1.",
+
+  "seed": 42,
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "embed_model": "e5-small",
+  "pool_key": "few_shot_router",
+  "questions_template_key": "metaqa_questions_template",
+  "cache_dir_key": "embedding_cache_dir",
+  "hops": [1, 2, 3],
+  "top_k": 6,
+  "report_top_k": [1, 3, 6],
+  "thresholds": [0.5, 0.6, 0.7],
+  "sample_size_per_hop": null,
+  "run_subdir": "pool_coverage",
+
+  "paths_config": "paths.json"
+}

@@ -1,0 +1,28 @@
+{
+  "component": "router",
+  "model_name": "phi_3_5_mini_instruct",
+  "model_id": "microsoft/Phi-3.5-mini-instruct",
+  "prompt_file": "prompt.md",
+  "generation": {
+    "max_new_tokens": 64,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "use_fast_tokenizer": false,
+    "trust_remote_code": false,
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto",
+    "print_gpu_info": false
+  },
+  "parsing": {
+    "answer_regex": "(?:Output|A):\\s*([123])",
+    "answer_regex_ignorecase": true,
+    "fallback_labels": "hop_words",
+    "default_hop": 2,
+    "debug_print_response": false
+  },
+  "notes": "3.8B parameters is above the ~600M router ceiling in configs/model_limits.json."
+}

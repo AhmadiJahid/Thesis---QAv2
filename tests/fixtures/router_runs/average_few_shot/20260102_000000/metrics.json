@@ -1,0 +1,16 @@
+{
+  "num_runs": 2,
+  "overall_accuracy_mean": 0.7142857142857143,
+  "overall_accuracy_std": 0.05,
+  "hop_1_accuracy_mean": 1.0,
+  "hop_1_accuracy_std": 0.0,
+  "hop_2_accuracy_mean": 0.5,
+  "hop_2_accuracy_std": 0.1,
+  "hop_3_accuracy_mean": 0.5,
+  "hop_3_accuracy_std": 0.1,
+  "total_questions": 7,
+  "correct_predictions": 5,
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "run_id": "20260102_000000",
+  "_note": "Fabricated multi-run fixture, not a real run. Do not cite."
+}

@@ -1,0 +1,2 @@
+{"id": "2hop__d001_a", "question": "Who leads the union that organised the Marlow Bay strike?", "index": 0, "question_masked_typed": "Who leads the union that organised the [PLACE] strike?", "question_masked_uniform": "Who leads the union that organised the [MASK] strike?"}
+{"id": "2hop__d004_d", "question": "Which town hosts the press founded by Cyril Danner?", "index": 1, "question_masked_typed": "Which town hosts the press founded by [PERSON]?", "question_masked_uniform": "Which town hosts the press founded by [MASK]?"}

@@ -23,7 +23,11 @@ datasets/
 *.txt
 
 # Model checkpoints and weights — too large for git; they live on the compute box.
-models/
+# `models/` is anchored to the repo root: unanchored, it also matched
+# components/router/models/ and components/decomposer/models/, which hold per-model
+# prompts and configs — committed source, and silently uncommittable until this was
+# anchored. The negations below are belt-and-braces for the same trap.
+/models/
 checkpoints/
 *.pt
 *.ckpt
@@ -89,3 +93,32 @@ Thumbs.db
 # trace — an ignored file never appears in `git status`, so the mistake is silent.
 !**/prompt*.txt
 !experiments/**/*.txt
+
+# Per-model component assets: prompt templates and configs, one folder per model.
+# These are experimental assets (the prompt text must stay byte-identical to v1), so
+# they must never be caught by a checkpoint or data pattern.
+#
+# Negated by extension, not with a blanket `**`: a blanket negation would also rescue a
+# stray *.safetensors / *.npy / bulk *.jsonl dropped into a model folder, which is
+# exactly the weight-and-data traffic the rules above exist to stop. Only the two
+# extensions these folders actually hold are exempt.
+!components/**/models/
+!components/**/models/**/
+!components/**/models/**/*.md
+!components/**/models/**/*.json
+
+# Synthetic smoke-test fixtures. Every byte under tests/fixtures/ is hand-written and
+# fabricated — no rows are copied from MuSiQue or MetaQA — so it is source, not data.
+# Without these negations the .txt / .jsonl rules above would silently swallow the only
+# executable verification the pipeline has before real data exists.
+#
+# Also negated by extension: fixtures are small hand-written files, so a *.safetensors,
+# *.npy or *.pt appearing under this tree means something went wrong and must stay
+# ignored rather than be quietly committable.
+!tests/fixtures/
+!tests/fixtures/**/
+!tests/fixtures/**/*.md
+!tests/fixtures/**/*.json
+!tests/fixtures/**/*.jsonl
+!tests/fixtures/**/*.txt
+!tests/fixtures/**/*.csv

@@ -1,0 +1,53 @@
+# Synthetic smoke-test fixtures
+
+Everything under this directory is **hand-written and fabricated**. No row is copied from
+MuSiQue or MetaQA: the movies, people, questions, decompositions and ids are invented, and
+the numbers are chosen to be small enough to eyeball. They exist so the ported pipeline has
+an executable end-to-end check *before* real data and compute are resolved (issue #2).
+
+They are **not** an evaluation set. Any metric produced from them says nothing about the
+research question — it only says the code path runs and writes its artifacts.
+
+## Layout
+
+```
+data_root/                     # stands in for the real data_root (configs/smoke_paths.json)
+  metaqa/
+    kb.txt                     # 17 fabricated triples, MetaQA's subj|rel|obj format
+    refined_{1,2,3}hop.txt     # questions, one per line
+    answers_{1,2,3}hop.txt     # answers aligned line-by-line with the questions above
+    pool/qa_train_{1,2,3}_hop.txt   # raw "question<TAB>answer" pool rows with [brackets]
+  musique/
+    musique_ans_v1.0_train.jsonl        # 8 rows: 4x 2hop, 4x 3hop1 (4 per stratum is the
+                                        # minimum StratifiedKFold(n_splits=4) accepts)
+    musique_ans_v1.0_dev.jsonl          # gold decompositions keyed by id
+    dev_data/
+      musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
+      musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
+    chunks_only_question_masked_fixed/roberta_large_ner_english/
+      ..._questions_2_hop.jsonl, ..._questions_3_hop_1.jsonl   # chunks to combine
+      ..._all_questions_all_expanded_enriched.jsonl            # the pool to sample from
+    chunks_only_question_masked/{bert_large_NER,roberta_large_ner_english}/
+      ..._train_0_questions_2_hop.jsonl   # two NER variants of the same rows
+predictions/                   # decomposer-shaped prediction files
+retrieval/                     # a similarity top-k file (also used as decomposer input)
+pool_sweep_summary/            # a sweep summary CSV for the plotting script
+router_runs/                   # two completed router runs for the analysis script
+decomposer_run/                # a run directory with analysis/ dumps
+```
+
+## Running the smoke test
+
+```bash
+python scripts/smoke_test.py            # every stage that runs without model downloads
+python scripts/smoke_test.py --list     # show the stages
+```
+
+The runner sets `QAV2_PATHS_CONFIG=configs/smoke_paths.json`, so every script reads its
+normal committed config but resolves data paths into this directory. Output goes to
+`runs/smoke/` (gitignored).
+
+Stages that need a model download (NER masking, bi-encoder similarity, cross-encoder
+rerank, the similarity probes) and the two model-loading runners are **not** executed here;
+the runners are exercised with `--dry-run`, which assembles prompts and writes artifacts
+without loading weights.

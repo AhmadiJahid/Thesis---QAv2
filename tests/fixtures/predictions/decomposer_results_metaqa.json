@@ -1,0 +1,32 @@
+[
+  {
+    "question": "who directed Glass Harbor",
+    "hop_count": 1,
+    "decomposition": "1. Who directed Glass Harbor?",
+    "few_shot_source": "similarity"
+  },
+  {
+    "question": "what other movies were directed by the director of Glass Harbor",
+    "hop_count": 2,
+    "decomposition": "1. Who directed Glass Harbor?\n2. What other movies were directed by [#1]?",
+    "few_shot_source": "similarity"
+  },
+  {
+    "question": "what languages are the other movies directed by the director of Glass Harbor in",
+    "hop_count": 3,
+    "decomposition": "1. Who directed Glass Harbor?\n2. What other movies were directed by [#1]?\n3. What languages are [#2] in?",
+    "few_shot_source": "similarity"
+  },
+  {
+    "question": "a step whose relation cannot be inferred",
+    "hop_count": 1,
+    "decomposition": "1. Please summarise the plot.",
+    "few_shot_source": "similarity"
+  },
+  {
+    "question": "a step naming a movie that is not in the kb",
+    "hop_count": 1,
+    "decomposition": "1. Who directed Nonexistent Movie?",
+    "few_shot_source": "similarity"
+  }
+]

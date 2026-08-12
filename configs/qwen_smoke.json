@@ -1,0 +1,20 @@
+{
+  "_note": "Config for scripts/run_qwen_smoke.py: subsample an existing retrieval file, run the decomposer on it and join the predictions with the gold decomposition into one CSV for eyeballing. v1 hard-coded the source path, the 20-per-hop count, hops 2/3/4, the model id and 4-bit quantization.",
+
+  "seed": 42,
+  "decomposer_model_folder": "qwen3_5_9b",
+  "source_relpath": "pool_sweep/biencoder_top5/size4000_imbalanced_trial0/top5_biencoder.jsonl",
+  "n_per_hop": 20,
+  "hops": [2, 3, 4],
+  "retrieval_mode": "uniform",
+  "retrieval_k": 5,
+  "quantization": "4bit",
+  "gold_key": "musique_dev",
+  "output_subdir": "qwen_smoke",
+
+  "configs": {
+    "decomposer": "decomposer.json"
+  },
+
+  "paths_config": "paths.json"
+}

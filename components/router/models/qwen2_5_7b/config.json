@@ -1,0 +1,28 @@
+{
+  "component": "router",
+  "model_name": "qwen2_5_7b",
+  "model_id": "Qwen/Qwen2.5-7B-Instruct",
+  "prompt_file": "prompt.md",
+  "generation": {
+    "max_new_tokens": 64,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "use_fast_tokenizer": true,
+    "trust_remote_code": false,
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto",
+    "print_gpu_info": false
+  },
+  "parsing": {
+    "answer_regex": "A:\\s*([123])",
+    "answer_regex_ignorecase": false,
+    "fallback_labels": "hop_words",
+    "default_hop": 2,
+    "debug_print_response": false
+  },
+  "notes": "Large model, ~14-16GB VRAM in half precision. NOTE: 7.6B parameters is far above the ~600M router ceiling in configs/model_limits.json, so run_router.py will refuse to run this folder until Jahid changes the ceiling. Kept because the prompt is a v1 experimental asset."
+}

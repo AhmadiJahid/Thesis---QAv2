@@ -1,0 +1,16 @@
+{
+  "_note": "Ported from v1 configs/masking.json. kb_path and corpus_paths that point at datasets resolve against data_root (configs/paths.json); the few-shot exemplar files are committed repo files and resolve against the repo root.",
+
+  "kb_path_key": "metaqa_kb",
+  "corpus_data_paths": [
+    "metaqa/refined_1hop.txt",
+    "metaqa/refined_2hop.txt",
+    "metaqa/refined_3hop.txt"
+  ],
+  "corpus_repo_paths": [
+    "few_shot/few_shot_router.json",
+    "few_shot/few_shot_decompositions.json"
+  ],
+  "movie_placeholder": "[MOVIE]",
+  "person_placeholder": "[PERSON]"
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "question": "who directed Glass Harbor",
+    "hop_count": 1,
+    "decomposition": "1. Who directed Glass Harbor?",
+    "ops": ["StepOp(op='VALUES_OF_MOVIE', relation='directed_by', movie='Glass Harbor', entity=None, ref_step=None)"],
+    "kg_results": ["Ada Mireles"]
+  },
+  {
+    "question": "what other movies were directed by the director of Glass Harbor",
+    "hop_count": 2,
+    "decomposition": "1. Who directed Glass Harbor?\n2. What other movies were directed by [#1]?",
+    "ops": ["StepOp(op='VALUES_OF_MOVIE', relation='directed_by', movie='Glass Harbor', entity=None, ref_step=None)", "StepOp(op='MOVIES_WITH_VALUE', relation='directed_by', movie=None, entity=None, ref_step=1)"],
+    "kg_results": ["Glass Harbor", "Winter Marbles", "The Tin Compass"]
+  },
+  {
+    "question": "what languages are the other movies directed by the director of Glass Harbor in",
+    "hop_count": 3,
+    "decomposition": "1. Who directed Glass Harbor?\n2. What other movies were directed by [#1]?\n3. What languages are [#2] in?",
+    "ops": ["StepOp(op='VALUES_OF_MOVIE', relation='directed_by', movie='Glass Harbor', entity=None, ref_step=None)", "StepOp(op='MOVIES_WITH_VALUE', relation='directed_by', movie=None, entity=None, ref_step=1)", "StepOp(op='PROJECT_VALUES_FROM_MOVIES', relation='in_language', movie=None, entity=None, ref_step=2)"],
+    "kg_results": ["Esperanto", "Volapuk"]
+  },
+  {
+    "question": "what is the genre of Winter Marbles",
+    "hop_count": 1,
+    "decomposition": "1. What is the genre of Winter Marbles?",
+    "ops": ["StepOp(op='VALUES_OF_MOVIE', relation='has_genre', movie='Winter Marbles', entity=None, ref_step=None)"],
+    "kg_results": ["Comedy"]
+  }
+]

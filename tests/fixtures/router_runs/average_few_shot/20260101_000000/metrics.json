@@ -1,0 +1,16 @@
+{
+  "overall_accuracy": 0.5714285714285714,
+  "total_questions": 7,
+  "correct_predictions": 4,
+  "hop_1_accuracy": 0.6666666666666666,
+  "hop_1_total": 3,
+  "hop_2_accuracy": 0.5,
+  "hop_2_total": 2,
+  "hop_3_accuracy": 0.5,
+  "hop_3_total": 2,
+  "seed": 42,
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "run_id": "20260101_000000",
+  "dry_run": false,
+  "_note": "Fabricated numbers from a hand-written fixture, not a real run. Do not cite."
+}

@@ -1,0 +1,14 @@
+{
+  "script": "run_router.py",
+  "run_id": "20260101_000000",
+  "component": "router",
+  "model": "qwen2_5_0_5b",
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "model_name": "qwen2_5_0_5b",
+  "prompt_file": "prompt.md",
+  "zero_shot": false,
+  "seed": 42,
+  "num_runs": 1,
+  "hops": [1, 2, 3],
+  "_note": "Fabricated fixture config, not a real run."
+}

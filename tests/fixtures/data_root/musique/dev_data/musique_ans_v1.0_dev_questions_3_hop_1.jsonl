@@ -1,0 +1,2 @@
+{"id": "3hop1__d002_b", "question": "What is the capital of the country where the River Anwen rises?", "index": 0, "question_masked_typed": "What is the capital of the country where the [PLACE] rises?", "question_masked_uniform": "What is the capital of the country where the [MASK] rises?"}
+{"id": "3hop1__d005_e", "question": "In what year did the college attended by Ada Mireles open?", "index": 1, "question_masked_typed": "In what year did the college attended by [PERSON] open?", "question_masked_uniform": "In what year did the college attended by [MASK] open?"}

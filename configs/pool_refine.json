@@ -1,0 +1,15 @@
+{
+  "_note": "Config for scripts/refine_and_sample_pool.py (clean the MetaQA train question files and draw a small per-hop pool). v1 hard-coded the 30-per-hop sample size and the file-name triples. Input and output live under data_root: these are dataset files, not repo files.",
+
+  "seed": 42,
+  "sample_size_per_hop": 30,
+  "pool_dir_key": "metaqa_pool_dir",
+  "hops": [
+    {"hop": 1, "source": "qa_train_1_hop.txt", "refined": "qa_train_1hop_refined.txt", "pool": "1hop_pool.txt"},
+    {"hop": 2, "source": "qa_train_2_hop.txt", "refined": "qa_train_2hop_refined.txt", "pool": "2hop_pool.txt"},
+    {"hop": 3, "source": "qa_train_3_hop.txt", "refined": "qa_train_3hop_refined.txt", "pool": "3hop_pool.txt"}
+  ],
+  "run_subdir": "metaqa_pool_refine",
+
+  "paths_config": "paths.json"
+}

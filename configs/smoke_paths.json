@@ -1,0 +1,34 @@
+{
+  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ.",
+
+  "data_root": "tests/fixtures/data_root",
+  "runs_root": "runs/smoke",
+
+  "datasets": {
+    "metaqa_dir": "metaqa",
+    "metaqa_kb": "metaqa/kb.txt",
+    "metaqa_questions_template": "metaqa/refined_{hop}hop.txt",
+    "metaqa_answers_template": "metaqa/answers_{hop}hop.txt",
+    "metaqa_pool_dir": "metaqa/pool",
+
+    "musique_train": "musique/musique_ans_v1.0_train.jsonl",
+    "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
+    "musique_dev_dir": "musique/dev_data",
+    "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "musique_clean_dir": "musique/clean_data",
+    "musique_chunks_questions_dir": "musique/chunks_only_question",
+    "musique_chunks_masked_dir": "musique/chunks_only_question_masked",
+    "musique_chunks_masked_fixed_dir": "musique/chunks_only_question_masked_fixed",
+    "musique_sample_extracts_dir": "musique/sample_extracts",
+    "musique_pool_enriched": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_all_questions_all_expanded_enriched.jsonl",
+    "embedding_cache_dir": "cache/emb_cache"
+  },
+
+  "repo": {
+    "few_shot_router": "few_shot/few_shot_router.json",
+    "few_shot_router_masked": "few_shot/few_shot_router_masked.json",
+    "few_shot_decompositions": "few_shot/few_shot_decompositions.json",
+    "router_models_dir": "components/router/models",
+    "decomposer_models_dir": "components/decomposer/models"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "_note": "Config for scripts/plot_pool_sweep.py. The metric list, the balance/variant/mode axes and the figure dpi were module constants in v1.",
+
+  "runs_subdir": "pool_sweep",
+  "summary_csv_relpath": "summary/all_runs.csv",
+  "out_relpath": "summary/plots",
+
+  "metrics": [
+    "step_f1_macro",
+    "composite_score",
+    "exact_match_rate",
+    "ordered_step_accuracy_macro",
+    "rouge_l_f1_macro",
+    "reference_validity_micro",
+    "hop_count_exact_match_rate"
+  ],
+
+  "balances": ["imbalanced", "balanced"],
+  "variants": ["biencoder_only", "biencoder_plus_ce"],
+  "modes": ["raw", "typed", "uniform"],
+
+  "dpi": 150,
+
+  "paths_config": "paths.json"
+}
