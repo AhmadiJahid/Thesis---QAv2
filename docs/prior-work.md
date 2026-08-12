@@ -102,7 +102,7 @@ Open questions FINDINGS poses (questions, not decisions):
 
 **Unseeded v1 subset sampling** ([ADR 0005](adr/0005-seed-before-sampling-v1-sampled-results-not-reproducible.md)). v1's router sampled its evaluation questions *before* seeding, so any v1 router result produced with `--sample_size` used an unreproducible draw. v2 seeds before sampling; v1 sampled-subset numbers are approximate and cannot be exactly re-run.
 
-**Label integrity: `qwen3_1_7b`** (found during the PR #7 port review). v1's `components/router/qwen2_5_1_5b` config carried `model_name: "qwen3_1_7b"` while its `model_id` was `Qwen/Qwen2.5-1.5B-Instruct` (recorded in v2's `components/router/models/qwen2_5_1_5b/config.json` notes). Any v1 result labelled `qwen3_1_7b` may actually be Qwen2.5-1.5B — treat that label as suspect when reading v1 run outputs.
+**Label integrity: `qwen3_1_7b`** (found during the PR #7 port review). v1's `components/router/models/qwen2_5_1_5b` config carried `model_name: "qwen3_1_7b"` while its `model_id` was `Qwen/Qwen2.5-1.5B-Instruct` (recorded in v2's `components/router/models/qwen2_5_1_5b/config.json` notes). Any v1 result labelled `qwen3_1_7b` may actually be Qwen2.5-1.5B — treat that label as suspect when reading v1 run outputs.
 
 ## 8. Excluded method: closed-model (Gemini) judging
 

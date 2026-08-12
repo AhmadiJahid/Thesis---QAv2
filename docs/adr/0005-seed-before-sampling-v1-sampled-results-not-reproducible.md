@@ -5,11 +5,11 @@
 
 ## Context
 
-During the v1→v2 port (PR #7, issue #3), the ml-engineer found and the independent review confirmed a v1 reproducibility bug: v1's `router.py` called `random.sample` on its evaluation questions (v1 lines 180–183) **before** calling `set_seed` (v1 line 217). Any v1 router result produced with `--sample_size` therefore used an unseeded draw — the sampled subset was never reproducible, in v1 or anywhere else. v2's operating contract (CLAUDE.md, Reproducibility) requires fixed seeds threaded through all randomness, and ADR [0001](./0001-v1-to-v2-migration-scope-and-method.md) governs how v1 results may be compared against.
+During the v1→v2 port (PR #7, issue #3), the ml-engineer found and the independent review confirmed a v1 reproducibility bug: v1's router runners called `random.sample` on their evaluation questions **before** calling `set_seed`. All ten per-model copies of `router.py` carry the bug (verified in review); line numbers cited from `components/router/models/qwen2_5_0_5b/router.py` — sampling at lines 181–183, `set_seed` at line 217. Any v1 router result produced with `--sample_size` therefore used an unseeded draw — the sampled subset was never reproducible, in v1 or anywhere else. v2's operating contract (CLAUDE.md, Reproducibility) requires fixed seeds threaded through all randomness, and ADR [0001](./0001-v1-to-v2-migration-scope-and-method.md) governs how v1 results may be compared against.
 
 ## Decision
 
-v2 seeds all randomness before any sampling: every entry point calls `set_global_seed` at run start, before evaluation questions are drawn (`components/router/run_router.py` seeds at run start and samples after). We do not replicate v1's ordering for parity.
+v2 seeds all randomness before any sampling: every entry point containing randomness calls `set_global_seed` at run start, before evaluation questions are drawn (24 of 29 entry points; the remaining five contain no randomness). `components/router/run_router.py` seeds at run start and samples after. We do not replicate v1's ordering for parity.
 
 ## Consequences
 
