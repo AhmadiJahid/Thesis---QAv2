@@ -1,0 +1,33 @@
+{
+  "component": "decomposer",
+  "model_name": "qwen2_5_3b",
+  "model_id": "Qwen/Qwen2.5-3B-Instruct",
+  "prompt_file": "prompt.md",
+  "unguided_prompt_file": null,
+  "prompt_style": "plain",
+  "generation": {
+    "max_new_tokens": 128,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "trust_remote_code": false,
+    "quantization": "none",
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto"
+  },
+  "few_shot": {
+    "enabled": false,
+    "k": 3
+  },
+  "post_process": {
+    "strip_think": false,
+    "truncate_at": ["Question:"]
+  },
+  "logging": {
+    "prompt_log_every": 5
+  },
+  "notes": "few_shot.enabled=false because this prompt carries its examples inline and has no {few_shot_examples} placeholder - matching v1's decomposer.py for this folder, which had no retrieval or pool support. With no unguided prompt file, an unguided run substitutes decomposer.json's unguided_hop_placeholder for {hop_count}, as v1 did."
+}

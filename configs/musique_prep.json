@@ -1,0 +1,100 @@
+{
+  "_note": "Defaults for the MuSiQue prep/retrieval scripts under MusiQue/scripts/. v1 carried these as argparse defaults built from REPO_ROOT, which baked cluster paths into the code; here every path is relative to data_root (configs/paths.json) and every constant is a field. One seed, threaded through all sampling.",
+
+  "seed": 42,
+
+  "split": {
+    "input_key": "musique_train",
+    "out_dir_key": null,
+    "prefix": "musique_ans_v1.0_train",
+    "n_splits": 4,
+    "run_subdir": "musique_train_split"
+  },
+
+  "clean": {
+    "input_glob": "musique/musique_ans_v1.0_train_[0-3].jsonl",
+    "out_dir_key": "musique_clean_dir",
+    "out_suffix": "_clean",
+    "run_subdir": "musique_train_clean"
+  },
+
+  "extract_questions": {
+    "input_glob": "musique/clean_data/musique_ans_v1.0_train_*_clean.jsonl",
+    "out_dir_key": "musique_chunks_questions_dir",
+    "run_subdir": "musique_question_extract"
+  },
+
+  "ner_mask": {
+    "input_glob": "musique/chunks_only_question/musique_ans_v1.0_train_*_questions_*.jsonl",
+    "out_dir_key": "musique_chunks_masked_fixed_dir",
+    "run_subdir": "musique_question_ner_mask",
+    "ner_models": [
+      "Jean-Baptiste/roberta-large-ner-english",
+      "dslim/bert-large-NER"
+    ],
+    "device": -1,
+    "batch_size": 16,
+    "regex_num_date": true,
+    "literal_place_hints": false,
+    "split_typed_uniform_dirs": false,
+    "exclude_stem_suffix": "_questions_all"
+  },
+
+  "combine": {
+    "input_root_key": "musique_chunks_masked_fixed_dir",
+    "train_split": 0,
+    "run_subdir": "musique_question_combine_masked",
+    "required_fields": ["id", "question", "question_masked_typed", "question_masked_uniform", "index"]
+  },
+
+  "enrich": {
+    "source_key": "musique_train",
+    "run_subdir": "musique_pool_enrich"
+  },
+
+  "sample_pool": {
+    "coarse_buckets": ["2hop", "3hop", "4hop"],
+    "run_subdir": "musique_sample_pool"
+  },
+
+  "sample_dev": {
+    "dev_dir_key": "musique_dev_dir",
+    "hop_files": {
+      "2hop": ["musique_ans_v1.0_dev_questions_2_hop.jsonl"],
+      "3hop": [
+        "musique_ans_v1.0_dev_questions_3_hop_1.jsonl",
+        "musique_ans_v1.0_dev_questions_3_hop_2.jsonl"
+      ],
+      "4hop": [
+        "musique_ans_v1.0_dev_questions_4_hop_1.jsonl",
+        "musique_ans_v1.0_dev_questions_4_hop_2.jsonl",
+        "musique_ans_v1.0_dev_questions_4_hop_3.jsonl"
+      ]
+    },
+    "per_hop": 250,
+    "run_subdir": "musique_sample_dev"
+  },
+
+  "plot_chunk_stats": {
+    "input_glob": "musique/musique_ans_v1.0_train_[0-3].jsonl",
+    "run_subdir": "musique_train_plots",
+    "dpi": 150,
+    "format": "png",
+    "stratum_figure": true
+  },
+
+  "extract_sample_rows": {
+    "base_dir_key": "musique_chunks_masked_dir",
+    "out_dir_key": "musique_sample_extracts_dir",
+    "filename": "musique_ans_v1.0_train_0_questions_2_hop.jsonl",
+    "sources": {
+      "bert_large_NER": "bert_large_NER",
+      "roberta_large_ner_english": "roberta_large_ner_english"
+    },
+    "line_numbers": [],
+    "sample_line_count": 40,
+    "run_subdir": "musique_sample_extracts"
+  },
+
+  "paths_config": "paths.json"
+}

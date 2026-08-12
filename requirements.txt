@@ -1,0 +1,32 @@
+# Thesis QAv2 - pipeline dependencies.
+#
+# Versions are pinned to what the v1 working environment actually had installed
+# (read from its .venv dist-info at port time, 2026-08-12) rather than guessed, so a
+# fresh environment reproduces the versions the v1 results were produced under.
+# Anything not determinable from that environment is left unpinned instead of invented.
+
+# Core numerics / data
+numpy==2.4.1
+scipy==1.17.1
+pandas==3.0.0
+scikit-learn==1.8.0
+
+# Plotting (scripts/analyze_runs.py, plot_pool_sweep.py, plot_musique_chunk_stats.py,
+# compare_answer_accuracy.py --report)
+matplotlib==3.10.8
+seaborn==0.13.2
+
+# Models: routing / decomposition inference, retrieval, NER masking
+torch==2.10.0
+transformers==5.5.4
+sentence-transformers==5.2.3
+datasets==4.8.4
+huggingface-hub==1.11.0
+
+# device_map="auto" (router and decomposer loaders) needs accelerate;
+# --quantization 4bit/8bit (decomposer) needs bitsandbytes.
+accelerate==1.12.0
+bitsandbytes==0.49.2
+
+# Entity masking (Aho-Corasick)
+pyahocorasick==2.3.0

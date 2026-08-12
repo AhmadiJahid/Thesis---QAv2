@@ -1,0 +1,11 @@
+{
+  "_note": "Config for scripts/evaluate_decompositions.py (compile a predicted decomposition into MetaQA KG query ops and execute it) and for scripts/kg.py. The step-template regexes and relation rules stay in code: they are a compiler for the MetaQA question grammar, not tunable hyperparameters.",
+
+  "seed": 42,
+  "kb_key": "metaqa_kb",
+  "max_items": null,
+  "run_subdir": "metaqa_decomposition_eval",
+  "write_error_analysis": true,
+
+  "paths_config": "paths.json"
+}

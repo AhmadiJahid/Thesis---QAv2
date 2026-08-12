@@ -1,0 +1,9 @@
+[
+  {"question": "who directed Glass Harbor", "expected": 1, "predicted": 1, "correct": true},
+  {"question": "what is the genre of Winter Marbles", "expected": 1, "predicted": 1, "correct": true},
+  {"question": "who wrote Paper Lanterns", "expected": 1, "predicted": 1, "correct": true},
+  {"question": "what other movies were directed by the director of Glass Harbor", "expected": 2, "predicted": 2, "correct": true},
+  {"question": "which actors starred in the movies written by Bo Fenwick", "expected": 2, "predicted": 1, "correct": false},
+  {"question": "what languages are the other movies directed by the director of Glass Harbor in", "expected": 3, "predicted": 3, "correct": true},
+  {"question": "what genres do the movies starring the actor of The Tin Compass fall under", "expected": 3, "predicted": 2, "correct": false}
+]

@@ -1,0 +1,15 @@
+{
+  "_note": "Config for scripts/compare_answer_accuracy.py (compare the KG results in a run's analysis/success.json against MetaQA gold answers with Jaccard overlap). v1 hard-coded the Data/ directory, the hop list and the answer separator.",
+
+  "seed": 42,
+  "hops": [1, 2, 3],
+  "questions_template_key": "metaqa_questions_template",
+  "answers_template_key": "metaqa_answers_template",
+  "answer_separator": "|",
+  "exact_match_jaccard": 1.0,
+  "analysis_subdir": "analysis",
+  "reports_subdir": "answer_accuracy_reports",
+  "figure_dpi": 150,
+
+  "paths_config": "paths.json"
+}

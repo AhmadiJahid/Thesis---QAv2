@@ -1,0 +1,32 @@
+{
+  "_note": "Config for scripts/analyze_runs.py (plots + HTML report over completed router runs). The matplotlib style, rcParams, figure sizes, dpi and hop list were module-level literals in v1.",
+
+  "runs_subdir": "router",
+  "component": "average_few_shot",
+  "reports_subdir": "router_reports",
+  "skip_archived": true,
+  "archived_marker": "archived",
+
+  "hops": [1, 2, 3],
+
+  "style": {
+    "matplotlib_styles": ["seaborn-v0_8-paper", "seaborn-v0_8"],
+    "palette": "husl",
+    "figure_size": [10, 6],
+    "font_size": 11,
+    "axes_labelsize": 12,
+    "axes_titlesize": 14,
+    "xtick_labelsize": 10,
+    "ytick_labelsize": 10,
+    "dpi": 300,
+    "overall_figure_size": [12, 6],
+    "per_hop_figure_size": [14, 6],
+    "confusion_figure_size": [8, 6],
+    "error_figure_size": [10, 6],
+    "bar_width": 0.25
+  },
+
+  "model_name_suffixes_to_strip": ["-Instruct", "-Chat", "-Base"],
+
+  "paths_config": "paths.json"
+}

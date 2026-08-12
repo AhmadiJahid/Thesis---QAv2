@@ -1,0 +1,28 @@
+{
+  "component": "router",
+  "model_name": "qwen2_5_0_5b",
+  "model_id": "Qwen/Qwen2.5-0.5B-Instruct",
+  "prompt_file": "prompt.md",
+  "generation": {
+    "max_new_tokens": 64,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "use_fast_tokenizer": true,
+    "trust_remote_code": false,
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto",
+    "print_gpu_info": false
+  },
+  "parsing": {
+    "answer_regex": "A:\\s*([123])",
+    "answer_regex_ignorecase": false,
+    "fallback_labels": "hop_words",
+    "default_hop": 2,
+    "debug_print_response": false
+  },
+  "notes": "Smallest Qwen2.5 instruct model for router. Parsing/generation fields mirror v1 components/router/models/qwen2_5_0_5b/router.py."
+}

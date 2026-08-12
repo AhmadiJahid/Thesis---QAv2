@@ -1,0 +1,53 @@
+{
+  "_note": "Config for the retrieval stack: MusiQue/scripts/check_question_similarity.py (bi-encoder top-k), truncate_top20.py (bi-encoder-only selector), rerank_similarity_results.py (cross-encoder rerank) and score_similarity_results.py (hop-match scoring). v1 carried these as argparse defaults; the scoring ladder points were literals in the code.",
+
+  "seed": 42,
+  "device": "cpu",
+  "modes": ["raw", "typed", "uniform"],
+  "mode_fields": {
+    "raw": "question",
+    "typed": "question_masked_typed",
+    "uniform": "question_masked_uniform"
+  },
+
+  "bi_encoder": {
+    "embed_models": {
+      "e5-small": "intfloat/e5-small-v2",
+      "e5-large": "intfloat/e5-large-v2"
+    },
+    "embed_model": "e5-small",
+    "top_k": 20,
+    "num_queries_per_file": 20,
+    "query_glob": "musique/dev_data/musique_ans_v1.0_dev_questions_*.jsonl",
+    "cache_dir_key": "embedding_cache_dir",
+    "cache_enabled": true,
+    "ner_model": "Jean-Baptiste/roberta-large-ner-english",
+    "run_subdir": "musique_similarity"
+  },
+
+  "truncate": {
+    "k": 5,
+    "run_subdir": "musique_truncate"
+  },
+
+  "rerank": {
+    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    "rerank_k": 5,
+    "progress_every": 50,
+    "run_subdir": "musique_rerank"
+  },
+
+  "score": {
+    "top_k": 5,
+    "hop_match_points": {
+      "top1": 5,
+      "top3": 3,
+      "top5": 1,
+      "miss": 0
+    },
+    "similarity_bonus_points": 1,
+    "run_subdir": "musique_similarity_score"
+  },
+
+  "paths_config": "paths.json"
+}

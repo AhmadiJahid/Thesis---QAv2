@@ -1,0 +1,34 @@
+{
+  "_note": "Every dataset path in the pipeline resolves from here. data_root defaults OUTSIDE the working tree because data never enters git (CLAUDE.md). The real location is unresolved pending issue #2 (compute/data location) - override data_root there, do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
+
+  "data_root": "~/thesis-qav2-data",
+  "runs_root": "runs",
+
+  "datasets": {
+    "metaqa_dir": "metaqa",
+    "metaqa_kb": "metaqa/kb.txt",
+    "metaqa_questions_template": "metaqa/refined_{hop}hop.txt",
+    "metaqa_answers_template": "metaqa/answers_{hop}hop.txt",
+    "metaqa_pool_dir": "metaqa/pool",
+
+    "musique_train": "musique/musique_ans_v1.0_train.jsonl",
+    "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
+    "musique_dev_dir": "musique/dev_data",
+    "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "musique_clean_dir": "musique/clean_data",
+    "musique_chunks_questions_dir": "musique/chunks_only_question",
+    "musique_chunks_masked_dir": "musique/chunks_only_question_masked",
+    "musique_chunks_masked_fixed_dir": "musique/chunks_only_question_masked_fixed",
+    "musique_sample_extracts_dir": "musique/sample_extracts",
+    "musique_pool_enriched": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_all_questions_all_expanded_enriched.jsonl",
+    "embedding_cache_dir": "cache/emb_cache"
+  },
+
+  "repo": {
+    "few_shot_router": "few_shot/few_shot_router.json",
+    "few_shot_router_masked": "few_shot/few_shot_router_masked.json",
+    "few_shot_decompositions": "few_shot/few_shot_decompositions.json",
+    "router_models_dir": "components/router/models",
+    "decomposer_models_dir": "components/decomposer/models"
+  }
+}

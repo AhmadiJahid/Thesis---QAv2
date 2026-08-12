@@ -1,0 +1,6 @@
+{
+  "_note": "Standing constraint recorded in CLAUDE.md: roughly 8B parameters overall and ~600M for the router. Asserted in src/model_size.py at every model load. Changing a number here is Jahid's decision with his supervisor - not an agent's, and not a workaround for a model that fails the assertion.",
+
+  "router_max_params": 600000000,
+  "default_max_params": 8000000000
+}

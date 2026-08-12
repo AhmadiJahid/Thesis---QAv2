@@ -1,0 +1,9 @@
+[
+  {
+    "question": "a step naming a movie that is not in the kb",
+    "hop_count": 1,
+    "decomposition": "1. Who directed Nonexistent Movie?",
+    "ops": ["StepOp(op='VALUES_OF_MOVIE', relation='directed_by', movie='Nonexistent Movie', entity=None, ref_step=None)"],
+    "error_reason": "entity_not_in_kb: 'Nonexistent Movie'"
+  }
+]
