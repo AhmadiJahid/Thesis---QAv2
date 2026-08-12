@@ -12,11 +12,11 @@ This repo is the operating system for the work, not the work itself. The pipelin
 
 Open Claude Code in this repo and start with **"read CLAUDE.md"**.
 
-## The idea — transcribed, awaiting Jahid's confirmation
+## The idea
 
 The work is multi-hop question decomposition: splitting a question that needs several reasoning steps into single-hop sub-questions, chained with placeholders that refer to earlier answers. The intended pipeline has three components — a **router** that decides how many hops a question has, a **decomposer** that splits the question into that many sub-questions, and a **jury** that exists in the design but has never been implemented or used. The dataset was MetaQA (movie domain only, no gold decompositions) and is now MuSiQue, which ships gold decompositions; evaluation so far is string-level exact match against the gold decomposition, plus ROUGE-F1 and step precision/recall.
 
-> **Note — transcribed, not authored.** Codery wrote the paragraph above from meeting audio, not from Jahid's own text. **Jahid should confirm it or replace it with his own words.** After that, agents never edit it.
+> **Confirmed by Jahid, 2026-08-12** (in session, closing issue #1). Agents never edit the paragraph above; changes to it are Jahid's alone.
 
 ## There is no PRD
 
