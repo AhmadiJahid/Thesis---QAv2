@@ -30,6 +30,7 @@ When **not** to write one:
 | [0002](./0002-three-stage-router-decomposer-jury-architecture.md) | Three-Stage Router–Decomposer–Jury Architecture | Accepted |
 | [0003](./0003-mask-queries-only-never-re-mask-the-few-shot-pool.md) | Mask Queries Only, Never Re-Mask the Few-Shot Pool | Accepted |
 | [0004](./0004-initial-model-selections.md) | Initial Model Selections for Pipeline Components | Accepted |
+| [0005](./0005-seed-before-sampling-v1-sampled-results-not-reproducible.md) | Seed Before Sampling; v1 Sampled-Subset Results Are Not Reproducible | Accepted |
 
 ---
 
