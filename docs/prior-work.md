@@ -2,7 +2,7 @@
 
 **Every number in this file is a v1 result**, measured in the predecessor repo (`Thesis---QA`, locally at `/cta/users/fyilmaz/Thesis---QA`) before this repo and its rules existed. **These are not v2 log entries.** No v2 claim may cite them as v2 measurements. Any baseline used for a v2 comparison must first be re-run in v2 — which baselines, and when, is Jahid's call, deferred until compute is settled (issue #2; see [ADR 0001](adr/0001-v1-to-v2-migration-scope-and-method.md)).
 
-Primary source: `Thesis---QA/handoff/results_analysis/FINDINGS.md` (an analysis handoff over artifacts in that folder and the original `runs/` / `reports/`). Section references below are to that document. Figures are copied verbatim from it; where it defers to a run file, the run file is cited explicitly.
+Primary source: `Thesis---QA/handoff/results_analysis/FINDINGS.md` (an analysis handoff over artifacts in that folder and the original `runs/` / `reports/`). Section references below are to that document. Figures are copied as FINDINGS states them, with two normalizations applied here: the dataset spelling is unified to "MuSiQue" (FINDINGS writes "MusiQue"), and where a value comes from a run file with more digits it is quoted to four decimal places, with the full value given alongside. Where FINDINGS defers to a run file, the run file is cited explicitly.
 
 ---
 
@@ -37,21 +37,30 @@ Per-hop, Mode C: 1-hop 79%, 2-hop 67%, 3-hop 71%. Average top-1 similarity is hi
 
 ## 3. MuSiQue decomposition eval, unguided (FINDINGS §4)
 
-Source: `Thesis---QA/handoff/results_analysis/musique_decomposition_eval/eval_*_{metrics,notes,config}` files. Gold: MuSiQue clean dev, n = 600 (200 each of 2/3/4 hop). Unguided: hop count not forced in the prompt. Variant = retrieval text for few-shot selection.
+Source: `Thesis---QA/handoff/results_analysis/musique_decomposition_eval/eval_*_{metrics,notes,config}` files. Gold: MuSiQue clean dev, n = 600 (200 each of 2/3/4 hop). Unguided: hop count not forced in the prompt. Variant = retrieval text for few-shot selection. Provenance: the few-shot pool is drawn from MuSiQue **train** and the eval set from **dev** (`Thesis---QA/configs/pool_sweep.json:16,26` — `dev_dir` points at `MusiQue/Data/dev_data`, `input_pool_jsonl` at a `_train_` file); this train/dev split is what makes the v1 retrieval numbers leak-free.
 
 | Variant | Exact match | Step F1 | Ordered step acc | ROUGE-L F1 | Hop-count EM | Composite |
 |---------|-------------|---------|------------------|------------|--------------|-----------|
 | typed | 0.0583 | 0.2006 | 0.1794 | 0.5442 | 0.5217 | 0.3606 |
-| uniform (`masked` preds path) | 0.0550 | 0.1896 | 0.1662 | 0.5431 | 0.5050 | see note* |
+| uniform (`masked` preds path) | 0.0550 | 0.1896 | 0.1662 | 0.5431 | 0.5050 | 0.3554* |
 | raw | 0.0367 | 0.1775 | 0.1581 | 0.5315 | 0.4850 | 0.1888 |
 
-\* FINDINGS' table says "(see metrics file)" for the uniform composite; the run file `eval_uniform_unguided_metrics.json` in the same handoff folder records `composite_score` 0.3553568422318423.
+\* FINDINGS' table says "(see metrics file)" for the uniform composite; the run file `eval_uniform_unguided_metrics.json` in the same handoff folder records `composite_score` 0.3553568422318423, shown above to four decimal places to match the adjacent cells.
 
-Shared patterns per FINDINGS: exact match is low (gold plans are hard to reproduce verbatim); ROUGE-L ~0.53–0.54, so lexical/partial overlap is much better than exact plan match; `[#k]` reference validity (macro) ≈ 0.997+, so the reference wiring is usually syntactically fine; quality degrades with gold hop (2-hop exact ≈ 0.10–0.13, 4-hop exact ≈ 0.005–0.025); models often mis-estimate step count (raw hop EM 0.485; predicted hops include 5–15 for some items). FINDINGS' takeaways for next work: prefer typed (or at least masked) few-shot retrieval over raw; unguided decomposition needs stronger length/hop control; optimize for step F1 / ordered accuracy / hop EM, not only exact match.
+**Metric definitions** (from `Thesis---QA/scripts/musique_decompositions_evaluator.py`):
+
+- **Composite** = 0.4·step_F1 + 0.3·ordered_step_accuracy + 0.2·reference_validity_micro + 0.1·max(0, 1 − mean_step_count_abs_error/3) (lines 411–416). Note the composite's reference term is the **micro** aggregate, not the macro reported in the table's source patterns below.
+- Steps are normalized before any comparison: strip, lowercase, punctuation removed except `#`, whitespace collapsed (lines 48–62). **Exact match** requires the same number of steps with each normalized step equal in order (lines 194–199); **step F1** compares the normalized steps as sets (lines 170–171).
+
+Shared patterns per FINDINGS: exact match is low (gold plans are hard to reproduce verbatim); ROUGE-L ~0.53–0.54, so lexical/partial overlap is much better than exact plan match; `[#k]` reference validity (macro) ≈ 0.997+, which FINDINGS reads as the reference wiring being usually syntactically fine; quality degrades with gold hop (2-hop exact ≈ 0.10–0.13, 4-hop exact ≈ 0.005–0.025); models often mis-estimate step count (raw hop EM 0.485; predicted hops include 5–15 for some items).
+
+**Caveat on reference validity (from the evaluator and run files, not in FINDINGS).** The macro metric scores an item 1.0 when it emits **no** `[#k]` references at all, so the near-perfect macro reflects mostly reference-free predictions, not correct references. The micro values in the run metrics files are 0.75 (typed), 0.7778 (uniform, full value 0.7777777777777778), and 0.00 (raw) — denominators on the order of 4–9 total `[#k]` references across 600 predictions per run. Consequently the typed-vs-raw composite gap (0.3606 vs 0.1888) is dominated by the 0.2 × reference_validity_micro term flipping 0.75 → 0.00, while step F1 differs by only 0.023.
+
+FINDINGS' takeaways for next work: prefer typed (or at least masked) few-shot retrieval over raw; unguided decomposition needs stronger length/hop control; optimize for step F1 / ordered accuracy / hop EM, not only exact match.
 
 ## 4. Pool sweep — pool size × retrieval × mask mode (FINDINGS §5)
 
-Source: `Thesis---QA/handoff/results_analysis/pool_sweep_summary/all_runs.csv` + plots. 33 cells (sizes 1000/2000/4000/8000; balanced/imbalanced; biencoder_only vs biencoder_plus_ce; modes raw/typed/uniform); eval size typically 750 questions per cell.
+Source: `Thesis---QA/handoff/results_analysis/pool_sweep_summary/all_runs.csv` + plots. 33 cells (sizes 1000/2000/4000/8000; balanced/imbalanced; biencoder_only vs biencoder_plus_ce; modes raw/typed/uniform); eval size typically 750 questions per cell. Same pool/eval provenance as §3: pool from MuSiQue train, eval from dev (`Thesis---QA/configs/pool_sweep.json:16,26`), which keeps the retrieval numbers leak-free.
 
 Best cells by metric:
 
@@ -80,14 +89,14 @@ Explicitly not concluded in v1:
 
 Open questions FINDINGS poses (questions, not decisions):
 
-1. Should the router default to Qwen2.5-3B few-shot + masked similarity few-shots?
+1. Should the router default to Qwen2.5-3B few-shot + masked similarity few-shots? (Flag for v2: Qwen2.5-3B exceeds v2's ~600M router cap and is excluded as-is; a cap change is a supervisor decision, per `CLAUDE.md` standing constraints.)
 2. For MuSiQue, should production prompts be guided (force hop count), given low hop EM when unguided?
 3. Is typed retrieval + pool size ~2000–4000 the default for decomposer few-shots?
 4. Which metric is thesis-primary: exact match, step F1, hop EM, or MetaQA answer accuracy after compile/execute?
 
 ## 7. Pitfalls carried forward
 
-**Re-masking corruption** (`Thesis---QA/docs/MASKING.md`; [ADR 0003](adr/0003-mask-queries-only-never-remask-the-pool.md)). Dynamically applying the entity masker to the few-shot pool corrupts pool items through KB entity overlap — v1's documented example: `"who stars in Baby Face"` → `"who [MOVIE] in [MOVIE]"`, because "Stars" is itself a KB movie title. The rule: use the pre-masked pool file, mask queries only, never re-mask the pool at runtime.
+**Re-masking corruption** (`Thesis---QA/docs/MASKING.md`; [ADR 0003](adr/0003-mask-queries-only-never-re-mask-the-few-shot-pool.md)). Dynamically applying the entity masker to the few-shot pool can corrupt pool items through KB entity overlap — v1's documented example: `"who stars in Baby Face"` → `"who [MOVIE] in [MOVIE]"`, because "Stars" is itself a KB movie title. The rule: use the pre-masked pool file, mask queries only, never re-mask the pool at runtime.
 
 **compile_fail vs exec_fail taxonomy** (`Thesis---QA/docs/DECOMPOSITION_ERRORS.md`). When a decomposition is run against the MetaQA KG, failures split into two stages. **Compile fail** = the sub-question text could not be turned into a known KG op — a template-coverage or relation-inference problem (reasons: `missing_decomposition`, `unsupported_template`, `cannot_infer_relation`, `compile_error_other`). **Exec fail** = the op was valid but could not run on the KG — an entity-name or step-reference problem (reasons: `entity_not_in_kb`, `bad_reference_or_plan`, `exec_error_other`). The split tells you whether to fix templates/relations (compile) or entity names/`[#k]` plans (exec).
 

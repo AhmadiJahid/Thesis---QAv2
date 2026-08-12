@@ -18,7 +18,7 @@ We build a 3-stage pipeline (as v1 records it):
 
 ## Consequences
 
-As recorded in v1: the decomposer output needs JSON schema validation; the jury needs clear pass/fail criteria; automated evaluation metrics are follow-up work. No reasoning in decomposer output simplifies the pipeline but may reduce interpretability; jury pass/fail is binary but sufficient for initial validation; manual evaluation is time-consuming but was necessary without ground truth. In v2, the router-guides-decomposer structure is the shape the ported pipeline (issue #3) preserves.
+As recorded in v1: the decomposer output needs JSON schema validation; the jury needs clear pass/fail criteria; automated evaluation metrics are follow-up work. No reasoning in decomposer output simplifies the pipeline but may reduce interpretability; jury pass/fail is binary but sufficient for initial validation; manual evaluation is time-consuming but was necessary without ground truth. In v2, the router-guides-decomposer structure is the shape the ported pipeline (issue #3) preserves. Note: the jury stage exists in the design but has never been implemented or used (per the confirmed idea paragraph in v2's [`README.md`](../../README.md)).
 
 ## Alternatives considered
 

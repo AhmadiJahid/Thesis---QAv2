@@ -5,7 +5,7 @@
 
 ## Context
 
-The predecessor repo (`/cta/users/fyilmaz/Thesis---QA`, "v1") holds working tooling for two datasets (MetaQA and MuSiQue), a body of measured results (`handoff/results_analysis/FINDINGS.md`), and documented decisions (`docs/DECISIONS.md`, `docs/MASKING.md`, `docs/MODEL_SELECTION.md`). This repo ("v2") starts fresh under a stricter operating contract — committed configs, fixed seeds, an append-only experiment log, review gates. The question was what carries over, and how: v1's code does not meet v2's reproducibility rules as-is, and v1's numbers were not produced under v2's logging discipline. Compute for v2 is not yet settled (issue #2).
+The predecessor repo (`/cta/users/fyilmaz/Thesis---QA`, "v1") holds working tooling for two datasets (MetaQA and MuSiQue), a body of measured results (`handoff/results_analysis/FINDINGS.md`), and documented decisions (`docs/DECISIONS.md`, `docs/MASKING.md`, `docs/MODEL_SELECTION.md`). This repo ("v2") starts fresh under a stricter operating contract — committed configs, fixed seeds, an append-only experiment log, review gates. The question was what carries over, and how: v1 runs did ship config, metrics, and notes with a seed, but v1 has no append-only experiment log and no per-run commit SHA, so its numbers were not produced under v2's logging discipline. Compute for v2 is not yet settled (issue #2).
 
 ## Decision
 
