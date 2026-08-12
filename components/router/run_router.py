@@ -207,7 +207,9 @@ def load_model(model_id: str, loader: dict, device: str):
 
     dtype_name = require(loader, "cuda_dtype") if device == "cuda" else require(loader, "cpu_dtype")
     dtype = getattr(torch, dtype_name)
-    model_kwargs = {"trust_remote_code": trust_remote_code, "torch_dtype": dtype}
+    # `dtype=` is the forward-compatible spelling; transformers 5.x accepts both and
+    # maps the older `torch_dtype=` onto it.
+    model_kwargs = {"trust_remote_code": trust_remote_code, "dtype": dtype}
     if device == "cuda":
         model_kwargs["device_map"] = require(loader, "device_map_cuda")
 

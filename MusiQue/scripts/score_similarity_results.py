@@ -9,13 +9,11 @@ each row has ``query_id`` and any subset of ``raw_top_k`` / ``typed_top_k`` /
 Scoring, per query and per available mode:
 
 1. Hop-match score. ``q_hops`` is parsed from the ``query_id`` prefix (``2hop__123`` -> 2).
-   Walking the mode's neighbour list (sorted by score):
-     * top-1 neighbour has the same hop count -> ``top1`` points
-     * else q_hops appears in the top 3        -> ``top3`` points
-     * else q_hops appears in the top 5        -> ``top5`` points
-     * else                                    -> ``miss`` points
-   Only one branch applies. The point values come from
-   ``configs/similarity.json`` -> ``score.hop_match_points`` (v1 hard-coded 5/3/1/0).
+   Walking the mode's neighbour list (sorted by score), the first rung whose window
+   contains a neighbour with the query's hop count wins. Only one rung applies. Both the
+   point values and the window sizes come from ``configs/similarity.json`` ->
+   ``score.hop_match_points`` and ``score.hop_match_windows``; v1 hard-coded 5/3/1/0
+   points over windows of 1/3/5.
 
 2. Similarity bonus (cross-mode). For each mode with neighbours, take the mean
    similarity of the top-K scores; the single best mode gets ``similarity_bonus_points``.
@@ -96,8 +94,13 @@ def compute_hop_match_score(
     neighbours: list[dict[str, Any]],
     top_k: int,
     points: dict[str, int],
+    windows: dict[str, int],
 ) -> int:
-    """The top1 / top3 / top5 / miss ladder for a single mode."""
+    """The top1 / top3 / top5 / miss ladder for a single mode.
+
+    Both the point values and the window sizes come from config: v1 hard-coded 5/3/1/0
+    points *and* the 1/3/5 windows, so "top3" silently meant "the first three".
+    """
     if q_hops is None or not neighbours:
         return int(points["miss"])
 
@@ -106,12 +109,10 @@ def compute_hop_match_score(
     def _hop(n: dict[str, Any]) -> int | None:
         return parse_hops_from_id(n.get("pool_id"))
 
-    if _hop(neighbours[0]) == q_hops:
-        return int(points["top1"])
-    if any(_hop(n) == q_hops for n in _first_n(neighbours, 3)):
-        return int(points["top3"])
-    if any(_hop(n) == q_hops for n in _first_n(neighbours, 5)):
-        return int(points["top5"])
+    for rung in ("top1", "top3", "top5"):
+        window = int(windows[rung])
+        if any(_hop(n) == q_hops for n in _first_n(neighbours, window)):
+            return int(points[rung])
     return int(points["miss"])
 
 
@@ -145,6 +146,7 @@ def _score_row(
     top_k: int,
     modes: tuple[str, ...],
     points: dict[str, int],
+    windows: dict[str, int],
     bonus_points: int,
 ) -> dict[str, Any]:
     result = dict(row)  # shallow copy; preserve all original fields
@@ -157,7 +159,7 @@ def _score_row(
         neighbours = row.get(f"{mode}_top_k")
         if not isinstance(neighbours, list) or not neighbours:
             continue
-        hop_score = compute_hop_match_score(q_hops, neighbours, top_k, points)
+        hop_score = compute_hop_match_score(q_hops, neighbours, top_k, points, windows)
         avg_score = compute_avg_score(neighbours, top_k)
         mode_scores[mode] = ModeScores(hop_score=hop_score, avg_score=avg_score)
         avg_by_mode[mode] = avg_score
@@ -202,6 +204,7 @@ def main() -> None:
     top_k = args.top_k if args.top_k is not None else int(require(cfg, "score.top_k"))
     modes = tuple(require(cfg, "modes"))
     points = require(cfg, "score.hop_match_points")
+    windows = require(cfg, "score.hop_match_windows")
     bonus_points = int(require(cfg, "score.similarity_bonus_points"))
     run_dir = args.run_dir or run_dir_for(paths_cfg, require(cfg, "score.run_subdir"))
 
@@ -222,7 +225,7 @@ def main() -> None:
 
     with args.out.open("w", encoding="utf-8") as outf:
         for row in rows:
-            scored = _score_row(row, top_k, modes, points, bonus_points)
+            scored = _score_row(row, top_k, modes, points, windows, bonus_points)
             outf.write(json.dumps(scored, ensure_ascii=False) + "\n")
 
             q_hops = parse_hops_from_id(row.get("query_id"))
@@ -268,6 +271,7 @@ def main() -> None:
         "output_jsonl": str(args.out.resolve()),
         "top_k": top_k,
         "hop_match_points": points,
+        "hop_match_windows": windows,
         "similarity_bonus_points": bonus_points,
         "num_rows": len(rows),
         "per_mode": totals,
@@ -293,7 +297,7 @@ def main() -> None:
             f"- Input: `{args.input}` ({len(rows)} rows)",
             f"- Scored JSONL: `{args.out}`",
             f"- Summary JSON: `{summary_out}`",
-            f"- Point ladder: {points} (+{bonus_points} similarity bonus)",
+            f"- Point ladder: {points} over windows {windows} (+{bonus_points} similarity bonus)",
             f"- Best mode by total_score_sum: {best_mode} "
             f"({totals[best_mode]['total_score_sum']:.3f})",
         ],

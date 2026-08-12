@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -74,14 +74,16 @@ def get_router_pool_embeddings(
     *,
     cache_dir: Path,
     model_id: str,
-    mask_fn: Callable[[str], str] | None = None,
 ) -> tuple[list[dict], np.ndarray, Any]:
     """
     Return (all_items, all_embeddings, model) for the router pool.
     Combines 1hop, 2hop, 3hop into one pool for similarity search when hop is unknown.
 
-    mask_fn: optional callable to mask entities before encoding (see
-    ``entity_masking.build_masker``), enabling structure-only similarity.
+    To compare against a masked pool, pass the masked pool file (as
+    ``test_similarity_router.py`` does). v1 also carried a ``mask_fn`` parameter that
+    re-masked the pool in memory and shifted the cache key; no caller used it, and it
+    made the identity of the embedded text depend on an argument rather than on the file
+    on disk, which is the ambiguity the pool files exist to avoid.
     """
     SentenceTransformer = _require_sentence_transformer()
 
@@ -92,14 +94,10 @@ def get_router_pool_embeddings(
     for hop_key in ("1hop", "2hop", "3hop"):
         all_items.extend(pool.get(hop_key, []))
 
-    if mask_fn:
-        all_items = [{**it, "question": mask_fn(it["question"])} for it in all_items]
-
     questions = [it["question"] for it in all_items]
     content_hash = _pool_hash(questions)
     model_slug = _model_slug(model_id)
-    suffix = "_masked" if mask_fn else ""
-    cache_file = cache_dir / f"embeddings_router_{model_slug}{suffix}_{content_hash}.npz"
+    cache_file = cache_dir / f"embeddings_router_{model_slug}_{content_hash}.npz"
 
     model = SentenceTransformer(model_id)
     use_prefix = _needs_e5_prefix(model_id)
@@ -113,7 +111,7 @@ def get_router_pool_embeddings(
     to_encode = [f"passage: {q}" for q in questions] if use_prefix else questions
     emb = model.encode(to_encode, normalize_embeddings=True)
     np.savez_compressed(cache_file, embeddings=emb, items=np.array(all_items, dtype=object))
-    for f in cache_dir.glob(f"embeddings_router_{model_slug}{suffix}_*.npz"):
+    for f in cache_dir.glob(f"embeddings_router_{model_slug}_*.npz"):
         if f != cache_file:
             f.unlink(missing_ok=True)
     return (all_items, emb, model)

@@ -42,6 +42,66 @@ _WS_RX = re.compile(r"\s+")
 _PUNCT_KEEP_HASH_RX = re.compile(r"[^\w\s#]")
 _REF_RX = re.compile(r"\[#(\d+)\]")
 
+#: Written into every metrics JSON. A number like "step F1 0.42" is meaningless without
+#: the normalization and the matching rule behind it, and those live in code — so the
+#: definitions travel with the metrics rather than in a doc that can drift.
+METRIC_DEFINITIONS: dict[str, Any] = {
+    "step_normalization": (
+        "each step is lowercased, punctuation is stripped except '#' (so [#k] "
+        "references survive), and whitespace is collapsed to single spaces"
+    ),
+    "step_splitting": (
+        "a string decomposition is split on newlines and a leading '<n>. ' enumerator "
+        "is removed per line; a list decomposition takes each string, or each item's "
+        "'question' field"
+    ),
+    "question_matching": (
+        "a prediction is joined to gold by its question text, lowercased and "
+        "whitespace-collapsed (not by id); unmatched predictions are counted in "
+        "missing_gold_count and excluded from every metric"
+    ),
+    "exact_match_rate": (
+        "1.0 when the predicted step list equals the gold step list in length and in "
+        "normalized text at every position, else 0.0; averaged over evaluated rows"
+    ),
+    "step_precision_macro": "set-based: |normalized pred steps AND gold steps| / |pred steps|, averaged over rows",
+    "step_recall_macro": "set-based: |normalized pred steps AND gold steps| / |gold steps|, averaged over rows",
+    "step_f1_macro": (
+        "harmonic mean of the per-row set-based precision and recall, averaged over "
+        "rows (macro, not computed from the averaged P and R). Unordered and "
+        "duplicate-insensitive: identical steps collapse in the set"
+    ),
+    "ordered_step_accuracy_macro": (
+        "positional: matches at the same index / max(len(pred), len(gold)), averaged "
+        "over rows; a length mismatch is penalised through the denominator"
+    ),
+    "rouge_l_macro": (
+        "ROUGE-L on the newline-joined step text, LCS over whitespace tokens of the "
+        "lowercased text (no punctuation stripping at this stage), averaged over rows"
+    ),
+    "reference_validity": (
+        "a [#k] reference is valid when 1 <= k < its own step index. macro = mean of "
+        "per-row valid rates (a row with no references scores 1.0); micro = total valid "
+        "references / total references across all rows"
+    ),
+    "step_count_abs_error_mae": "mean of |len(pred steps) - len(gold steps)|",
+    "hop_count_metrics": (
+        "predicted hop count is the number of predicted steps; gold hop count is the "
+        "gold 'hop_count' field when present and positive, else the gold step count"
+    ),
+    "composite_score": (
+        "weighted sum of step_f1_macro, ordered_step_accuracy_macro, "
+        "reference_validity_micro and a step-count term "
+        "max(0, 1 - step_count_abs_error_mae / scale); the weights and scale are "
+        "recorded alongside as composite_score_weights and "
+        "composite_step_count_error_scale"
+    ),
+    "not_a_semantic_metric": (
+        "every metric here is string-level. Two decompositions that mean the same thing "
+        "but word a step differently score as a mismatch"
+    ),
+}
+
 
 @dataclass
 class EvalRow:
@@ -401,6 +461,7 @@ def main() -> None:
         "composite_score": _composite_score(overall, weights, scale),
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "metric_definitions": METRIC_DEFINITIONS,
     }
 
     per_item_path = run_dir / f"{out_prefix}_per_item.json"

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -40,7 +41,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from run_artifacts import now_iso  # noqa: E402
+from run_artifacts import now_iso, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, resolve_path, runs_path  # noqa: E402
 
 STAGES = ("sample_pool", "similarity", "truncate", "rerank", "decompose", "eval", "all")
@@ -481,6 +482,10 @@ def stage_eval(
 
 SUMMARY_FIELDS = [
     "run_key", "size", "balance", "trial", "pool_seed", "variant", "mode",
+    # Which dev set every row was scored against. Rows from different dev samples are
+    # not comparable, and all_runs.csv is exactly the table someone will later read as
+    # if one row could be compared with the next.
+    "dev_seed", "dev_per_hop", "dev_sample_sha256",
     "num_evaluated", "exact_match_rate",
     "step_precision_macro", "step_recall_macro", "step_f1_macro",
     "ordered_step_accuracy_macro",
@@ -491,10 +496,15 @@ SUMMARY_FIELDS = [
     "eval_metrics_path", "predictions_path",
 ]
 
+#: Identify the dev set a row was scored against. A mismatch between rows in one table
+#: means the table is not a comparison.
+DEV_IDENTITY_FIELDS = ("dev_seed", "dev_per_hop", "dev_sample_sha256")
+
 _METRIC_FIELDS = [
     f for f in SUMMARY_FIELDS
     if f not in {"run_key", "size", "balance", "trial", "pool_seed", "variant", "mode",
-                 "num_evaluated", "eval_metrics_path", "predictions_path"}
+                 "num_evaluated", "eval_metrics_path", "predictions_path",
+                 *DEV_IDENTITY_FIELDS}
 ]
 
 
@@ -508,8 +518,37 @@ def _read_metrics(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _existing_dev_identity(summary_csv: Path) -> dict[str, str] | None:
+    """The dev identity already recorded in the table, or None when it is empty."""
+    if not summary_csv.exists():
+        return None
+    try:
+        with summary_csv.open(encoding="utf-8", newline="") as f:
+            for rec in csv.DictReader(f):
+                return {k: str(rec.get(k, "")) for k in DEV_IDENTITY_FIELDS}
+    except Exception as exc:
+        print(f"[orchestrator] failed to read {summary_csv} for a dev-identity check: {exc}")
+        return None
+    return None
+
+
 def _append_summary(summary_csv: Path, row: dict[str, Any]) -> None:
+    """Append one row, refusing to mix dev sets inside a single summary table."""
     _ensure_dir(summary_csv.parent)
+
+    existing = _existing_dev_identity(summary_csv)
+    incoming = {k: str(row.get(k, "")) for k in DEV_IDENTITY_FIELDS}
+    if existing is not None and existing != incoming:
+        raise SystemExit(
+            f"[orchestrator] REFUSING to append to {summary_csv}: it already holds rows "
+            f"scored against a different dev sample.\n"
+            f"  existing: {existing}\n"
+            f"  incoming: {incoming}\n"
+            f"Rows from different dev samples are not comparable, and this file reads as "
+            f"a comparison table. Either restore the original dev sample, or point "
+            f"runs_subdir at a fresh sweep root so the new dev set gets its own table."
+        )
+
     write_header = not summary_csv.exists()
     with summary_csv.open("a", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS)
@@ -541,6 +580,16 @@ def _num_queries_from_dev(dev_path: Path) -> int:
             if line.strip():
                 n += 1
     return n
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    hasher = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def _filter_combos(combos: list[tuple[int, str]], only: list[str] | None) -> list[tuple[int, str]]:
@@ -603,7 +652,13 @@ def main() -> None:
         if dev_path.exists()
         else int(require(cfg, "dev_per_hop")) * 3
     )
+    dev_identity = {
+        "dev_seed": int(require(cfg, "dev_seed")),
+        "dev_per_hop": int(require(cfg, "dev_per_hop")),
+        "dev_sample_sha256": _sha256_file(dev_path),
+    }
     print(f"[orchestrator] dev sample: {dev_path} ({num_queries} queries)")
+    print(f"[orchestrator] dev identity: {dev_identity}")
 
     combos = _filter_combos(_grid(cfg), _split_csv(args.only))
     trial_seeds = _trial_seeds(cfg)
@@ -617,6 +672,7 @@ def main() -> None:
     print(f"[orchestrator] variants x modes: {variants} x {modes}")
 
     do_stage = {s: (args.stage in ("all", s)) for s in STAGES}
+    rows_appended = 0
 
     for size, balance in combos:
         for t_idx, pool_seed in enumerate(trial_seeds):
@@ -707,6 +763,7 @@ def main() -> None:
                         "pool_seed": pool_seed,
                         "variant": variant,
                         "mode": mode,
+                        **dev_identity,
                         "num_evaluated": metrics.get("total_evaluated"),
                         "eval_metrics_path": str(metrics_path),
                         "predictions_path": str(predictions),
@@ -714,9 +771,81 @@ def main() -> None:
                     for field in _METRIC_FIELDS:
                         row[field] = metrics.get(field)
                     _append_summary(summary_csv, row)
+                    rows_appended += 1
                     print(f"[orchestrator] summary row added: {run_key}")
 
     _log_append(log_path, f"[{now_iso()}] === orchestrator end ===")
+
+    # Sweep-level trail. The per-stage runs each leave their own artifacts, but the
+    # grid that produced them lived only in the config and the CLI filters; without
+    # this, all_runs.csv has no record of which grid it came from.
+    grid_snapshot = {
+        "script": Path(__file__).name,
+        "created_utc": now_iso(),
+        "config_path": cfg.get("_config_path"),
+        "stage": args.stage,
+        "dry_run": args.dry_run,
+        "overwrite": args.overwrite,
+        "grid": {
+            "imbalanced_sizes": require(cfg, "imbalanced_sizes"),
+            "balanced_sizes": require(cfg, "balanced_sizes"),
+            "combos_run": [[size, balance] for size, balance in combos],
+            "retriever_variants": variants,
+            "retrieval_modes": modes,
+            "trial_seeds": trial_seeds,
+            "trial_filter": trial_filter,
+        },
+        "dev_identity": dev_identity,
+        "dev_sample_path": str(dev_path),
+        "dev_num_queries": num_queries,
+        "input_pool": str(input_pool),
+        "gold": str(gold_path),
+        "decomposer_model_folder": require(cfg, "decomposer_model_folder"),
+        "decomposer_quantization": require(cfg, "decomposer_quantization"),
+        "embed_model": require(cfg, "embed_model"),
+        "cross_encoder": require(cfg, "cross_encoder"),
+        "similarity_top_k": require(cfg, "similarity_top_k"),
+        "rerank_k": require(cfg, "rerank_k"),
+        "retrieval_k": require(cfg, "retrieval_k"),
+        "device": require(cfg, "device"),
+        "child_configs": require(cfg, "configs"),
+    }
+    expected_cells = len(combos) * len(
+        [t for t in range(len(trial_seeds)) if not trial_filter or str(t) in trial_filter]
+    )
+    write_run_artifacts(
+        paths["summary_dir"],
+        config_snapshot=grid_snapshot,
+        metrics={
+            "script": Path(__file__).name,
+            "created_utc": now_iso(),
+            "stage": args.stage,
+            "dry_run": args.dry_run,
+            "cells_in_grid": expected_cells,
+            "runs_in_grid": expected_cells * len(variants) * len(modes),
+            "summary_rows_appended_this_invocation": rows_appended,
+            "summary_csv": str(summary_csv),
+            "orchestrator_log": str(log_path),
+            "dev_identity": dev_identity,
+        },
+        note_title=f"Pool sweep orchestration ({args.stage})",
+        note_lines=[
+            f"- Grid: {[[s, b] for s, b in combos]} x {variants} x {modes}",
+            f"- Trial seeds: {trial_seeds} (filter={trial_filter})",
+            f"- Dev sample: `{dev_path}` ({num_queries} queries), identity {dev_identity}",
+            f"- Decomposer: `{require(cfg, 'decomposer_model_folder')}` "
+            f"(quantization {require(cfg, 'decomposer_quantization')})",
+            f"- Retrieval: {require(cfg, 'embed_model')} top-{require(cfg, 'similarity_top_k')} "
+            f"-> k={require(cfg, 'retrieval_k')}; cross-encoder "
+            f"`{require(cfg, 'cross_encoder')}` rerank-k {require(cfg, 'rerank_k')}",
+            f"- Summary rows appended this invocation: {rows_appended}",
+            f"- Summary table: `{summary_csv}`",
+            "- Rows in one summary table are only comparable while dev_identity matches; "
+            "the appender refuses to mix dev samples.",
+        ],
+        prefix="sweep_",
+    )
+
     print(f"\n[orchestrator] done. Log: {log_path}")
     print(f"[orchestrator] summary: {summary_csv}")
 

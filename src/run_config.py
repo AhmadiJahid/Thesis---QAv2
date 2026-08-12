@@ -29,19 +29,55 @@ class ConfigError(SystemExit):
     """Raised (as a SystemExit) when a config is missing a required field."""
 
 
+def resolve_config_path(path: str | Path) -> Path:
+    """Resolve a config reference to a file inside the repo, or refuse.
+
+    Resolution rules, and why they are this strict:
+
+    - A bare name (``musique_eval.json``) resolves against ``configs/`` **only**.
+      It deliberately never falls back to the current working directory: an
+      uncommitted ``musique_eval.json`` sitting in the CWD would otherwise shadow
+      the committed one and silently change a seed or a metric weight, which
+      defeats Gate 2 (every run from committed code + committed config).
+    - A relative path with separators resolves against the repo root, not the CWD,
+      for the same reason.
+    - Any config that resolves outside the repo is refused: a file outside the repo
+      cannot be committed, so a run using it could never be reproduced.
+    """
+    p = Path(os.path.expandvars(str(path))).expanduser()
+
+    if p.is_absolute():
+        resolved = p
+    elif len(p.parts) == 1:
+        resolved = CONFIG_DIR / p.name
+    else:
+        resolved = REPO_ROOT / p
+
+    resolved = resolved.resolve()
+    repo_root = REPO_ROOT.resolve()
+    if not resolved.is_relative_to(repo_root):
+        raise ConfigError(
+            f"refusing to load a config from outside the repo: {resolved}\n"
+            f"Configs must be committed under {CONFIG_DIR} so a run can be reproduced "
+            f"from a commit (CLAUDE.md, Gate 2)."
+        )
+    return resolved
+
+
 def load_config(path: str | Path) -> dict[str, Any]:
-    """Load a JSON config. ``path`` may be absolute, or relative to configs/."""
-    p = Path(path)
-    if not p.is_absolute():
-        candidate = Path.cwd() / p
-        p = candidate if candidate.exists() else CONFIG_DIR / p.name
+    """Load a committed JSON config. See :func:`resolve_config_path` for resolution."""
+    p = resolve_config_path(path)
     if not p.exists():
-        raise ConfigError(f"config not found: {p}")
+        raise ConfigError(
+            f"config not found: {p}\n"
+            f"A bare config name resolves against {CONFIG_DIR} only (never the working "
+            f"directory); pass a repo-relative path for anything else."
+        )
     with p.open(encoding="utf-8") as f:
         cfg = json.load(f)
     if not isinstance(cfg, dict):
         raise ConfigError(f"config must be a JSON object: {p}")
-    cfg["_config_path"] = str(p.resolve())
+    cfg["_config_path"] = str(p)
     return cfg
 
 
@@ -80,7 +116,8 @@ def resolve_path(path_value: str | Path, root: Path) -> Path:
 #: Selects a different *committed* paths config for every script in one go. The only
 #: intended use is the synthetic smoke test, which points the whole pipeline at
 #: tests/fixtures/ (see scripts/smoke_test.py). It selects a config file; it cannot set
-#: individual values, and the file it selects is recorded in every run's config snapshot.
+#: individual values, the file must live inside the repo (so it is committed and
+#: reviewable), and the file it selects is recorded in every run's config snapshot.
 PATHS_CONFIG_ENV = "QAV2_PATHS_CONFIG"
 
 
@@ -88,8 +125,14 @@ def load_paths(paths_config: str | Path = "paths.json") -> dict[str, Any]:
     """Load configs/paths.json (or the PATHS_CONFIG_ENV override) and resolve its roots."""
     override = os.environ.get(PATHS_CONFIG_ENV)
     if override:
-        print(f"[config] {PATHS_CONFIG_ENV}={override} overrides paths config {paths_config!r}")
-        paths_config = override
+        # Resolve (and repo-bound) the override before announcing it, so an override
+        # pointing outside the repo is refused rather than silently honoured.
+        resolved_override = resolve_config_path(override)
+        print(
+            f"[config] {PATHS_CONFIG_ENV}={override} -> {resolved_override} "
+            f"overrides paths config {paths_config!r}"
+        )
+        paths_config = resolved_override
     cfg = load_config(paths_config)
     cfg["data_root_resolved"] = str(resolve_path(require(cfg, "data_root"), REPO_ROOT))
     cfg["runs_root_resolved"] = str(resolve_path(require(cfg, "runs_root"), REPO_ROOT))

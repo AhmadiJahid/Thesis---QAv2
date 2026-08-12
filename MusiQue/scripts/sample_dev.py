@@ -20,6 +20,7 @@ the seed goes through ``set_global_seed`` as well as the local RNG.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import re
@@ -43,6 +44,36 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
                 continue
             rows.append(json.loads(line))
     return rows
+
+
+def _sources_sha256(paths: list[Path]) -> str:
+    """One hash over the dev source files, in a stable order, name and bytes included."""
+    hasher = hashlib.sha256()
+    for path in sorted(paths, key=lambda p: p.name):
+        hasher.update(path.name.encode("utf-8"))
+        hasher.update(b"\0")
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        hasher.update(b"\0")
+    return hasher.hexdigest()
+
+
+def _read_identity(stats_path: Path) -> dict[str, Any] | None:
+    """The (source hash, per-hop, seed) an existing sample recorded, if any."""
+    if not stats_path.exists():
+        return None
+    try:
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if "source_sha256" not in stats:
+        return None
+    return {
+        "source_sha256": stats.get("source_sha256"),
+        "per_hop_requested": stats.get("per_hop_requested"),
+        "seed": stats.get("seed"),
+    }
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,9 +101,31 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     stats_path = args.out.parent / f"{args.out.stem}_stats.json"
 
+    source_files = [dev_dir / fname for files in hop_files.values() for fname in files]
+    missing = [str(p) for p in source_files if not p.exists()]
+    if missing:
+        raise SystemExit("[sample_dev] missing dev file(s):\n  " + "\n  ".join(missing))
+    source_hash = _sources_sha256(source_files)
+
+    # Skip-if-exists is keyed on the *inputs*, not just the output filename: the filename
+    # only carries per-hop and seed, so a changed dev directory would otherwise be
+    # silently reused under the same name and every downstream comparison would be
+    # against a dev set that no longer matches its own sources.
     if args.out.exists() and not args.overwrite:
-        print(f"[sample_dev] output already exists, skipping: {args.out}")
-        return
+        identity = _read_identity(stats_path)
+        expected = {
+            "source_sha256": source_hash,
+            "per_hop_requested": per_hop,
+            "seed": seed,
+        }
+        if identity == expected:
+            print(f"[sample_dev] output already exists and matches its sources, skipping: {args.out}")
+            return
+        raise SystemExit(
+            f"[sample_dev] REFUSING to reuse {args.out}: it does not match the current "
+            f"inputs.\n  recorded: {identity}\n  current:  {expected}\n"
+            f"Pass --overwrite to resample, or write to a different --out."
+        )
 
     rng = random.Random(seed)
 
@@ -127,6 +180,8 @@ def main() -> None:
         "seed": seed,
         "seeded": seeded,
         "dev_dir": str(dev_dir.resolve()),
+        "source_files": [p.name for p in sorted(source_files, key=lambda p: p.name)],
+        "source_sha256": source_hash,
         "output": str(args.out.resolve()),
         "per_hop_requested": per_hop,
         "available_counts": available_counts,

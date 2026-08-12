@@ -24,5 +24,5 @@
     "default_hop": 2,
     "debug_print_response": false
   },
-  "notes": "v1 config.json carried model_name 'qwen3_1_7b' for this folder, which did not match the model_id; corrected to the folder name (model_name only appears in the run config snapshot). Parsing/generation fields mirror v1 router.py."
+  "notes": "v1 config.json carried model_name 'qwen3_1_7b' for this folder, which did not match the model_id; corrected to the folder name (model_name only appears in the run config snapshot). Parsing/generation fields mirror v1 router.py. NOTE: 1.5B parameters is above the ~600M router ceiling in configs/model_limits.json, so run_router.py will refuse to run this folder until Jahid changes the ceiling. Kept because the prompt is a v1 experimental asset."
 }

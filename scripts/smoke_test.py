@@ -18,6 +18,10 @@ What is NOT covered, and why:
   assembled and artifacts written, but no weights are loaded, so the parameter-count
   assertion in ``src/model_size.py`` is *not* exercised by this test.
 
+Two stages also carry golden metric values (``expect_metrics``). The fixture never
+changes, so those numbers are fixed: if one moves, a metric's normalization or matching
+rule changed, and that must be a deliberate, reviewed edit rather than a silent drift.
+
 Usage::
 
     python scripts/smoke_test.py
@@ -29,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -36,6 +41,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -59,7 +65,20 @@ class Stage:
     cmd: list[str]
     expect_files: list[Path] = field(default_factory=list)
     expect_dir_globs: list[tuple[Path, str]] = field(default_factory=list)
+    #: Golden metric values: (metrics JSON, dotted key, expected value). These pin the
+    #: metric *semantics* against the fixture, so changing a normalization rule or a
+    #: matching rule turns the smoke test red instead of quietly shifting every number.
+    expect_metrics: list[tuple[Path, str, float | int]] = field(default_factory=list)
     note: str = ""
+
+
+def _dotted(payload: Any, key: str) -> Any:
+    node = payload
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            raise KeyError(key)
+        node = node[part]
+    return node
 
 
 def _stages() -> list[Stage]:
@@ -108,6 +127,15 @@ def _stages() -> list[Stage]:
                 musique_eval_dir / "eval_notes.md",
                 musique_eval_dir / "eval_per_item.json",
             ],
+            expect_metrics=[
+                # Deterministic over the fixture: 4 predictions in, 1 with no gold row.
+                (musique_eval_dir / "eval_metrics.json", "total_evaluated", 3),
+                (musique_eval_dir / "eval_metrics.json", "missing_gold_count", 1),
+                (musique_eval_dir / "eval_metrics.json", "exact_match_rate", 2 / 3),
+                (musique_eval_dir / "eval_metrics.json", "step_f1_macro", 8 / 9),
+                (musique_eval_dir / "eval_metrics.json", "rouge_l_f1_macro", 32 / 33),
+                (musique_eval_dir / "eval_metrics.json", "composite_score", 0.9222222222222222),
+            ],
             note="string-level MuSiQue decomposition scoring against gold",
         ),
         Stage(
@@ -124,6 +152,16 @@ def _stages() -> list[Stage]:
                 kg_eval_dir / "success.json",
                 kg_eval_dir / "compile_fail.json",
                 kg_eval_dir / "exec_fail.json",
+            ],
+            expect_metrics=[
+                # 5 fixture rows: 3 compile+execute, 1 unparseable relation, 1 unknown entity.
+                (kg_eval_dir / "kg_eval_metrics.json", "total", 5),
+                (kg_eval_dir / "kg_eval_metrics.json", "compiled_ok", 4),
+                (kg_eval_dir / "kg_eval_metrics.json", "executed_ok", 3),
+                (kg_eval_dir / "kg_eval_metrics.json", "compile_fail", 1),
+                (kg_eval_dir / "kg_eval_metrics.json", "exec_fail", 1),
+                (kg_eval_dir / "kg_eval_metrics.json", "kg_entities", 15),
+                (kg_eval_dir / "kg_eval_metrics.json", "kg_triples", 17),
             ],
             note="compile + execute decompositions against the fabricated MetaQA KG",
         ),
@@ -464,6 +502,34 @@ def _run_stage(stage: Stage, env: dict[str, str]) -> tuple[bool, str, float]:
             missing.append(f"{base}/{pattern} (no match)")
     if missing:
         return False, "missing expected artifacts:\n  " + "\n  ".join(missing), elapsed
+
+    wrong: list[str] = []
+    for metrics_path, key, expected in stage.expect_metrics:
+        try:
+            payload = json.loads(Path(metrics_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            wrong.append(f"{metrics_path}: unreadable ({exc})")
+            continue
+        try:
+            actual = _dotted(payload, key)
+        except KeyError:
+            wrong.append(f"{metrics_path}: missing key {key!r}")
+            continue
+        if isinstance(expected, float):
+            ok = isinstance(actual, (int, float)) and math.isclose(
+                float(actual), expected, rel_tol=1e-9, abs_tol=1e-12
+            )
+        else:
+            ok = actual == expected
+        if not ok:
+            wrong.append(f"{Path(metrics_path).name}:{key} expected {expected!r}, got {actual!r}")
+    if wrong:
+        return (
+            False,
+            "golden metric mismatch (the fixture is fixed, so a changed number means "
+            "changed metric semantics):\n  " + "\n  ".join(wrong),
+            elapsed,
+        )
 
     return True, tail, elapsed
 

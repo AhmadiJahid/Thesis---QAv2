@@ -97,11 +97,28 @@ Thumbs.db
 # Per-model component assets: prompt templates and configs, one folder per model.
 # These are experimental assets (the prompt text must stay byte-identical to v1), so
 # they must never be caught by a checkpoint or data pattern.
+#
+# Negated by extension, not with a blanket `**`: a blanket negation would also rescue a
+# stray *.safetensors / *.npy / bulk *.jsonl dropped into a model folder, which is
+# exactly the weight-and-data traffic the rules above exist to stop. Only the two
+# extensions these folders actually hold are exempt.
 !components/**/models/
-!components/**/models/**
+!components/**/models/**/
+!components/**/models/**/*.md
+!components/**/models/**/*.json
 
 # Synthetic smoke-test fixtures. Every byte under tests/fixtures/ is hand-written and
 # fabricated — no rows are copied from MuSiQue or MetaQA — so it is source, not data.
-# Without this negation the .txt / .jsonl rules above would silently swallow the only
+# Without these negations the .txt / .jsonl rules above would silently swallow the only
 # executable verification the pipeline has before real data exists.
-!tests/fixtures/**
+#
+# Also negated by extension: fixtures are small hand-written files, so a *.safetensors,
+# *.npy or *.pt appearing under this tree means something went wrong and must stay
+# ignored rather than be quietly committable.
+!tests/fixtures/
+!tests/fixtures/**/
+!tests/fixtures/**/*.md
+!tests/fixtures/**/*.json
+!tests/fixtures/**/*.jsonl
+!tests/fixtures/**/*.txt
+!tests/fixtures/**/*.csv

@@ -1,5 +1,5 @@
 {
-  "_note": "Config for the two similarity probes: scripts/test_similarity_few_shot.py (eyeball the top-k neighbours of a handful of probe questions) and scripts/test_similarity_router.py (three-way raw/masked comparison scored by majority vote). v1 hard-coded the model registry, the k values, the majority-vote window and - in test_similarity_few_shot.py - the probe questions themselves.",
+  "_note": "Config for the two similarity probes: scripts/test_similarity_few_shot.py (eyeball the top-k neighbours of a handful of probe questions) and scripts/test_similarity_router.py (three-way raw/masked comparison scored by majority vote). v1 hard-coded the model registry, the k values, the majority-vote window and - in test_similarity_few_shot.py - the probe questions themselves. The first probe question below is fabricated: v1's first probe was a verbatim row from its MetaQA eval question file, and a probe should not be built from an evaluation row. v1 also appended a fifth probe read at runtime from the first line of that same eval file; that dynamic case was dropped for the same reason, so the probe list is fully declared here.",
 
   "seed": 42,
   "embed_models": {
@@ -15,7 +15,7 @@
     "top_k": 6,
     "question_preview_chars": 70,
     "probe_questions": [
-      {"hop_key": "2hop", "question": "which movies have the same actor of Jack the Bear"},
+      {"hop_key": "2hop", "question": "which movies share an actor with Glass Harbor"},
       {"hop_key": "2hop", "question": "what are the genres of the movies acted by Velibor Topic"},
       {"hop_key": "3hop", "question": "who starred in the films whose screenwriters also wrote Young Goethe in Love"},
       {"hop_key": "3hop", "question": "what are the languages spoken in the movies directed by the A Man Apart director"}

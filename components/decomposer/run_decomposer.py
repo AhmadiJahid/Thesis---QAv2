@@ -246,7 +246,8 @@ def load_model(model_id: str, loader: dict, device: str, quantization: str):
         model_kwargs["device_map"] = require(loader, "device_map_cuda")
     elif quantization == "none":
         dtype_name = require(loader, "cuda_dtype") if device == "cuda" else require(loader, "cpu_dtype")
-        model_kwargs["torch_dtype"] = getattr(torch, dtype_name)
+        # `dtype=` is the forward-compatible spelling; transformers 5.x accepts both.
+        model_kwargs["dtype"] = getattr(torch, dtype_name)
         if device == "cuda":
             model_kwargs["device_map"] = require(loader, "device_map_cuda")
     else:
@@ -428,6 +429,7 @@ def main() -> None:
     decomposer_items: list[dict] = []
     decomposer_embeddings = None
     embed_model = None
+    embed_size_record: dict[str, Any] | None = None
     mask_fn: Callable[[str], str] | None = None
     few_shot_source_mode = "disabled"
 
@@ -457,6 +459,13 @@ def main() -> None:
             print(f"Loading decomposer pool embeddings ({embed_key}, masked)...")
             decomposer_items, decomposer_embeddings, embed_model = get_decomposer_pool_embeddings(
                 pool_path, cache_dir=cache_dir, model_id=embed_model_id
+            )
+            # The bi-encoder is a loaded model too: assert it against the ceiling, the
+            # same way check_pool_coverage.py and test_similarity_router.py do. Without
+            # this, the similarity path was the one model load in the pipeline that
+            # escaped the check.
+            embed_size_record = assert_within_ceiling(
+                embed_model, component="retrieval", model_id=embed_model_id, limits=limits
             )
 
     # ---- inference rows ----
@@ -666,8 +675,14 @@ def main() -> None:
         "guided": guided,
         "seed": seed,
         "model_size": size_record,
+        "embedding_model_size": embed_size_record,
         "results_path": str(output_dir / "results.json"),
     }
+    if embed_size_record is None:
+        metrics["embedding_model_size_note"] = (
+            "no bi-encoder was loaded in this run (retrieval input supplied, few-shot "
+            "disabled, or --dry-run), so its parameter count is unmeasured"
+        )
     if args.dry_run:
         metrics["decomposition_quality"] = None
         metrics["decomposition_quality_note"] = (

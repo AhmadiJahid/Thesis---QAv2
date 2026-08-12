@@ -45,6 +45,11 @@
       "top5": 1,
       "miss": 0
     },
+    "hop_match_windows": {
+      "top1": 1,
+      "top3": 3,
+      "top5": 5
+    },
     "similarity_bonus_points": 1,
     "run_subdir": "musique_similarity_score"
   },

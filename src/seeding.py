@@ -19,9 +19,15 @@ def set_global_seed(seed: int) -> dict[str, Any]:
     if not isinstance(seed, int):
         raise TypeError(f"seed must be an int, got {type(seed).__name__}")
 
-    seeded: dict[str, Any] = {"seed": seed, "python_random": True, "pythonhashseed": True}
+    seeded: dict[str, Any] = {"seed": seed, "python_random": True}
     random.seed(seed)
+
+    # PYTHONHASHSEED is read by the interpreter at startup, so setting it here does
+    # nothing for *this* process's hash randomization. It is set only so subprocesses
+    # (e.g. the stages the pool-sweep orchestrator launches) inherit it, and the field
+    # name says exactly that rather than implying this process is covered.
     os.environ["PYTHONHASHSEED"] = str(seed)
+    seeded["pythonhashseed_exported_for_subprocesses"] = str(seed)
 
     try:
         import numpy as np
