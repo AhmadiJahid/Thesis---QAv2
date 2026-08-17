@@ -115,6 +115,11 @@ def _stages() -> list[Stage]:
 
     return [
         Stage(
+            name="decomposition_metric_tests",
+            cmd=[sys.executable, "-m", "unittest", "discover", "-s", "tests"],
+            note="hand-computed metric checks for the decomposition evaluator (tests/)",
+        ),
+        Stage(
             name="musique_eval",
             cmd=[
                 sys.executable, SCRIPTS / "musique_decompositions_evaluator.py",

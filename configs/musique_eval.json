@@ -15,5 +15,13 @@
   },
   "composite_step_count_error_scale": 3.0,
 
+  "paired_comparison": {
+    "_note": "Parameters for --compare (paired significance between two per-item files). The bootstrap is resampled from the top-level 'seed' (or --seed), so a comparison is reproducible; iterations, alpha and the mismatch-report cap are parameters of the test, so they live here and land in the run's config snapshot instead of being literals in the script.",
+    "bootstrap_iterations": 10000,
+    "alpha": 0.05,
+    "max_reported_id_mismatches": 20,
+    "out_prefix": "compare"
+  },
+
   "paths_config": "paths.json"
 }
