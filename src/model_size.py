@@ -1,7 +1,8 @@
 """Parameter-count ceilings, printed and asserted at model load.
 
-CLAUDE.md records a standing constraint from Jahid's supervisor: roughly 8B
-parameters overall and ~600M for the router. The numbers live in
+CLAUDE.md records a standing constraint: roughly 8B parameters overall,
+router included (the former ~600M router-specific ceiling was lifted by
+Jahid on 2026-08-17 — ADR 0008). The numbers live in
 ``configs/model_limits.json`` so they are a committed value rather than a
 constant buried in code; the assertion is hard, because a ceiling that is only
 assumed is not a ceiling.

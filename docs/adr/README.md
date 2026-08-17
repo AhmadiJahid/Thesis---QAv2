@@ -33,6 +33,7 @@ When **not** to write one:
 | [0005](./0005-seed-before-sampling-v1-sampled-results-not-reproducible.md) | Seed Before Sampling; v1 Sampled-Subset Results Are Not Reproducible | Accepted |
 | [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) | Drop the Jury; Fix Dataset Roles and the Few-Shot Method | Accepted |
 | [0007](./0007-musique-evaluation-set-reuses-v1-600-questions-200-per-hop.md) | MuSiQue Evaluation Set Reuses v1's 600 Questions (200 per Hop Depth) | Accepted |
+| [0008](./0008-lift-the-600m-router-cap-to-the-overall-8b-ceiling.md) | Lift the 600M Router Cap to the Overall 8B Ceiling | Accepted |
 
 ---
 
