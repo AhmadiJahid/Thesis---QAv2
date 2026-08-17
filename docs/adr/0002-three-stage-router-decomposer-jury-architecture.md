@@ -1,6 +1,6 @@
 # 0002. Three-Stage Router–Decomposer–Jury Architecture
 
-- **Status**: Accepted
+- **Status**: Superseded by [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md)
 - **Date**: captured retroactively 2026-08-12
 
 ## Context

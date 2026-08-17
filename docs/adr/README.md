@@ -27,10 +27,12 @@ When **not** to write one:
 | # | Title | Status |
 |---|---|---|
 | [0001](./0001-v1-to-v2-migration-scope-and-method.md) | V1 to V2 Migration Scope and Method | Accepted |
-| [0002](./0002-three-stage-router-decomposer-jury-architecture.md) | Three-Stage Router–Decomposer–Jury Architecture | Accepted |
+| [0002](./0002-three-stage-router-decomposer-jury-architecture.md) | Three-Stage Router–Decomposer–Jury Architecture | Superseded by [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) |
 | [0003](./0003-mask-queries-only-never-re-mask-the-few-shot-pool.md) | Mask Queries Only, Never Re-Mask the Few-Shot Pool | Accepted |
 | [0004](./0004-initial-model-selections.md) | Initial Model Selections for Pipeline Components | Accepted |
 | [0005](./0005-seed-before-sampling-v1-sampled-results-not-reproducible.md) | Seed Before Sampling; v1 Sampled-Subset Results Are Not Reproducible | Accepted |
+| [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) | Drop the Jury; Fix Dataset Roles and the Few-Shot Method | Accepted |
+| [0007](./0007-musique-evaluation-set-reuses-v1-600-questions-200-per-hop.md) | MuSiQue Evaluation Set Reuses v1's 600 Questions (200 per Hop Depth) | Accepted |
 
 ---
 
