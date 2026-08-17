@@ -1,7 +1,7 @@
 {
-  "_note": "Every dataset path in the pipeline resolves from here. data_root defaults OUTSIDE the working tree because data never enters git (CLAUDE.md). The real location is unresolved pending issue #2 (compute/data location) - override data_root there, do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
+  "_note": "Every dataset path in the pipeline resolves from here. data_root is OUTSIDE the working tree because data never enters git (CLAUDE.md). data_root is a symlink layer over the v1 repo (/cta/users/fyilmaz/Thesis---QA) - nothing is copied; see docs/compute.md 'Dataset location'. All datasets.* paths verified resolving 2026-08-17 except musique_chunks_masked_dir: the pre-fix masked chunks were superseded by the _fixed variant in v1 and no longer exist anywhere; the key is kept for provenance only. Do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
 
-  "data_root": "~/thesis-qav2-data",
+  "data_root": "/cta/users/fyilmaz/thesis-qav2-data",
   "runs_root": "runs",
 
   "datasets": {
