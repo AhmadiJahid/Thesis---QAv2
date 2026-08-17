@@ -1,5 +1,5 @@
 {
-  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ.",
+  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ. The fixture files behind musique_dev_sample_template keep the real file names (which end in _200) but hold 3 fabricated rows each, not 200 - they exist so the MuSiQue decomposer path can be exercised, not to stand in for the evaluation set.",
 
   "data_root": "tests/fixtures/data_root",
   "runs_root": "runs/smoke",
@@ -15,6 +15,7 @@
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
     "musique_dev_dir": "musique/dev_data",
     "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "musique_dev_sample_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
     "musique_clean_dir": "musique/clean_data",
     "musique_chunks_questions_dir": "musique/chunks_only_question",
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",

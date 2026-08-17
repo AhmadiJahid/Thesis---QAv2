@@ -13,6 +13,16 @@ Usage::
     python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
         --retrieval-input runs/pool_sweep/biencoder_top5/<cell>/top5_biencoder.jsonl
     python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
+    python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
+        --config decomposer_musique.json --condition unguided_capped
+
+``--config decomposer_musique.json`` runs the pinned MuSiQue evaluation set (ADR 0007) and
+carries a ``conditions`` block: ``unguided``, ``oracle_guided`` (gold hop count in the
+prompt) and ``unguided_capped`` (no hop count, generation stopped at N step lines). All
+three share model, seed and decoding; only the prompt's hop information and the step-line
+budget differ. The unguided arms need a model folder that ships an ``unguided_prompt_file``
+(the config sets ``unguided_prompt_must_omit_hop_count``), so ``qwen2_5_3b`` and
+``phi_4_mini_instruct`` cannot run them.
 
 Every run writes a config snapshot, a metrics JSON and a run note, and asserts the
 model's parameter count against the ceiling in ``configs/model_limits.json``.
@@ -34,6 +44,7 @@ from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import (  # noqa: E402
     load_config,
     load_paths,
+    optional,
     require,
     resolve_path,
     runs_path,
@@ -42,6 +53,11 @@ from seeding import new_rng, set_global_seed  # noqa: E402
 
 _THINK_RX = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
+
+#: Keys a ``conditions.<name>`` block may carry. Deliberately short: the conditions of an
+#: experiment arm differ only in what the prompt says about the hop count and in the
+#: step-line budget. Model, seed and decoding are shared, so no condition can move them.
+_CONDITION_KEYS = frozenset({"guided", "stop_after_step_lines", "_note"})
 
 
 # --------------------------------------------------------------------------- IO
@@ -64,6 +80,151 @@ def load_jsonl(path: Path) -> list[dict]:
                 continue
             rows.append(json.loads(line))
     return rows
+
+
+def load_question_items(
+    file_path: Path, *, questions_format: str, question_field: str, id_field: str
+) -> list[dict]:
+    """Read one question source file into ``{query_id, question}`` items.
+
+    ``lines`` is the MetaQA plain-text format (one question per line, no ids); ``jsonl``
+    is the MuSiQue format (one JSON object per line, with an id that downstream evaluation
+    joins on). A malformed JSONL row is an error, not a silent skip: the evaluation set is
+    pinned (ADR 0007) and a dropped row would change what a condition was measured on.
+    """
+    if questions_format == "lines":
+        return [{"query_id": None, "question": q} for q in load_questions(file_path)]
+    if questions_format != "jsonl":
+        raise SystemExit(
+            f"unknown questions_format {questions_format!r} (expected 'lines' or 'jsonl')"
+        )
+    if not file_path.exists():
+        raise SystemExit(f"question file not found: {file_path}")
+    items: list[dict] = []
+    for lineno, row in enumerate(load_jsonl(file_path), start=1):
+        question = row.get(question_field)
+        if not isinstance(question, str) or not question.strip():
+            raise SystemExit(
+                f"{file_path}:{lineno} has no usable {question_field!r} field "
+                f"(got {row.get(question_field)!r})"
+            )
+        items.append({"query_id": row.get(id_field), "question": question.strip()})
+    if not items:
+        raise SystemExit(f"no rows in question file: {file_path}")
+    return items
+
+
+def resolve_condition(cfg: dict, requested: str | None) -> tuple[str | None, dict]:
+    """Pick the named condition out of the config's ``conditions`` block.
+
+    A config without a ``conditions`` block (MetaQA's) behaves exactly as before. A config
+    with one must name a default in ``condition``; ``--condition`` overrides it.
+    """
+    conditions = optional(cfg, "conditions")
+    name = requested if requested is not None else optional(cfg, "condition")
+    src = cfg.get("_config_path", "<config>")
+
+    if conditions is None:
+        if name:
+            raise SystemExit(
+                f"--condition {name!r} was given but {src} has no 'conditions' block"
+            )
+        return None, {}
+    if not isinstance(conditions, dict) or not conditions:
+        raise SystemExit(f"'conditions' in {src} must be a non-empty object")
+    if not name:
+        raise SystemExit(
+            f"{src} has a 'conditions' block but no default 'condition'; "
+            f"set one or pass --condition (available: {sorted(conditions)})"
+        )
+    if name not in conditions:
+        raise SystemExit(f"unknown condition {name!r} in {src} (available: {sorted(conditions)})")
+    block = conditions[name]
+    if not isinstance(block, dict):
+        raise SystemExit(f"condition {name!r} in {src} must be an object")
+    unknown = sorted(set(block) - _CONDITION_KEYS)
+    if unknown:
+        raise SystemExit(
+            f"condition {name!r} in {src} sets {unknown}, which a condition may not set. "
+            f"Allowed: {sorted(_CONDITION_KEYS)}. Model, seed and decoding are shared across "
+            "conditions on purpose - moving one of them in a single arm would make the arms "
+            "incomparable."
+        )
+    return name, dict(block)
+
+
+def resolve_guided(
+    cli_guided: bool | None, condition_name: str | None, condition: dict, cfg: dict
+) -> bool:
+    """Resolve the guided flag: CLI, then the condition, then the config default.
+
+    A named condition that fixes ``guided`` may **not** be overridden from the CLI. The
+    condition name is what the snapshot, the metrics and the log entry record, so an
+    overridden arm would be filed under a label it did not run.
+    """
+    if cli_guided is not None:
+        if "guided" in condition and bool(condition["guided"]) != bool(cli_guided):
+            raise SystemExit(
+                f"--guided contradicts condition {condition_name!r}, which sets "
+                f"guided={bool(condition['guided'])}. Select the condition that encodes the "
+                "arm you want instead of overriding it: the run would otherwise be recorded "
+                f"as {condition_name!r} while running the other arm's prompt."
+            )
+        return bool(cli_guided)
+    if "guided" in condition:
+        return bool(condition["guided"])
+    return bool(require(cfg, "guided"))
+
+
+def resolve_step_line_cap(condition_name: str | None, condition: dict) -> int | None:
+    """The condition's step-line budget, or None when the arm is uncapped."""
+    cap = condition.get("stop_after_step_lines")
+    if cap is None:
+        return None
+    cap = int(cap)
+    if cap <= 0:
+        raise SystemExit(
+            f"condition {condition_name!r}: stop_after_step_lines must be positive, got {cap}"
+        )
+    return cap
+
+
+def assert_unguided_prompt_omits_hop_count(
+    template: str, *, prompt_path: Path, model: str, config_src: str
+) -> None:
+    """Refuse an unguided run whose prompt still carries a hop-count slot.
+
+    A model folder with no ``unguided_prompt_file`` falls back to the guided prompt, where
+    ``{hop_count}`` is filled with ``unguided_hop_placeholder``. The prompt then reads
+    "Hop count: Unknown" under a rule that says the number of steps must equal the hop
+    count - which is neither the unguided condition nor the guided one. A config running a
+    guided/unguided comparison sets ``unguided_prompt_must_omit_hop_count`` so this is a
+    loud failure rather than a silently mislabelled arm.
+    """
+    if "{hop_count}" not in template:
+        return
+    raise SystemExit(
+        f"unguided run, but the prompt {prompt_path} still has a {{hop_count}} slot.\n"
+        f"Model folder {model!r} has no 'unguided_prompt_file', so the guided prompt was "
+        f"used and the hop count would be filled with the placeholder. {config_src} sets "
+        "'unguided_prompt_must_omit_hop_count', which forbids that. Use a model folder that "
+        "ships an unguided prompt (one without {hop_count}), or add one to this folder."
+    )
+
+
+def apply_generation_overrides(generation: dict, overrides: dict | None, src: str) -> dict:
+    """Overlay config-level decoding overrides (same for every condition) on the model's."""
+    merged = dict(generation)
+    if not overrides:
+        return merged
+    unknown = sorted(set(overrides) - set(generation))
+    if unknown:
+        raise SystemExit(
+            f"generation_overrides in {src} sets {unknown}, which the model's generation "
+            f"block does not define (has: {sorted(generation)})"
+        )
+    merged.update(overrides)
+    return merged
 
 
 def parse_hop_from_id(qid: str | None) -> int | None:
@@ -208,6 +369,74 @@ def build_chat_messages(
     ]
 
 
+# ------------------------------------------------------- step-line stopping rule
+
+
+def count_step_lines(text: str) -> int:
+    """Count *completed* step lines in a generated continuation.
+
+    A step line is a non-empty line that has already been terminated by a newline; the
+    text after the last newline is still being written and does not count yet. So
+    ``"a\\nb"`` is 1 completed line, ``"a\\nb\\n"`` is 2, and blank lines never count.
+    """
+    if "\n" not in text:
+        return 0
+    completed = text.split("\n")[:-1]
+    return sum(1 for line in completed if line.strip())
+
+
+def trim_to_step_lines(text: str, max_step_lines: int) -> str:
+    """Keep the first ``max_step_lines`` non-empty lines, dropping anything after them.
+
+    The stopping criterion fires between tokens, so a capped generation can end with a
+    partial ninth line. This removes that tail; it is a companion to the stopping rule,
+    not a replacement for it.
+    """
+    kept: list[str] = []
+    for line in text.split("\n"):
+        if not line.strip():
+            continue
+        kept.append(line.rstrip())
+        if len(kept) >= max_step_lines:
+            break
+    return "\n".join(kept)
+
+
+class StepLineStopper:
+    """Decide when a generation has produced ``max_step_lines`` step lines.
+
+    Pure logic with no torch dependency so it is testable against a synthetic token
+    stream: ``decode`` turns the generated token ids (prompt excluded) into text.
+    """
+
+    def __init__(self, max_step_lines: int, decode: Callable[[list[int]], str]) -> None:
+        if max_step_lines <= 0:
+            raise ValueError(f"max_step_lines must be positive, got {max_step_lines}")
+        self.max_step_lines = int(max_step_lines)
+        self.decode = decode
+
+    def should_stop(self, generated_ids) -> bool:
+        return count_step_lines(self.decode(list(generated_ids))) >= self.max_step_lines
+
+
+def make_step_line_stopping_criteria(tokenizer, *, prompt_len: int, max_step_lines: int):
+    """Wrap :class:`StepLineStopper` as a transformers ``StoppingCriteriaList``."""
+    import torch
+    from transformers import StoppingCriteria, StoppingCriteriaList
+
+    stopper = StepLineStopper(
+        max_step_lines,
+        lambda ids: tokenizer.decode(ids, skip_special_tokens=True),
+    )
+
+    class _StepLineCriteria(StoppingCriteria):
+        def __call__(self, input_ids, scores, **kwargs):
+            done = [stopper.should_stop(seq[prompt_len:].tolist()) for seq in input_ids]
+            return torch.tensor(done, dtype=torch.bool, device=input_ids.device)
+
+    return StoppingCriteriaList([_StepLineCriteria()])
+
+
 def post_process(response: str, post_cfg: dict) -> str:
     text = response
     if post_cfg.get("strip_think"):
@@ -268,13 +497,29 @@ def load_model(model_id: str, loader: dict, device: str, quantization: str):
     return tokenizer, model
 
 
-def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) -> str:
+def generate(
+    prompt_text: str,
+    model,
+    tokenizer,
+    device: str,
+    generation: dict,
+    *,
+    max_step_lines: int | None = None,
+) -> str:
     import torch
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     inputs = tokenizer(prompt_text, return_tensors="pt").to(device)
+    prompt_len = inputs["input_ids"].shape[1]
+    stopping_criteria = (
+        make_step_line_stopping_criteria(
+            tokenizer, prompt_len=prompt_len, max_step_lines=max_step_lines
+        )
+        if max_step_lines
+        else None
+    )
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -284,10 +529,12 @@ def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) 
             do_sample=bool(require(generation, "do_sample")),
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
+            stopping_criteria=stopping_criteria,
         )
-    return tokenizer.decode(
-        outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-    ).strip()
+    text = tokenizer.decode(outputs[0][prompt_len:], skip_special_tokens=True).strip()
+    if max_step_lines:
+        text = trim_to_step_lines(text, max_step_lines)
+    return text.strip()
 
 
 # ------------------------------------------------------------------------ main
@@ -299,6 +546,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--config", default="decomposer.json", help="Shared decomposer config")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--guided", action="store_true", default=None, help="Put the hop count in the prompt")
+    p.add_argument(
+        "--condition",
+        default=None,
+        help="Named condition from the config's 'conditions' block (e.g. unguided, "
+        "oracle_guided, unguided_capped). Overrides the config's default 'condition'.",
+    )
     p.add_argument("--sample-size", type=int, default=None)
     p.add_argument("--embed-model", default=None, help="Key in decomposer.json embed_models")
     p.add_argument("--retrieval-input", default=None, help="Reranked/truncated top-k JSONL")
@@ -328,8 +581,11 @@ def main() -> None:
         raise SystemExit(f"model folder not found: {model_dir}")
     model_cfg = load_config(model_dir / "config.json")
 
+    condition_name, condition = resolve_condition(cfg, args.condition)
+
     seed = args.seed if args.seed is not None else int(require(cfg, "seed"))
-    guided = args.guided if args.guided is not None else bool(require(cfg, "guided"))
+    guided = resolve_guided(args.guided, condition_name, condition, cfg)
+    stop_after_step_lines = resolve_step_line_cap(condition_name, condition)
     sample_size = args.sample_size if args.sample_size is not None else require(cfg, "sample_size")
     embed_key = args.embed_model or require(cfg, "embed_model")
     embed_model_id = require(cfg, f"embed_models.{embed_key}")
@@ -344,7 +600,12 @@ def main() -> None:
     unguided_hop_placeholder = require(cfg, "unguided_hop_placeholder")
 
     prompt_style = require(model_cfg, "prompt_style")
-    generation = dict(require(model_cfg, "generation"))
+    generation_overrides = optional(cfg, "generation_overrides")
+    generation = apply_generation_overrides(
+        dict(require(model_cfg, "generation")),
+        generation_overrides,
+        cfg.get("_config_path", "<config>"),
+    )
     loader = dict(require(model_cfg, "loader"))
     few_shot_cfg = dict(require(model_cfg, "few_shot"))
     post_cfg = dict(require(model_cfg, "post_process"))
@@ -375,6 +636,13 @@ def main() -> None:
     if not prompt_path.exists():
         raise SystemExit(f"prompt file not found: {prompt_path}")
     prompt_template = prompt_path.read_text(encoding="utf-8")
+    if not guided and optional(cfg, "unguided_prompt_must_omit_hop_count"):
+        assert_unguided_prompt_omits_hop_count(
+            prompt_template,
+            prompt_path=prompt_path,
+            model=args.model,
+            config_src=cfg.get("_config_path", "<config>"),
+        )
 
     chat_marker = None
     if prompt_style == "chat_template":
@@ -394,11 +662,16 @@ def main() -> None:
         "prompt_style": prompt_style,
         "prompt_file": prompt_file,
         "prompt_path": str(prompt_path),
+        "condition": condition_name,
+        "condition_settings": condition,
         "guided": guided,
+        "stop_after_step_lines": stop_after_step_lines,
         "seed": seed,
         "seeded": seeded,
         "sample_size": sample_size,
         "hops": hops,
+        "questions_template_key": require(cfg, "questions_template_key"),
+        "questions_format": require(cfg, "questions_format"),
         "device": device,
         "quantization": quantization,
         "embed_model": embed_key,
@@ -409,6 +682,7 @@ def main() -> None:
             "k": retrieval_k,
         },
         "generation": generation,
+        "generation_overrides": generation_overrides,
         "loader": {**loader, "quantization": quantization},
         "few_shot": few_shot_cfg,
         "post_process": post_cfg,
@@ -417,7 +691,11 @@ def main() -> None:
         "output_root": str(output_root),
         "dry_run": args.dry_run,
     }
-    print(f"Starting decomposer run {current_run_id} (guided={guided}, dry_run={args.dry_run})")
+    print(
+        f"Starting decomposer run {current_run_id} (condition={condition_name}, "
+        f"guided={guided}, stop_after_step_lines={stop_after_step_lines}, "
+        f"dry_run={args.dry_run})"
+    )
     print(json.dumps(snapshot, indent=2, default=str))
 
     data_root = Path(paths_cfg["data_root_resolved"])
@@ -510,14 +788,31 @@ def main() -> None:
         )
     else:
         template = require(paths_cfg, "datasets." + require(cfg, "questions_template_key"))
+        questions_format = require(cfg, "questions_format")
+        question_field = id_field = ""
+        if questions_format == "jsonl":
+            question_field = require(cfg, "questions_jsonl.question_field")
+            id_field = require(cfg, "questions_jsonl.id_field")
         rng = new_rng(seed)
         for hop in hops:
-            questions = load_questions(resolve_path(template.format(hop=hop), data_root))
+            items = load_question_items(
+                resolve_path(template.format(hop=hop), data_root),
+                questions_format=questions_format,
+                question_field=question_field,
+                id_field=id_field,
+            )
             if sample_size:
-                questions = rng.sample(questions, min(len(questions), int(sample_size)))
-            for question in questions:
+                items = rng.sample(items, min(len(items), int(sample_size)))
+            for item in items:
                 inference_rows.append(
-                    {"query_id": None, "question": question, "hop_count": hop, "retrieval_examples": []}
+                    {
+                        "query_id": item["query_id"],
+                        "question": item["question"],
+                        # Guided runs inject this hop count: it is the gold depth of the
+                        # file the question was read from, not a model prediction.
+                        "hop_count": hop,
+                        "retrieval_examples": [],
+                    }
                 )
         if not inference_rows:
             raise SystemExit(
@@ -525,6 +820,15 @@ def main() -> None:
                 "set data_root in configs/paths.json"
             )
         print(f"Loaded {len(inference_rows)} total questions.")
+
+    # Measured before any dry-run truncation: this is what the arm was actually asked to
+    # decompose. Three conditions are only comparable if these numbers match across them
+    # (for the pinned MuSiQue set of ADR 0007: 200 per hop for hops 2/3/4, 600 total).
+    rows_loaded_total = len(inference_rows)
+    rows_loaded_per_hop = {
+        str(hop): sum(1 for r in inference_rows if r["hop_count"] == hop)
+        for hop in sorted({r["hop_count"] for r in inference_rows})
+    }
 
     if args.dry_run:
         inference_rows = inference_rows[: max(0, args.dry_run_limit)]
@@ -606,7 +910,15 @@ def main() -> None:
                     enable_thinking=bool(require(model_cfg, "chat_template.enable_thinking")),
                 )
                 decomposition = post_process(
-                    generate(rendered, model, tokenizer, device, generation), post_cfg
+                    generate(
+                        rendered,
+                        model,
+                        tokenizer,
+                        device,
+                        generation,
+                        max_step_lines=stop_after_step_lines,
+                    ),
+                    post_cfg,
                 )
         else:
             rendered = fill_template(
@@ -619,7 +931,17 @@ def main() -> None:
             decomposition = (
                 ""
                 if args.dry_run
-                else post_process(generate(rendered, model, tokenizer, device, generation), post_cfg)
+                else post_process(
+                    generate(
+                        rendered,
+                        model,
+                        tokenizer,
+                        device,
+                        generation,
+                        max_step_lines=stop_after_step_lines,
+                    ),
+                    post_cfg,
+                )
             )
 
         if args.dry_run or (i + 1) % prompt_log_every == 0:
@@ -665,6 +987,8 @@ def main() -> None:
     metrics = {
         "dry_run": args.dry_run,
         "total_rows": len(results),
+        "rows_loaded_total": rows_loaded_total,
+        "rows_loaded_per_hop": rows_loaded_per_hop,
         "rows_with_empty_decomposition": empty,
         "few_shot_enabled": few_shot_enabled,
         "few_shot_source_mode": few_shot_source_mode,
@@ -672,7 +996,19 @@ def main() -> None:
             src: sum(1 for r in results if r["few_shot_source"] == src)
             for src in sorted({r["few_shot_source"] for r in results})
         },
+        "condition": condition_name,
         "guided": guided,
+        "stop_after_step_lines": stop_after_step_lines,
+        # How many decompositions came out at the cap (i.e. the stopping rule bound them).
+        "rows_at_step_line_cap": (
+            sum(
+                1
+                for r in results
+                if count_step_lines(r["decomposition"] + "\n") >= stop_after_step_lines
+            )
+            if stop_after_step_lines and not args.dry_run
+            else None
+        ),
         "seed": seed,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
@@ -699,8 +1035,10 @@ def main() -> None:
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
-            f"- Guided: {guided}; seed: {seed}",
-            f"- Rows: {len(results)}"
+            f"- Condition: {condition_name or 'none (no conditions block)'}; guided: {guided}; "
+            f"step-line cap: {stop_after_step_lines or 'none'}; seed: {seed}",
+            f"- Rows: {len(results)} of {rows_loaded_total} loaded "
+            f"(per hop: {rows_loaded_per_hop})"
             + (f"; retrieval input: `{retrieval_input}`" if retrieval_input else ""),
             f"- Few-shot: enabled={few_shot_enabled} k={few_shot_k} mode={few_shot_source_mode}",
             (

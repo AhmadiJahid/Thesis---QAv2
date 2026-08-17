@@ -99,6 +99,7 @@ def _stages() -> list[Stage]:
     analysis_dir = WORK / "router_analysis"
     router_dry = WORK / "router_dry"
     decomposer_dry = WORK / "decomposer_dry"
+    decomposer_musique = WORK / "decomposer_musique"
     smoke_runner_out = WORK / "qwen_smoke"
     refine_run = WORK / "pool_refine"
     extract_run = WORK / "sample_extract"
@@ -439,6 +440,58 @@ def _stages() -> list[Stage]:
                 (decomposer_dry / "qwen3_5", "*/metrics.json"),
             ],
             note="chat-template prompt split on <<<USER>>> (system/user halves)",
+        ),
+        Stage(
+            name="decomposer_conditions_unit",
+            cmd=[
+                sys.executable, REPO_ROOT / "tests" / "test_decomposer_conditions.py",
+                "--skip-data-checks",
+            ],
+            note="the three MuSiQue conditions end to end (prompts compared arm by arm) "
+            "+ the step-line stopping rule",
+        ),
+        # The three arms of issue #12, one stage each. mistral_7b_instruct is used because
+        # it ships an unguided prompt: a folder without one cannot run the unguided arms
+        # (configs/decomposer_musique.json sets unguided_prompt_must_omit_hop_count). The
+        # few-shot examples come from the committed MetaQA pool via the seeded random
+        # fallback - a real MuSiQue run passes --retrieval-input instead.
+        Stage(
+            name="decomposer_dry_run_musique_unguided",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "9",
+                "--output-root", decomposer_musique / "unguided",
+            ],
+            expect_dir_globs=[
+                (decomposer_musique / "unguided", "*/results.json"),
+                (decomposer_musique / "unguided", "*/metrics.json"),
+                (decomposer_musique / "unguided", "*/config.json"),
+                (decomposer_musique / "unguided", "*/notes.md"),
+            ],
+            note="MuSiQue JSONL questions, no hop count in the prompt",
+        ),
+        Stage(
+            name="decomposer_dry_run_musique_oracle_guided",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "oracle_guided", "--dry-run", "--dry-run-limit", "9",
+                "--output-root", decomposer_musique / "oracle_guided",
+            ],
+            expect_dir_globs=[(decomposer_musique / "oracle_guided", "*/results.json")],
+            note="MuSiQue JSONL questions, gold hop count injected into the prompt",
+        ),
+        Stage(
+            name="decomposer_dry_run_musique_unguided_capped",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "unguided_capped", "--dry-run", "--dry-run-limit", "9",
+                "--output-root", decomposer_musique / "unguided_capped",
+            ],
+            expect_dir_globs=[(decomposer_musique / "unguided_capped", "*/results.json")],
+            note="MuSiQue JSONL questions, step-line cap configured (no generation in a dry run)",
         ),
         Stage(
             name="smoke_runner_subsample",

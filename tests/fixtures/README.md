@@ -24,6 +24,9 @@ data_root/                     # stands in for the real data_root (configs/smoke
     dev_data/
       musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
       musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
+      musique_ans_v1.0_dev_sample_{2,3,4}_hop_200.jsonl  # stand-ins for the pinned ADR 0007
+                                        # evaluation set: real names, 3 fabricated rows each,
+                                        # NOT 200. Question ids match retrieval/top20.jsonl.
     chunks_only_question_masked_fixed/roberta_large_ner_english/
       ..._questions_2_hop.jsonl, ..._questions_3_hop_1.jsonl   # chunks to combine
       ..._all_questions_all_expanded_enriched.jsonl            # the pool to sample from

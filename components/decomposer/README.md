@@ -8,7 +8,9 @@ placeholders that refer to earlier answers. Ported from v1, with the four per-mo
 - `models/<model_name>/prompt.md` (and `prompt_unguided.md` where v1 had one) — **byte-identical to v1**.
 - `models/<model_name>/config.json` — model id, prompt style, generation, loader/quantization,
   few-shot and post-processing settings.
-- `configs/decomposer.json` — seed, guided flag, embedding-model registry, retrieval defaults.
+- `configs/decomposer.json` — MetaQA: seed, guided flag, embedding-model registry, retrieval defaults.
+- `configs/decomposer_musique.json` — the MuSiQue variant (issue #12): the pinned 600-question
+  evaluation set of ADR 0007, hops 2/3/4, and the three run conditions.
 
 ```bash
 # few-shot examples from a reranked/truncated retrieval file
@@ -18,7 +20,31 @@ python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
 
 # prompts only, no model load (works without a GPU)
 python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
+
+# one arm of the guided-vs-unguided comparison
+python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
+    --config decomposer_musique.json --condition oracle_guided
 ```
+
+## Run conditions (`configs/decomposer_musique.json`)
+
+`--condition` selects a named block from the config's `conditions`; the config's
+`condition` key is the default when the flag is omitted. A condition may set only `guided`
+and `stop_after_step_lines` — model, seed and decoding are shared, and the runner rejects a
+condition that tries to move them, so the arms cannot drift apart.
+
+| condition | prompt | generation |
+|---|---|---|
+| `unguided` | no hop count | `generation_overrides.max_new_tokens` only |
+| `oracle_guided` | gold hop count of the question's source file | same |
+| `unguided_capped` | no hop count | stops after `stop_after_step_lines` step lines (default 8) |
+
+The cap is a `StoppingCriteria` on completed newline-delimited step lines, with a trim for
+the partial line the criterion can leave behind. The unguided arms require a model folder
+with an `unguided_prompt_file`: without one the guided prompt is reused and `{hop_count}`
+is filled with the placeholder, which is not the unguided condition. The config sets
+`unguided_prompt_must_omit_hop_count`, so that combination is refused rather than run.
+`configs/decomposer.json` does not set it and the MetaQA behaviour is unchanged.
 
 Two prompt styles, set per model by `prompt_style`:
 
