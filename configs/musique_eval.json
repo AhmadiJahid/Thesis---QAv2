@@ -15,10 +15,17 @@
   },
   "composite_step_count_error_scale": 3.0,
 
+  "gold_validation": {
+    "_note": "The gold rows carry two step-count denominators: the 'hop_count' field (used by the hop-count metrics) and len(question_decomposition) (used by the directional step-count metrics). They must agree or the two families measure different things under one report, so the loader aborts on a disagreement; this caps how many offending ids the error message lists.",
+    "max_reported_mismatches": 20
+  },
+
   "paired_comparison": {
-    "_note": "Parameters for --compare (paired significance between two per-item files). The bootstrap is resampled from the top-level 'seed' (or --seed), so a comparison is reproducible; iterations, alpha and the mismatch-report cap are parameters of the test, so they live here and land in the run's config snapshot instead of being literals in the script.",
+    "_note": "Parameters for --compare (paired significance between two per-item files). The bootstrap is resampled from the top-level 'seed' (or --seed), so a comparison is reproducible; iterations, alpha and the mismatch-report cap are parameters of the test, so they live here and land in the run's config snapshot instead of being literals in the script. bootstrap_chunk_size only bounds peak memory (resample indices are drawn this many rows at a time); a fixed seed gives identical results for any chunk size. min_items_for_significance_claim is a REPORTING GUARD, not a statistical standard: below it, every 'significant' flag is additionally marked underpowered, because a handful of items cannot carry a significance claim (McNemar with 3 discordant pairs cannot reach p < 0.05 at all). Jahid and his supervisor own its value.",
     "bootstrap_iterations": 10000,
+    "bootstrap_chunk_size": 1000,
     "alpha": 0.05,
+    "min_items_for_significance_claim": 30,
     "max_reported_id_mismatches": 20,
     "out_prefix": "compare"
   },

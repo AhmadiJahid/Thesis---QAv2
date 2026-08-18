@@ -21,6 +21,14 @@
     "few_shot_source": "reranked"
   },
   {
+    "_note": "Punctuation-only variance against the gold of 2hop__d004_p: '?' becomes '.' in step 1 and is dropped in step 2, and nothing else differs. _normalize_step strips punctuation except '#', so every step-level metric here is a perfect score, while ROUGE-L (which does not strip punctuation) is not. Deleting the punctuation-strip line in _normalize_step turns this row's golden values red.",
+    "query_id": "2hop__d004_p",
+    "question": "Who chairs the board that approved the Rill Valley permit?",
+    "hop_count": 2,
+    "decomposition": "1. Which board approved the Rill Valley permit.\n2. Who chairs [#1]",
+    "few_shot_source": "reranked"
+  },
+  {
     "query_id": "2hop__d999_z",
     "question": "A fabricated question that has no gold row, to exercise the missing-gold counter.",
     "hop_count": 2,

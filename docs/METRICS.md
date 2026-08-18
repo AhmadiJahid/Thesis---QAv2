@@ -18,6 +18,16 @@ differently score as a mismatch.
   each string, or each element's `question` field (`_decomp_to_steps`).
 - **Gold**: JSONL rows with `question` and `question_decomposition`, keyed by the question
   text lowercased and whitespace-collapsed (`_load_gold`, `_normalize_question`).
+- **Gold carries two step-count denominators, and they are asserted equal at load.**
+  `len(question_decomposition)` is the denominator of the directional step-count family;
+  the `hop_count` field is the denominator of the hop-count family. `_load_gold` aborts,
+  naming the offending ids (capped at `gold_validation.max_reported_mismatches`), on any
+  row that has a positive `hop_count` disagreeing with its step count — otherwise the two
+  families would describe different things inside one report. A row with no usable
+  `hop_count` falls back to the step count, so the two are equal by construction. (PR #17's
+  review reported 0 disagreements over 2417 real gold rows scanned — issue #20, finding 1;
+  that scan is not re-run here. The assertion exists so a future gold file cannot change
+  that silently.)
 - **Joining is by question text, not by id** (`_build_eval_rows`). A prediction whose
   question has no gold row is counted in `missing_gold_count` and excluded from every
   metric.
@@ -40,8 +50,11 @@ nobody has changed it; it is worth knowing before reading a ROUGE-L number close
 ## 2. The metrics
 
 Unless stated otherwise, an aggregate is the **macro average**: the metric is computed per
-item and the per-item values are averaged over evaluated rows (`_aggregate`). The single
-exception is `reference_validity_micro`, which pools counts across all rows.
+item and the per-item values are averaged over evaluated rows (`_aggregate`). Three keys are
+not macro averages: `reference_validity_micro` pools counts across all rows;
+`predicted_hop_distribution` / `gold_hop_distribution` are item counts per hop count; and
+`composite_score` is computed from the aggregate values, not averaged from per-item ones
+(§4).
 
 | metrics JSON key | definition (function) |
 |---|---|
@@ -56,13 +69,19 @@ exception is `reference_validity_micro`, which pools counts across all rows.
 | `mean_signed_step_count_error` | mean of len(pred) − len(gold). **Over- and under-decomposition cancel here**, which is why the two rates below are reported next to it |
 | `over_decomposition_rate` | fraction of rows with len(pred) > len(gold) |
 | `under_decomposition_rate` | fraction of rows with len(pred) < len(gold) |
+| `step_count_exact_rate` | fraction of rows with len(pred) == len(gold), i.e. exactly 1 − `over_decomposition_rate` − `under_decomposition_rate`. **Not** `hop_count_exact_match_rate`: this one is against len(gold steps), that one against the gold `hop_count` field (§1). The two are equal whenever the gold passes the load-time assertion, but they are different definitions and only one of them belongs next to the over/under rates |
 | `hop_count_exact_match_rate`, `hop_count_abs_error_mae` | predicted hop count = number of predicted steps; gold hop count = the gold row's `hop_count` when it is a positive int, else the gold step count |
 | `predicted_hop_distribution`, `gold_hop_distribution` | counts of items per hop count |
-| `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the four directional step-count metrics |
+| `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics |
 
 Per item, the same quantities are written to `<prefix>_per_item.json`, plus
 `step_count_signed_error` (`len(pred) − len(gold)`), `pred_steps`, `gold_steps` and
-`item_id`.
+`item_id`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
+`predictions_path`, `gold_path`, `composite_score_weights`,
+`composite_step_count_error_scale`, then `items` (the per-item rows). The weights are
+stamped there because `--compare` recomputes the composite (§5) and needs to know what the
+rows were scored under. A file in the old bare-list format is refused by `--compare` with
+an instruction to re-run the evaluation.
 
 Reference validity checks **predicted** decompositions only; gold is never checked. Note
 the sharp edge stated in `METRIC_DEFINITIONS`: a prediction with no `[#k]` references at
@@ -126,8 +145,9 @@ composite cannot express that difference.
 
 Compares two runs **on the same evaluation set**. Parameters live in
 `configs/musique_eval.json` under `paired_comparison`: `bootstrap_iterations` 10000,
-`alpha` 0.05, `max_reported_id_mismatches` 20, `out_prefix` `compare`. The seed is the
-config's top-level `seed` (42) or `--seed`.
+`bootstrap_chunk_size` 1000, `alpha` 0.05, `min_items_for_significance_claim` 30,
+`max_reported_id_mismatches` 20, `out_prefix` `compare`. The seed is the config's top-level
+`seed` (42) or `--seed`.
 
 - **Alignment** (`_load_per_item`, `_aligned_ids`): rows are keyed by `item_id`. A
   duplicate id inside one file, or any id present in one file and not the other, aborts the
@@ -135,6 +155,15 @@ config's top-level `seed` (42) or `--seed`.
   silent intersection — a comparison across different evaluation sets is not a comparison
   (CLAUDE.md, evidence discipline). Aligned ids are processed in sorted order, so the
   bootstrap is reproducible.
+- **Same weights in both files** (`_require_matching_weights`): the two per-item files must
+  carry the same `composite_score_weights` and `composite_step_count_error_scale`, or the
+  run aborts printing both — a composite built from different weights is a different
+  quantity. The config's weights (the ones the bootstrap composite is recomputed with) may
+  still differ from the stamped ones; that no longer passes unnoticed, because the metrics
+  JSON records `per_item_composite_score_weights`,
+  `per_item_composite_step_count_error_scale` and
+  `config_weights_match_per_item_files`, and the run note prints a WARNING line when they
+  disagree.
 - **Paired bootstrap CIs** (`_paired_bootstrap`, `_statistics_for`) for `rouge_l_f1`,
   `step_f1`, `ordered_step_accuracy` and `composite_score`. Each of the 10000 resamples
   draws n item indices with replacement (`numpy.random.default_rng(seed)`) and applies the
@@ -146,11 +175,30 @@ config's top-level `seed` (42) or `--seed`.
   resample (its reference term is a micro rate and its step-count term a MAE, neither of
   which is an average of per-item values) using **this config's** weights and scale, which
   need not be the ones the per-item files were produced with.
+  The resamples are drawn `bootstrap_chunk_size` rows at a time, so peak memory is
+  O(`bootstrap_chunk_size` × n) rather than O(`bootstrap_iterations` × n); only the
+  per-statistic difference vectors are kept. This does not change any number — `integers`
+  consumes one draw per index in row-major order, so chunked draws concatenate to the
+  single-block draw (pinned by `TestBootstrapChunking`, which also asserts equality with
+  `chunk_size == iterations`, i.e. the un-chunked path).
 - **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the two binary metrics `exact_match` and
   `hop_count_exact_match`: with b = #(a correct, b wrong) and c = #(a wrong, b correct),
   the exact two-sided p-value is `min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5))`, computed
   with exact integer arithmetic. With no discordant pairs p = 1.0. `significant` is
   `p < alpha`.
+- **How much evidence there is, recorded next to the verdicts.** Every row carries `n` and
+  `underpowered`; each McNemar row also carries `min_attainable_p_value` — the smallest p
+  its discordant count m = b + c could have produced, `min(1, 2 · 0.5^m)`, reached when all
+  discordant pairs favour one system — and `min_attainable_p_reaches_alpha`. With m = 3 that
+  floor is 0.25, so "not significant" is a statement about n, not about the systems; m = 6
+  is the smallest count that can reach p < 0.05 at all (0.03125). Bootstrap rows have no
+  p-value and therefore no minimum p — their decision is whether the interval excludes 0.
+  A top-level
+  `significance_floor` block records n, `min_items_for_significance_claim`,
+  `below_min_items` and a `warning` string (null when n is at or above the floor), and the
+  run note prints the warning. `min_items_for_significance_claim` is a **reporting guard
+  chosen in config, not a statistical standard** — it exists so a tiny evaluation set
+  cannot print a bare `significant: true`; its value is Jahid's and his supervisor's to set.
 - **Six tests are reported and none is corrected for multiple comparisons.** The run note
   says so too.
 - This substitutes paired bootstrap + McNemar for the "t-test" the supervisor asked for
@@ -158,7 +206,8 @@ config's top-level `seed` (42) or `--seed`.
 
 Output: `<out_prefix>_config.json`, `<out_prefix>_metrics.json` and `<out_prefix>_notes.md`
 in the run directory, with a Markdown table of every statistic, its difference, its
-interval or p-value, and its significant/not annotation.
+interval **or** p-value (the column is headed `CI or p`, because the bootstrap rows carry an
+interval and the McNemar rows a p-value), and its significant/underpowered annotations.
 
 ## 6. "Composite score" names two different things — proposed fix
 
@@ -195,3 +244,7 @@ The hand-computed checks for all of the above are in
 [`tests/test_decomposition_metrics.py`](../tests/test_decomposition_metrics.py) (also run
 as the `decomposition_metric_tests` stage of `scripts/smoke_test.py`); each test's
 docstring shows the arithmetic behind its expected numbers against the fabricated fixture.
+One fixture prediction (`2hop__d004_p`) differs from its gold **only** by punctuation, so
+the `_normalize_step` rule at the top of §1 is itself pinned by golden values in both the
+unit tests and the `musique_eval` stage of the smoke test: delete the punctuation-strip
+line and both go red.

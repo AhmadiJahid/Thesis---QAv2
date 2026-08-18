@@ -19,11 +19,13 @@ Inputs:
 
 Two modes:
 - default: score one predictions file against gold, writing ``<prefix>_per_item.json``
+  (an object: the composite-score weights the rows were scored under, plus ``items``)
   plus the standard config/metrics/notes trail.
 - ``--compare A_per_item.json B_per_item.json``: paired significance between two runs
   **on the same evaluation set** (bootstrap CIs + McNemar). It aligns rows by item id
-  and refuses to run when the two sets differ, because a comparison across different
-  evaluation sets is not a comparison (CLAUDE.md, evidence discipline).
+  and refuses to run when the two sets differ, or when the two files were scored under
+  different composite weights, because neither is a comparison (CLAUDE.md, evidence
+  discipline).
 
 Ported from v1 ``scripts/musique_decompositions_evaluator.py``. Adapted for v2: the
 gold path, run directory, seed, limit, the composite-score weights and the paired
@@ -112,6 +114,18 @@ METRIC_DEFINITIONS: dict[str, Any] = {
     ),
     "over_decomposition_rate": "fraction of rows with len(pred steps) > len(gold steps)",
     "under_decomposition_rate": "fraction of rows with len(pred steps) < len(gold steps)",
+    "step_count_exact_rate": (
+        "fraction of rows with len(pred steps) == len(gold steps), i.e. exactly "
+        "1 - over_decomposition_rate - under_decomposition_rate. NOT the same as "
+        "hop_count_exact_match_rate, which compares against the gold 'hop_count' field "
+        "instead of the gold step count (see gold_step_count_vs_hop_count)"
+    ),
+    "gold_step_count_vs_hop_count": (
+        "two gold denominators exist: len(gold steps) for the directional step-count "
+        "family, and the gold 'hop_count' field for the hop-count family. The gold loader "
+        "asserts they agree on every row that carries a positive 'hop_count' and aborts "
+        "naming the offending ids, so the two families cannot silently diverge"
+    ),
     "item_id": (
         "the prediction's 'query_id', else its 'id', else its normalized question text; "
         "this is the key --compare aligns two runs on"
@@ -164,9 +178,31 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs"
     ),
     "mcnemar_significance": "significant = p_value < alpha",
+    "mcnemar_min_attainable_p_value": (
+        "the smallest p this test could have produced given its discordant count m = b + c, "
+        "reached when all discordant pairs favour one system: min(1, 2 * 0.5**m), and 1.0 "
+        "when m = 0. When it is >= alpha the test cannot reject at alpha no matter how "
+        "one-sided the result is, so 'significant: false' says nothing about the effect"
+    ),
+    "bootstrap_has_no_p_value": (
+        "bootstrap rows carry no p-value and therefore no minimum attainable p: their "
+        "decision is whether the percentile interval excludes 0. Their resolution is "
+        "instead bounded by n (recorded per row as 'n')"
+    ),
+    "underpowered": (
+        "true when n is below paired_comparison.min_items_for_significance_claim, or (for "
+        "McNemar) when min_attainable_p_value >= alpha. A 'significant' flag on an "
+        "underpowered row is not evidence"
+    ),
     "multiple_comparisons": (
         "six tests are reported per comparison and none of the p-values or intervals is "
         "corrected for multiple comparisons"
+    ),
+    "composite_score_weights_provenance": (
+        "the per-item files stamp the weights and scale they were scored under; --compare "
+        "refuses when the two files disagree with each other, and records "
+        "config_weights_match_per_item_files when the config it recomputes the bootstrap "
+        "composite with differs from them"
     ),
 }
 
@@ -222,22 +258,54 @@ def _decomp_to_steps(value: Any) -> list[str]:
     return []
 
 
-def _load_gold(path: Path) -> dict[str, dict[str, Any]]:
+def _load_gold(path: Path, max_reported_mismatches: int) -> dict[str, dict[str, Any]]:
+    """Load gold rows, refusing gold whose two step-count denominators disagree.
+
+    The evaluator measures step counts against ``len(gold steps)`` and hop counts against
+    the gold ``hop_count`` field. Those are two denominators for the same quantity, so a
+    row where they disagree would make the directional family and the hop-count family
+    describe different things without saying so. That is a broken gold file, not a metric
+    result, so it aborts here naming the offending ids.
+    """
     out: dict[str, dict[str, Any]] = {}
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            obj = json.loads(line)
-            question = obj.get("question")
-            if not isinstance(question, str) or not question.strip():
-                continue
-            steps = _decomp_to_steps(obj.get("question_decomposition"))
-            hop_count = obj.get("hop_count")
-            if not isinstance(hop_count, int) or hop_count <= 0:
-                hop_count = len(steps)
-            out[_normalize_question(question)] = {"steps": steps, "hop_count": hop_count}
+    mismatches: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        obj = json.loads(line)
+        question = obj.get("question")
+        if not isinstance(question, str) or not question.strip():
+            continue
+        steps = _decomp_to_steps(obj.get("question_decomposition"))
+        hop_count = obj.get("hop_count")
+        if isinstance(hop_count, int) and not isinstance(hop_count, bool) and hop_count > 0:
+            if hop_count != len(steps):
+                mismatches.append(
+                    f"{obj.get('id', _normalize_question(question))} "
+                    f"(hop_count={hop_count}, steps={len(steps)})"
+                )
+        else:
+            # No usable field: the two denominators are the same number by construction.
+            hop_count = len(steps)
+        out[_normalize_question(question)] = {"steps": steps, "hop_count": hop_count}
+
+    if mismatches:
+        shown = mismatches[:max_reported_mismatches]
+        more = (
+            ""
+            if len(mismatches) <= max_reported_mismatches
+            else f"\n  ... (+{len(mismatches) - max_reported_mismatches} more)"
+        )
+        raise SystemExit(
+            f"gold file has {len(mismatches)} row(s) whose 'hop_count' field disagrees with "
+            f"len(question_decomposition): {path}\n  "
+            + "\n  ".join(shown)
+            + more
+            + "\nThe step-count metrics use len(question_decomposition) and the hop-count "
+            "metrics use 'hop_count'; with these disagreeing they would measure different "
+            "things under one report. Fix the gold file (or drop the offending rows)."
+        )
     return out
 
 
@@ -387,6 +455,9 @@ _EMPTY_AGGREGATE = {
     "mean_signed_step_count_error": 0.0,
     "over_decomposition_rate": 0.0,
     "under_decomposition_rate": 0.0,
+    # 0.0 rather than 1.0: with no rows there is nothing to be exact about, and the other
+    # rates in this block are 0.0 for the same reason.
+    "step_count_exact_rate": 0.0,
     "hop_count_exact_match_rate": 0.0,
     "hop_count_abs_error_mae": 0.0,
     "predicted_hop_distribution": {},
@@ -428,6 +499,9 @@ def _aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
         "mean_signed_step_count_error": sum(signed) / m,
         "over_decomposition_rate": sum(1 for s in signed if s > 0) / m,
         "under_decomposition_rate": sum(1 for s in signed if s < 0) / m,
+        # Identical to 1 - over - under; counted directly so the three rates come from one
+        # pass over the same signed errors.
+        "step_count_exact_rate": sum(1 for s in signed if s == 0) / m,
         "hop_count_exact_match_rate": mean("hop_count_exact_match"),
         "hop_count_abs_error_mae": mean("hop_count_abs_error"),
         "predicted_hop_distribution": pred_dist,
@@ -455,6 +529,12 @@ BOOTSTRAP_STATISTICS = ("rouge_l_f1", "step_f1", "ordered_step_accuracy", "compo
 #: Binary per-item metrics compared with McNemar.
 MCNEMAR_STATISTICS = ("exact_match", "hop_count_exact_match")
 
+#: Top-level shape of ``<prefix>_per_item.json``. It is an object rather than a bare list
+#: because the composite-score weights the rows were scored under have to travel with them:
+#: --compare recomputes the composite, and weights that differ from the ones a file was
+#: produced with would otherwise be undetectable.
+PER_ITEM_SCHEMA = "musique_decomposition_per_item/1"
+
 #: Per-item fields a comparison needs. A file missing one of them is a file this script
 #: did not write (or wrote before these metrics existed), and saying so beats a KeyError.
 _REQUIRED_PER_ITEM_FIELDS = (
@@ -469,11 +549,35 @@ _REQUIRED_PER_ITEM_FIELDS = (
 )
 
 
-def _load_per_item(path: Path) -> dict[str, dict[str, Any]]:
-    """Load a ``*_per_item.json`` file into {item_id: row}, failing loudly on duplicates."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
+def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    """Load a ``*_per_item.json`` file into ({item_id: row}, header).
+
+    Fails loudly on duplicate ids, on rows missing a compared field, and on the legacy
+    bare-list format, which carries no record of the weights it was scored under.
+    """
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        raise SystemExit(
+            f"{path}: this is the legacy bare-list per-item format, which does not record "
+            f"the composite-score weights its rows were scored under. --compare recomputes "
+            f"the composite, so it needs them; re-run the evaluation to regenerate the file."
+        )
+    if not isinstance(payload, dict):
+        raise SystemExit(f"--compare expects a per-item JSON object: {path}")
+    raw = payload.get("items")
     if not isinstance(raw, list):
-        raise SystemExit(f"--compare expects a per-item JSON list: {path}")
+        raise SystemExit(f"{path}: missing an 'items' list (schema {PER_ITEM_SCHEMA})")
+    header = {
+        k: v for k, v in payload.items()
+        if k in ("schema", "composite_score_weights", "composite_step_count_error_scale")
+    }
+    for key in ("composite_score_weights", "composite_step_count_error_scale"):
+        if key not in header:
+            raise SystemExit(
+                f"{path}: missing {key!r}. --compare takes the "
+                f"'<prefix>_per_item.json' files written by this script; re-run the "
+                f"evaluation to regenerate them."
+            )
     by_id: dict[str, dict[str, Any]] = {}
     duplicates: list[str] = []
     for i, obj in enumerate(raw):
@@ -492,7 +596,37 @@ def _load_per_item(path: Path) -> dict[str, dict[str, Any]]:
         by_id[item_id] = obj
     if duplicates:
         raise SystemExit(f"{path}: duplicate item_id(s): {sorted(set(duplicates))}")
-    return by_id
+    return by_id, header
+
+
+def _require_matching_weights(
+    header_a: dict[str, Any],
+    header_b: dict[str, Any],
+    path_a: Path,
+    path_b: Path,
+) -> None:
+    """Abort when the two files were scored under different composite weights.
+
+    Same reasoning as the id-mismatch refusal: two composites built from different weights
+    are two different quantities, so differencing them is not a comparison.
+    """
+    keys = ("composite_score_weights", "composite_step_count_error_scale")
+    differing = [k for k in keys if header_a.get(k) != header_b.get(k)]
+    if not differing:
+        return
+    lines = [
+        "--compare requires both files to have been scored under the SAME composite-score "
+        "weights; they differ.",
+    ]
+    for key in differing:
+        lines.append(f"  {key}:")
+        lines.append(f"    a ({path_a}): {json.dumps(header_a.get(key), sort_keys=True)}")
+        lines.append(f"    b ({path_b}): {json.dumps(header_b.get(key), sort_keys=True)}")
+    lines.append(
+        "A composite computed with different weights is a different quantity, so the "
+        "difference between them is not a comparison. Re-score both runs with one config."
+    )
+    raise SystemExit("\n".join(lines))
 
 
 def _aligned_ids(
@@ -590,23 +724,44 @@ def _paired_bootstrap(
     seed: int,
     weights: dict[str, float],
     scale: float,
+    chunk_size: int,
+    underpowered: bool,
 ) -> dict[str, dict[str, float]]:
+    """Paired percentile bootstrap, resampled ``chunk_size`` draws at a time.
+
+    Peak memory is O(chunk_size * n) instead of O(iterations * n): only the per-statistic
+    difference vectors (length ``iterations``) are kept. Chunking does not change the
+    numbers — ``rng.integers`` consumes one draw per index in row-major order, so drawing
+    ``(k, n)`` then ``(iterations - k, n)`` is the same stream as one ``(iterations, n)``
+    draw. ``TestBootstrapChunking`` pins that invariance across chunk sizes.
+    """
+    if chunk_size <= 0:
+        raise SystemExit(
+            f"paired_comparison.bootstrap_chunk_size must be a positive integer, got {chunk_size}"
+        )
+
     identity = np.arange(n)[None, :]
     point_a = _statistics_for(arrays_a, identity, weights, scale)
     point_b = _statistics_for(arrays_b, identity, weights, scale)
 
     rng = np.random.default_rng(seed)
-    index = rng.integers(0, n, size=(iterations, n))
-    draws_a = _statistics_for(arrays_a, index, weights, scale)
-    draws_b = _statistics_for(arrays_b, index, weights, scale)
+    diffs = {name: np.empty(iterations, dtype=float) for name in BOOTSTRAP_STATISTICS}
+    done = 0
+    while done < iterations:
+        take = min(chunk_size, iterations - done)
+        index = rng.integers(0, n, size=(take, n))
+        chunk_a = _statistics_for(arrays_a, index, weights, scale)
+        chunk_b = _statistics_for(arrays_b, index, weights, scale)
+        for name in BOOTSTRAP_STATISTICS:
+            diffs[name][done : done + take] = chunk_a[name] - chunk_b[name]
+        done += take
 
     lo_pct = 100.0 * (alpha / 2.0)
     hi_pct = 100.0 * (1.0 - alpha / 2.0)
 
     out: dict[str, dict[str, float]] = {}
     for name in BOOTSTRAP_STATISTICS:
-        diffs = draws_a[name] - draws_b[name]
-        ci_low, ci_high = (float(x) for x in np.percentile(diffs, [lo_pct, hi_pct]))
+        ci_low, ci_high = (float(x) for x in np.percentile(diffs[name], [lo_pct, hi_pct]))
         out[name] = {
             "system_a": float(point_a[name][0]),
             "system_b": float(point_b[name][0]),
@@ -614,6 +769,8 @@ def _paired_bootstrap(
             "ci_low": ci_low,
             "ci_high": ci_high,
             "significant": bool(ci_low > 0.0 or ci_high < 0.0),
+            "n": n,
+            "underpowered": underpowered,
         }
     return out
 
@@ -631,6 +788,7 @@ def _mcnemar(
     rows_a: list[dict[str, Any]],
     rows_b: list[dict[str, Any]],
     alpha: float,
+    underpowered: bool,
 ) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     for name in MCNEMAR_STATISTICS:
@@ -639,6 +797,9 @@ def _mcnemar(
         only_a = sum(1 for x, y in zip(a_vals, b_vals) if x and not y)
         only_b = sum(1 for x, y in zip(a_vals, b_vals) if y and not x)
         p_value = _mcnemar_exact_p(only_a, only_b)
+        # The most one-sided outcome this many discordant pairs could have produced. When
+        # it is >= alpha, "not significant" is a statement about n, not about the systems.
+        min_p = _mcnemar_exact_p(only_a + only_b, 0)
         n = len(a_vals)
         out[name] = {
             "system_a_rate": sum(a_vals) / n,
@@ -649,8 +810,29 @@ def _mcnemar(
             "discordant_pairs": only_a + only_b,
             "p_value": p_value,
             "significant": bool(p_value < alpha),
+            "n": n,
+            "min_attainable_p_value": min_p,
+            "min_attainable_p_reaches_alpha": bool(min_p < alpha),
+            "underpowered": bool(underpowered or min_p >= alpha),
         }
     return out
+
+
+def _significance_floor(n: int, min_items: int) -> dict[str, Any]:
+    """Record how much evidence the comparison actually has, next to its verdicts."""
+    below = n < min_items
+    return {
+        "num_items": n,
+        "min_items_for_significance_claim": min_items,
+        "below_min_items": below,
+        "warning": (
+            f"n = {n} is below min_items_for_significance_claim = {min_items}: read every "
+            f"'significant' flag in this file as underpowered. It is a reporting guard from "
+            f"configs/musique_eval.json, not a statistical standard."
+            if below
+            else None
+        ),
+    }
 
 
 def _compare(
@@ -664,13 +846,16 @@ def _compare(
 ) -> None:
     compare_cfg = require(cfg, "paired_comparison")
     iterations = int(require(compare_cfg, "bootstrap_iterations"))
+    chunk_size = int(require(compare_cfg, "bootstrap_chunk_size"))
     alpha = float(require(compare_cfg, "alpha"))
+    min_items = int(require(compare_cfg, "min_items_for_significance_claim"))
     max_reported = int(require(compare_cfg, "max_reported_id_mismatches"))
     out_prefix = args.out_prefix or require(compare_cfg, "out_prefix")
 
     path_a, path_b = args.compare
-    a_by_id = _load_per_item(path_a)
-    b_by_id = _load_per_item(path_b)
+    a_by_id, header_a = _load_per_item(path_a)
+    b_by_id, header_b = _load_per_item(path_b)
+    _require_matching_weights(header_a, header_b, path_a, path_b)
     ids = _aligned_ids(a_by_id, b_by_id, path_a, path_b, max_reported)
     if not ids:
         raise SystemExit("--compare: both files are empty, nothing to compare.")
@@ -678,6 +863,8 @@ def _compare(
     rows_a = [a_by_id[i] for i in ids]
     rows_b = [b_by_id[i] for i in ids]
     n = len(ids)
+    floor = _significance_floor(n, min_items)
+    underpowered = bool(floor["below_min_items"])
 
     bootstrap = _paired_bootstrap(
         _statistic_arrays(rows_a),
@@ -688,8 +875,16 @@ def _compare(
         seed=seed,
         weights=weights,
         scale=scale,
+        chunk_size=chunk_size,
+        underpowered=underpowered,
     )
-    mcnemar = _mcnemar(rows_a, rows_b, alpha)
+    mcnemar = _mcnemar(rows_a, rows_b, alpha, underpowered)
+
+    # The bootstrap composite is recomputed with THIS config's weights; the files record
+    # the ones their rows were scored under. Equal above between a and b, so one check.
+    per_item_weights = header_a.get("composite_score_weights")
+    per_item_scale = header_a.get("composite_step_count_error_scale")
+    weights_match_config = bool(per_item_weights == weights and per_item_scale == scale)
 
     run_dir = args.run_dir if args.run_dir is not None else runs_path(paths_cfg, require(cfg, "run_subdir"))
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -704,13 +899,18 @@ def _compare(
         "system_b_path": str(path_b.resolve()),
         "num_aligned_items": n,
         "bootstrap_iterations": iterations,
+        "bootstrap_chunk_size": chunk_size,
         "alpha": alpha,
         "confidence_level": 1.0 - alpha,
         "difference_direction": "system_a minus system_b",
+        "significance_floor": floor,
         "bootstrap": bootstrap,
         "mcnemar": mcnemar,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "per_item_composite_score_weights": per_item_weights,
+        "per_item_composite_step_count_error_scale": per_item_scale,
+        "config_weights_match_per_item_files": weights_match_config,
         "comparison_definitions": COMPARISON_DEFINITIONS,
     }
 
@@ -724,7 +924,9 @@ def _compare(
         "seed": seed,
         "out_prefix": out_prefix,
         "bootstrap_iterations": iterations,
+        "bootstrap_chunk_size": chunk_size,
         "alpha": alpha,
+        "min_items_for_significance_claim": min_items,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
     }
@@ -733,26 +935,43 @@ def _compare(
         f"- System a: `{path_a}`",
         f"- System b: `{path_b}`",
         f"- Aligned items: {n} (same evaluation set in both files)",
-        f"- Paired bootstrap: {iterations} resamples, seed {seed}, "
+        f"- Paired bootstrap: {iterations} resamples (chunk {chunk_size}), seed {seed}, "
         f"{100 * (1 - alpha):.0f}% percentile CI of (a - b)",
         "",
-        "| statistic | a | b | a - b | CI | test | significant |",
-        "|---|---|---|---|---|---|---|",
+        # The interval column carries a CI for the bootstrap rows and a p-value for the
+        # McNemar rows, so it is not labelled "CI".
+        "| statistic | a | b | a - b | CI or p | test | significant | underpowered |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for name, r in bootstrap.items():
         note_lines.append(
             f"| {name} | {r['system_a']:.4f} | {r['system_b']:.4f} | {r['difference']:+.4f} | "
             f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | bootstrap | "
-            f"{'yes' if r['significant'] else 'no'} |"
+            f"{'yes' if r['significant'] else 'no'} | "
+            f"{'yes' if r['underpowered'] else 'no'} |"
         )
     for name, r in mcnemar.items():
         note_lines.append(
             f"| {name} | {r['system_a_rate']:.4f} | {r['system_b_rate']:.4f} | "
             f"{r['difference']:+.4f} | p={r['p_value']:.4g} (b={r['correct_only_in_a']}, "
-            f"c={r['correct_only_in_b']}) | McNemar | "
-            f"{'yes' if r['significant'] else 'no'} |"
+            f"c={r['correct_only_in_b']}, min attainable p={r['min_attainable_p_value']:.4g}) | "
+            f"McNemar | {'yes' if r['significant'] else 'no'} | "
+            f"{'yes' if r['underpowered'] else 'no'} |"
         )
     note_lines.append("")
+    note_lines.append(
+        f"- n = {n}; the reporting floor is min_items_for_significance_claim = {min_items} "
+        f"(configs/musique_eval.json)."
+    )
+    if floor["warning"]:
+        note_lines.append(f"- WARNING: {floor['warning']}")
+    if not weights_match_config:
+        note_lines.append(
+            "- WARNING: the bootstrap composite was recomputed with this config's weights "
+            f"({json.dumps(weights, sort_keys=True)}, scale {scale}), which differ from the "
+            f"weights the per-item files were scored under "
+            f"({json.dumps(per_item_weights, sort_keys=True)}, scale {per_item_scale})."
+        )
     note_lines.append(
         "No correction for multiple comparisons is applied to these six tests."
     )
@@ -828,7 +1047,9 @@ def main() -> None:
             "or data_root in configs/paths.json)"
         )
 
-    gold_by_question = _load_gold(gold_path)
+    gold_by_question = _load_gold(
+        gold_path, int(require(cfg, "gold_validation.max_reported_mismatches"))
+    )
     preds = _load_predictions(args.predictions)
     if limit is not None:
         preds = preds[: int(limit)]
@@ -902,8 +1123,19 @@ def main() -> None:
     }
 
     per_item_path = run_dir / f"{out_prefix}_per_item.json"
+    per_item_payload = {
+        "schema": PER_ITEM_SCHEMA,
+        "created_utc": metrics["created_utc"],
+        "predictions_path": metrics["predictions_path"],
+        "gold_path": metrics["gold_path"],
+        # Stamped so --compare can tell whether the two files it differences were scored
+        # under the same weights as each other and as the config it recomputes with.
+        "composite_score_weights": weights,
+        "composite_step_count_error_scale": scale,
+        "items": per_item,
+    }
     per_item_path.write_text(
-        json.dumps(per_item, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(per_item_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
     snapshot = {
@@ -935,7 +1167,8 @@ def main() -> None:
             f"- Step count: MAE {metrics['step_count_mae']:.4f}, mean signed "
             f"{metrics['mean_signed_step_count_error']:+.4f} "
             f"(over {metrics['over_decomposition_rate']:.4f} / "
-            f"under {metrics['under_decomposition_rate']:.4f})",
+            f"under {metrics['under_decomposition_rate']:.4f} / "
+            f"exact {metrics['step_count_exact_rate']:.4f})",
             f"- Composite score: {metrics['composite_score']:.4f}",
             f"- Per-item: `{per_item_path}`",
         ],
