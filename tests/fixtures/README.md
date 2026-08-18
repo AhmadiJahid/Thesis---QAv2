@@ -24,12 +24,25 @@ data_root/                     # stands in for the real data_root (configs/smoke
     dev_data/
       musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
       musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
+      musique_ans_v1.0_dev_sample_{2,3,4}_hop_200.jsonl  # stands in for the ADR 0007
+                                        # evaluation set: 1 fabricated row per hop, not
+                                        # 200. The filenames mirror the real ones because
+                                        # the path template is shared; the ids match the
+                                        # gold rows above, so the train/eval overlap
+                                        # assertion in train_lora.py has something real
+                                        # to check against.
     chunks_only_question_masked_fixed/roberta_large_ner_english/
       ..._questions_2_hop.jsonl, ..._questions_3_hop_1.jsonl   # chunks to combine
       ..._all_questions_all_expanded_enriched.jsonl            # the pool to sample from
     chunks_only_question_masked/{bert_large_NER,roberta_large_ner_english}/
       ..._train_0_questions_2_hop.jsonl   # two NER variants of the same rows
 predictions/                   # decomposer-shaped prediction files
+decomposer_arms/               # two fabricated "arms" (metrics.json only) for
+                               # scripts/compare_decomposer_arms.py; the smoke test copies
+                               # the same predictions file into both, so every comparison
+                               # difference is exactly 0 by construction. The finetuned arm
+                               # deliberately has no cost block, to exercise the
+                               # cost-unmeasured branch.
 retrieval/                     # a similarity top-k file (also used as decomposer input)
 pool_sweep_summary/            # a sweep summary CSV for the plotting script
 router_runs/                   # two completed router runs for the analysis script

@@ -4,6 +4,12 @@
   "data_root": "tests/fixtures/data_root",
   "runs_root": "runs/smoke",
 
+  "eval_set_expected": {
+    "_note": "Overrides eval_set.expected in configs/finetune_decomposer.json for the fixture tree. The fabricated per-hop files carry 1 row each, not the 200 of ADR 0007, so the counts src/finetune_data.py asserts have to be declared here rather than relaxed in code: the assertion is what stops a mis-resolved id field from leaving the train/eval overlap check with nothing to check. configs/paths.json carries no such block, so real runs assert 200 per hop / 600 total.",
+    "ids_per_hop": 1,
+    "total_ids": 3
+  },
+
   "datasets": {
     "metaqa_dir": "metaqa",
     "metaqa_kb": "metaqa/kb.txt",
@@ -15,6 +21,7 @@
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
     "musique_dev_dir": "musique/dev_data",
     "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "musique_eval_questions_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
     "musique_clean_dir": "musique/clean_data",
     "musique_chunks_questions_dir": "musique/chunks_only_question",
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",

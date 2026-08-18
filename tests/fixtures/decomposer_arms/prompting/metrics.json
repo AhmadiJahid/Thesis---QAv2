@@ -1,0 +1,19 @@
+{
+  "_note": "FABRICATED fixture, not a run. It stands in for the metrics.json a decomposer run writes, so scripts/compare_decomposer_arms.py can be exercised without a GPU. The numbers below are invented and say nothing about any model. The smoke test copies tests/fixtures/predictions/decomposer_results_musique.json in beside this file as results.json.",
+  "dry_run": false,
+  "total_rows": 4,
+  "adapter": null,
+  "no_few_shot": false,
+  "cost": {
+    "rows_measured": 4,
+    "rows_total": 4,
+    "mean_prompt_tokens_per_query": 512.0,
+    "median_prompt_tokens_per_query": 512.0,
+    "mean_completion_tokens_per_query": 48.0,
+    "median_completion_tokens_per_query": 48.0,
+    "mean_total_tokens_per_query": 560.0,
+    "mean_latency_seconds_per_query": 1.25,
+    "median_latency_seconds_per_query": 1.25,
+    "total_generation_seconds": 5.0
+  }
+}

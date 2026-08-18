@@ -28,5 +28,15 @@ huggingface-hub==1.11.0
 accelerate==1.12.0
 bitsandbytes==0.49.2
 
+# LoRA / QLoRA fine-tuning of the decomposer (components/decomposer/train_lora.py, issue #13).
+# These two versions are not guessed: `pip install --dry-run peft trl` was run against the
+# v2 .venv on 2026-08-18 (transformers 5.5.4, torch 2.10.0, accelerate 1.12.0, datasets
+# 4.8.4 already installed) and resolved to exactly these, reporting "Would install
+# peft-0.20.0 trl-1.10.0" with no upgrade or downgrade of any pinned package above; the
+# real install then changed nothing else. Additive only - if a future resolution wants to
+# move one of the pins above, stop rather than let it.
+peft==0.20.0
+trl==1.10.0
+
 # Entity masking (Aho-Corasick)
 pyahocorasick==2.3.0
