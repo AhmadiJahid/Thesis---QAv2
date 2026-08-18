@@ -1,0 +1,45 @@
+# 0012. Fine-Tuning Arm Conventions for the Decomposer
+
+- **Status**: Accepted (conventions established by PR #24; the items marked **open** are Jahid's and his supervisor's calls, not settled here)
+- **Date**: 2026-08-19
+
+Records the conventions the LoRA fine-tuning arm of issue #13 was built on (PR #24), so that in November the write-up can tell which of them came from Jahid and which are the implementation's. **Nothing here is a result:** at the time of writing no training run has been launched, and no metric is claimed. Related: [0010](./0010-keep-the-router-as-a-hop-count-regressor-prioritize-fine-tuning.md) (fine-tuning prioritized), [0007](./0007-musique-evaluation-set-reuses-v1-600-questions-200-per-hop.md) (the evaluation set), [0009](./0009-paired-bootstrap-and-mcnemar-as-the-significance-protocol.md) and [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md) (how two arms are compared).
+
+## Context
+
+`CLAUDE.md` records fine-tuning as allowed and expected as a comparison arm against prompting; ADR 0010 records the 2026-08-18 decision to prioritize it. Jahid's own instruction for the work (his plan document, prompt 7 — "Fine-tuning baseline") fixes the arms, the evaluation route and the cost reporting. Building it required a handful of further choices that his instruction does not speak to; those are recorded below as decisions of the implementation, and the ones that shape what the comparison *means* are flagged open.
+
+## Decision
+
+### From Jahid's instruction (prompt 7), implemented as stated
+
+1. **Three data arms, in one committed config** (`configs/finetune_decomposer.json`, `--arm`): the **2000-example pool** arm, the **full MuSiQue training split** arm, and a **generalisation check trained on 2-hop and 3-hop only and evaluated on 4-hop** — his words: "to distinguish learning the task from memorising hop patterns". Pool size 2000 is fixed by the supervisor meeting recorded in his plan.
+2. **Every arm is evaluated on the ADR 0007 evaluation set through `scripts/musique_decompositions_evaluator.py`**, and compared against the prompting arm with that script's `--compare` (ADR 0009's paired bootstrap + McNemar, under ADR 0011's conventions). No model, and in particular no commercial API, rates a decomposition anywhere in this path — the `CLAUDE.md` standing constraint.
+3. **Zero train/eval overlap by question id is asserted, not assumed.** It fails loudly, names the offending ids, and is tested. The assertion always runs against all 600 ids whatever hops the arm is scored on.
+4. **The base model goes through `src/model_size.py`** so the ~8B ceiling is asserted before training, and again on the LoRA-wrapped model.
+5. **Cost is reported next to quality**: tokens per query and wall-clock latency per query, "what lets me argue cost versus quality if fine-tuning wins on raw score".
+6. **Adapters and checkpoints stay under the gitignored `runs/`**; only the config snapshot, the metrics JSON and the run note enter git.
+
+### Conventions this PR adds (implementation's, not Jahid's)
+
+7. **The fine-tuned arm is evaluated zero-shot; the prompting baseline keeps its few-shot examples.** The training prompt is the model's own unguided prompt file with the few-shot block empty, rendered through `run_decomposer.py`'s own template helpers, so the trained string and the inference string cannot drift; inference therefore requires `--no-few-shot`, and `--adapter` without it is refused (`--adapter-with-few-shot-i-know` overrides deliberately and is recorded). The reason for the refusal is twofold: the adapter would meet a prompt shape it never saw, and the few-shot examples are drawn from the same MuSiQue pool it trained on. **Open:** this means the two arms differ in the adapter *and* in the prompt. Jahid's instruction says to compare against the prompting arms without specifying prompt parity; whether the headline comparison is "fine-tuned zero-shot vs prompted few-shot" (each arm at its own best) or a prompt-matched pair is his and his supervisor's call.
+8. **`prompt.target_reference_style: "as_is"`** — the supervised target is the gold step text verbatim, in MuSiQue's own `#1` convention, rather than rewritten to the `[#1]` form the prompt files instruct. Not neutral: the evaluator strips brackets before matching steps, so exact-match and step-F1 are unaffected, but `reference_validity_micro` is vacuously 1.0 for predictions carrying no `[#k]`, and ROUGE-L tokenises before punctuation stripping. `"bracketed"` is available in the same config key. **Open:** Jahid's call.
+9. **Completion-only loss.** The dataset is prompt/completion typed and `training.completion_only_loss` masks the prompt tokens out of the loss, so the model is trained on the decomposition text rather than on reproducing the instruction block.
+10. **The cost-reporting contract.** Per row, `prompt_tokens` and `completion_tokens` are the tokenizer's own counts and `latency_seconds` is wall clock around `generate()` only (CUDA-synchronized, tokenization and decoding excluded), so the number is comparable across arms; the metrics JSON carries per-query means and medians. **Unmeasured is reported as unmeasured, never as zero** — a `--dry-run` generates nothing, so its cost block says so in a note.
+11. **An arm's `eval_hops` is enforced, not decorative.** `scripts/compare_decomposer_arms.py --eval-arm <arm>` checks every scored item's id hop prefix on **every** side against that arm's `eval_hops` and refuses on a mismatch. Without it the generalisation arm — whose whole claim is the 4-hop restriction — could be scored on 2/3-hop rows with nothing in the output saying so. The corollary is a requirement on the runs: the generalisation arm and its baseline must both be run over the 4-hop rows only.
+12. **Two guards against a check that passes without checking.** The evaluation id set is asserted to be exactly the size ADR 0007 declares (200 per hop, 600 total, from config; the fixture paths config declares its own counts) before the overlap assertion runs, and the overlap assertion refuses an empty id set outright. And for an arm that filters on hop depth, a row whose hop signals (the `hop_count` field, the id prefix, the step count) disagree is fatal rather than merely counted — a hop filter is only as trustworthy as the labels it filters on.
+
+## Consequences
+
+- Every fine-tuning run reproduces from a commit + `configs/finetune_decomposer.json` + the seed, and its metrics JSON records the arm spec, the selection counts, the asserted evaluation-set counts, the overlap record, the parameter counts and the cost block.
+- The comparison scripts now refuse three things that used to be possible silently: an adapter evaluated with few-shot examples, a hop-restricted arm scored on other hops, and an overlap assertion against an empty or short evaluation id set. Each refusal names what to fix.
+- **Which 2000-row pool is "the best pool" is not settled by any measured v2 result** — the pool sweep has not been run in v2. The arm currently draws 2000 rows with the fixed seed from `datasets.musique_pool_enriched`, spread across hop buckets, which changes the hop mix versus the natural distribution of the split. `arms.pool_2000.train_source_path` pins a specific pool artifact instead, with no code change. **Open:** Jahid's, once a pool result exists to point at.
+- The open items (7, 8, and the pool identity) change what the headline comparison means, not how the code runs; each is a config edit or a flag, and each is recorded here so a later reader knows it was a choice.
+- Item 7's refusal makes a "few-shot on top of the adapter" run possible only under a loudly named flag, and such a run is recorded as an override — it is not the fine-tuned arm of the comparison.
+
+## Alternatives considered
+
+- **Bracketing the training targets** (`target_reference_style: "bracketed"`) so the target matches the convention the prompt states. Left available and not chosen, for the reasons in item 8; deferred to Jahid rather than settled by the implementation.
+- **Loss over the whole sequence** instead of completion-only. Rejected: it spends capacity on reproducing a fixed instruction block that is identical in every example.
+- **Counting the disagreement of hop signals for every arm instead of failing** (the behaviour before this PR). Kept for arms with no hop filter, where the label does not decide what the model sees; rejected for hop-filtered arms.
+- **Treating an arm's `eval_hops` as documentation** and relying on the operator to hand each arm the right evaluation input. Rejected: the generalisation claim is exactly the thing an unenforced convention would quietly void.

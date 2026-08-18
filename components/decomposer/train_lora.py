@@ -21,6 +21,11 @@ Usage::
     python components/decomposer/train_lora.py --arm pool_2000
     python components/decomposer/train_lora.py --arm generalisation_2_3hop --quantization 4bit
 
+A real run holds the **run lock** of ``docs/compute.md`` (the single-GPU box is shared):
+acquire ``runs/run.lock`` with the experiment id + timestamp before launching, release it
+when the run finishes or fails, and never clear a lock on age alone. ``--dry-run`` loads no
+weights and needs no lock.
+
 Guarantees, all of them hard:
 
 - the base model's parameter count is printed and asserted against
@@ -58,7 +63,12 @@ from finetune_data import (  # noqa: E402
     select_arm_examples,
     select_prompt_file,
 )
-from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
+from model_size import (  # noqa: E402
+    assert_within_ceiling,
+    count_parameters,
+    load_limits,
+    unasserted_note,
+)
 from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, resolve_path, runs_path  # noqa: E402
 from seeding import set_global_seed  # noqa: E402
@@ -200,18 +210,27 @@ def attach_lora(model: Any, lora_cfg: dict[str, Any], *, quantization: str, grad
 
 
 def trainable_parameter_record(model: Any) -> dict[str, Any]:
-    """Trainable vs total parameters. The LoRA claim ('only the adapter trains') measured."""
-    trainable = 0
-    total = 0
-    for param in model.parameters():
-        count = param.numel()
-        total += count
-        if param.requires_grad:
-            trainable += count
+    """Trainable vs total parameters. The LoRA claim ('only the adapter trains') measured.
+
+    The denominator goes through :func:`model_size.count_parameters` rather than a raw
+    ``numel`` sum. Under 4-bit loading the base weights are ``bitsandbytes`` ``Params4bit``,
+    whose storage holds two parameters per element, so a raw sum reports roughly half the
+    model - and would contradict ``base_model_size.parameter_count`` in the same metrics JSON,
+    which is the count the ~8B ceiling is asserted against. The numerator stays a direct
+    ``numel`` sum: what requires grad is the un-quantized LoRA tensors.
+    """
+    trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total = count_parameters(model)
     return {
         "trainable_parameters": trainable,
         "total_parameters": total,
         "trainable_percent": (100.0 * trainable / total) if total else None,
+        "counting_note": (
+            "total_parameters is src/model_size.py count_parameters (transformers' "
+            "num_parameters, which counts a packed 4-bit Params4bit as the parameters it "
+            "stores), so it matches base_model_size.parameter_count. trainable_parameters is "
+            "a numel sum over requires_grad parameters (the LoRA tensors, not quantized)."
+        ),
     }
 
 
@@ -309,7 +328,12 @@ def main() -> None:
         raise SystemExit(f"training source is empty: {source_path}")
 
     examples, selection = select_arm_examples(
-        arm, rows, require(cfg, "data"), seed=seed, limit=args.limit
+        arm,
+        rows,
+        require(cfg, "data"),
+        seed=seed,
+        max_reported_ids=int(require(cfg, "overlap_check.max_reported_load_ids")),
+        limit=args.limit,
     )
     if not examples:
         raise SystemExit(
@@ -317,7 +341,10 @@ def main() -> None:
             f"(train_hops={require(arm, 'train_hops')}, max_examples={require(arm, 'max_examples')})"
         )
 
-    eval_ids, eval_set_record = load_eval_ids(paths_cfg, require(cfg, "eval_set"))
+    # The nested block carries the config path along, so a count-mismatch error names the
+    # file whose expected counts it is quoting.
+    eval_set_cfg = {**require(cfg, "eval_set"), "_config_path": cfg.get("_config_path")}
+    eval_ids, eval_set_record = load_eval_ids(paths_cfg, eval_set_cfg)
     overlap_record = assert_no_eval_overlap(
         examples, eval_ids, max_reported=int(require(cfg, "overlap_check.max_reported_ids"))
     )
@@ -522,7 +549,10 @@ def main() -> None:
             f"few-shot examples in prompt: {format_record['few_shot_examples_in_prompt']})",
             f"- Examples: {len(training_rows)} (hops {selection['selected_hop_counts']}); seed {seed}",
             f"- Evaluated on hops {require(arm, 'eval_hops')} of the ADR 0007 set "
-            f"({eval_set_record['num_ids']} ids across hops {eval_set_record['hops']})",
+            f"({eval_set_record['num_ids']} ids across hops {eval_set_record['hops']}; "
+            f"{eval_set_record['expected_ids_per_hop']} per hop / "
+            f"{eval_set_record['expected_total_ids']} total asserted from "
+            f"{eval_set_record['expected_counts_source']})",
             f"- Train/eval id overlap: {overlap_record['overlap_count']} (asserted zero)",
             (
                 f"- Base parameters: {base_size_record['parameter_count']:,} "

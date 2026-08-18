@@ -500,6 +500,10 @@ def _stages() -> list[Stage]:
                 "--arm", f"prompting={arms_dir / 'prompting'}",
                 "--arm", f"finetuned={arms_dir / 'finetuned'}",
                 "--baseline", "prompting",
+                # The fixture predictions carry one 2-hop, one 3-hop and one 4-hop id, so the
+                # arm declared here must be evaluated on all three; --eval-arm is required and
+                # its eval_hops is asserted against every side.
+                "--eval-arm", "pool_2000",
                 "--out-dir", arms_out,
             ],
             expect_files=[
@@ -520,9 +524,13 @@ def _stages() -> list[Stage]:
                     0.0,
                 ),
                 (arms_out / "arms_metrics.json", "arms.prompting.cost.mean_total_tokens_per_query", 560.0),
+                # The eval-hop restriction was checked, on both sides, over the 3 scored items.
+                (arms_out / "arms_metrics.json", "arms.prompting.eval_hops_check.items_checked", 3),
+                (arms_out / "arms_metrics.json", "arms.finetuned.eval_hops_check.items_checked", 3),
             ],
-            note="score two arms with one evaluator config, compare them paired, and put "
-            "cost next to quality in one table",
+            note="score two arms with one evaluator config, assert both against the "
+            "--eval-arm's eval_hops, compare them paired, and put cost next to quality in "
+            "one table",
         ),
         Stage(
             name="smoke_runner_subsample",

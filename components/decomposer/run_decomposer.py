@@ -14,7 +14,8 @@ Usage::
         --retrieval-input runs/pool_sweep/biencoder_top5/<cell>/top5_biencoder.jsonl
     python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
 
-    # the fine-tuned arm (issue #13): a LoRA adapter on the same base model, zero-shot
+    # the fine-tuned arm (issue #13): a LoRA adapter on the same base model, zero-shot.
+    # --no-few-shot is not optional here - see check_adapter_few_shot_combination.
     python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
         --adapter runs/finetune_decomposer/pool_2000/mistral_7b_instruct/<run>/adapter \\
         --no-few-shot --retrieval-input <the evaluation-set query file>
@@ -303,6 +304,57 @@ def attach_adapter(model, adapter_path: str | Path):
     return model
 
 
+#: The loud opt-out for running an adapter with few-shot examples anyway. Named so that it
+#: cannot appear in a command line by accident, and so that it is visible in the run's
+#: config snapshot.
+ADAPTER_FEW_SHOT_OVERRIDE_FLAG = "--adapter-with-few-shot-i-know"
+
+
+def check_adapter_few_shot_combination(
+    *, adapter: str | None, no_few_shot: bool, override: bool
+) -> dict[str, Any]:
+    """Refuse ``--adapter`` without ``--no-few-shot`` (issue #13), unless overridden.
+
+    Two things go wrong when few-shot examples are injected into an adapter's prompt. The
+    adapter was fine-tuned on the zero-shot prompt (``train_lora.py`` renders the same
+    template with the few-shot block empty), so it meets a prompt shape it never saw. And the
+    examples come from the MuSiQue training pool the adapter was trained on - with
+    ``--retrieval-input`` the candidates carry ``pool_few_shot_decomposition_musique`` from
+    that pool - so the model can be shown its own training rows at inference.
+
+    Returns a record for the run's config snapshot; raises ``SystemExit`` on the refused
+    combination.
+    """
+    record = {
+        "adapter": str(adapter) if adapter else None,
+        "no_few_shot": bool(no_few_shot),
+        "adapter_few_shot_override": bool(override),
+    }
+    if not adapter:
+        return record
+    if not no_few_shot and not override:
+        raise SystemExit(
+            "[decomposer] REFUSING TO RUN: --adapter without --no-few-shot.\n"
+            "The adapter was fine-tuned on the zero-shot prompt (components/decomposer/"
+            "train_lora.py builds it from this same template with the few-shot block empty), "
+            "and the examples that would be injected come from the MuSiQue training pool the "
+            "adapter trained on - so the run would both feed the model a prompt shape it "
+            "never saw and risk showing it its own training rows.\n"
+            "Pass --no-few-shot (this is the fine-tuned arm as specified), or "
+            f"{ADAPTER_FEW_SHOT_OVERRIDE_FLAG} if you deliberately want few-shot on top of "
+            "the adapter and will report the run as that, not as the fine-tuned arm."
+        )
+    if override and not no_few_shot:
+        print(
+            "WARNING: running --adapter WITH few-shot examples "
+            f"({ADAPTER_FEW_SHOT_OVERRIDE_FLAG}). The prompt shape differs from the one the "
+            "adapter was trained on, and the examples come from its own training pool: this "
+            "run is not the fine-tuned arm of the comparison. It is recorded as "
+            "adapter_few_shot_override: true in the config snapshot and the metrics."
+        )
+    return record
+
+
 def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) -> dict[str, Any]:
     """Generate one decomposition, returning the text with its token and latency cost.
 
@@ -418,9 +470,16 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--no-few-shot",
         action="store_true",
-        help="Leave the prompt's few-shot block empty. Required for a fine-tuned adapter, "
-        "which was trained on the zero-shot prompt: injecting examples at inference would "
-        "feed it a prompt shape it never saw.",
+        help="Leave the prompt's few-shot block empty. Required with --adapter, which was "
+        "trained on the zero-shot prompt: injecting examples at inference would feed it a "
+        "prompt shape it never saw, from the pool it trained on.",
+    )
+    p.add_argument(
+        ADAPTER_FEW_SHOT_OVERRIDE_FLAG,
+        action="store_true",
+        help="Deliberately run --adapter WITH few-shot examples. Refused by default (see "
+        "check_adapter_few_shot_combination); such a run is not the fine-tuned arm of the "
+        "comparison and is recorded as an override.",
     )
     p.add_argument("--output-root", default=None)
     p.add_argument(
@@ -434,6 +493,14 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+
+    # Before anything is loaded: an adapter run with few-shot examples is refused here, so a
+    # multi-hour evaluation cannot produce a run that is not the arm it claims to be.
+    adapter_record = check_adapter_few_shot_combination(
+        adapter=args.adapter,
+        no_few_shot=bool(args.no_few_shot),
+        override=bool(args.adapter_with_few_shot_i_know),
+    )
 
     cfg = load_config(args.config)
     paths_cfg = load_paths(require(cfg, "paths_config"))
@@ -518,8 +585,7 @@ def main() -> None:
         "hops": hops,
         "device": device,
         "quantization": quantization,
-        "adapter": str(args.adapter) if args.adapter else None,
-        "no_few_shot": bool(args.no_few_shot),
+        **adapter_record,
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
@@ -826,8 +892,7 @@ def main() -> None:
         },
         "guided": guided,
         "seed": seed,
-        "adapter": str(args.adapter) if args.adapter else None,
-        "no_few_shot": bool(args.no_few_shot),
+        **adapter_record,
         "no_few_shot_ineffective": no_few_shot_ineffective,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
@@ -863,7 +928,14 @@ def main() -> None:
         note_lines=[
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
-            "- Adapter: " + (f"`{args.adapter}`" if args.adapter else "none (prompting arm)"),
+            "- Adapter: "
+            + (f"`{args.adapter}`" if args.adapter else "none (prompting arm)")
+            + (
+                f" - run WITH few-shot examples via {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}: this is "
+                "not the fine-tuned arm of the comparison."
+                if args.adapter and not args.no_few_shot
+                else ""
+            ),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
             f"- Guided: {guided}; seed: {seed}",
             f"- Rows: {len(results)}"

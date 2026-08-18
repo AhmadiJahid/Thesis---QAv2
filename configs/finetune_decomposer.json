@@ -9,7 +9,7 @@
   "default_arm": "pool_2000",
 
   "arms": {
-    "_note": "Training-data arms. --arm selects one by key; each arm names its source (a datasets key in configs/paths.json, or an explicit path), an optional hop filter, and an optional cap. eval_hops says which hop depths of the ADR 0007 evaluation set that arm is evaluated on; the train/eval id-overlap assertion always runs against ALL of eval_set.hops regardless, so a hop-restricted arm cannot dodge it.",
+    "_note": "Training-data arms. --arm selects one by key; each arm names its source (a datasets key in configs/paths.json, or an explicit path), an optional hop filter, and an optional cap. eval_hops says which hop depths of the ADR 0007 evaluation set that arm is evaluated on, and it is enforced: scripts/compare_decomposer_arms.py --eval-arm <key> refuses when either side's scored items carry a hop the arm is not evaluated on, so a generalisation run cannot be scored on 2/3-hop rows. The train/eval id-overlap assertion always runs against ALL of eval_set.hops regardless, so a hop-restricted arm cannot dodge it. An arm with a non-null train_hops also makes a hop-signal disagreement in the source fatal (src/finetune_data.py): the hop filter is only as trustworthy as the hop labels it filters on.",
 
     "pool_2000": {
       "_note": "The 2000-example pool arm. WHICH 2000-example pool is 'the best pool' is not settled by any measured v2 result - the pool sweep has not been run in v2 - so this arm draws 2000 rows with the fixed seed from the enriched MuSiQue training pool named below, spread across hop buckets. To pin a specific pool artifact instead, set train_source_path to it (it overrides train_source_key); max_examples still applies.",
@@ -55,12 +55,18 @@
     "questions_template_key": "musique_eval_questions_template",
     "hops": [2, 3, 4],
     "id_field": "id",
-    "question_field": "question"
+    "question_field": "question",
+    "expected": {
+      "_note": "Counts from ADR 0007, asserted (not assumed) every time the evaluation ids are loaded: 200 distinct ids per hop file, 600 in total. Without this assertion a mis-resolved id_field or a truncated file would yield zero evaluation ids and the train/eval overlap assertion would pass vacuously while recording asserted: true. total_ids must equal ids_per_hop x len(hops); a non-uniform evaluation set would need src/finetune_data.py changed, deliberately, rather than a count quietly edited here. A different paths config declares its own counts: configs/smoke_paths.json points at the fabricated fixtures (1 row per hop file) and carries an eval_set_expected block that overrides these.",
+      "ids_per_hop": 200,
+      "total_ids": 600
+    }
   },
 
   "overlap_check": {
-    "_note": "Train/eval overlap is a hard failure, not a warning: a fine-tuned arm that saw evaluation questions is not a comparison arm. max_reported_ids caps how many offending ids the error message prints.",
-    "max_reported_ids": 20
+    "_note": "Train/eval overlap is a hard failure, not a warning: a fine-tuned arm that saw evaluation questions is not a comparison arm. max_reported_ids caps how many offending ids the error message prints. max_reported_load_ids caps how many ids the source-load record lists (rows whose hop signals disagree), so a pathological source cannot bloat a metrics JSON or an error message.",
+    "max_reported_ids": 20,
+    "max_reported_load_ids": 20
   },
 
   "prompt": {
@@ -134,10 +140,11 @@
   "formatted_examples_logged": 5,
 
   "evaluation": {
-    "_note": "scripts/compare_decomposer_arms.py. Quality comes only from scripts/musique_decompositions_evaluator.py - string-level metrics, no model in the loop and never a commercial API rating decompositions (CLAUDE.md standing constraint). Cost comes from the 'cost' block each decomposer run writes into its own metrics.json. quality_keys and cost_keys are the columns of the summary table.",
+    "_note": "scripts/compare_decomposer_arms.py. Quality comes only from scripts/musique_decompositions_evaluator.py - string-level metrics, no model in the loop and never a commercial API rating decompositions (CLAUDE.md standing constraint). Cost comes from the 'cost' block each decomposer run writes into its own metrics.json. quality_keys and cost_keys are the columns of the summary table. --eval-arm names the arm whose eval_hops every side of the comparison is checked against; max_reported_ids caps how many offending item ids that refusal prints.",
     "evaluator_script": "scripts/musique_decompositions_evaluator.py",
     "evaluator_config": "musique_eval.json",
     "out_subdir": "decomposer_arm_comparison",
+    "max_reported_ids": 20,
     "quality_keys": [
       "total_evaluated",
       "exact_match_rate",

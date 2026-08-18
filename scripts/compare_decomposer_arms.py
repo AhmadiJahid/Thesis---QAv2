@@ -14,17 +14,30 @@ Usage::
     python scripts/compare_decomposer_arms.py \\
         --arm prompting=runs/decomposer/mistral_7b_instruct/<run> \\
         --arm finetuned_pool_2000=runs/finetune_decomposer/eval/pool_2000/<run> \\
-        --baseline prompting
+        --baseline prompting --eval-arm pool_2000
+
+    # the generalisation arm: both sides must be 4-hop only, and this refuses otherwise
+    python scripts/compare_decomposer_arms.py \\
+        --arm prompting_4hop=runs/decomposer/mistral_7b_instruct/<run> \\
+        --arm finetuned_2_3hop=runs/decomposer/mistral_7b_instruct/<run> \\
+        --baseline prompting_4hop --eval-arm generalisation_2_3hop
 
 Each ``--arm NAME=DIR`` names a decomposer run directory holding ``results.json`` (and
 ``metrics.json``, for the cost block). Every non-baseline arm is compared against the
 baseline, with the difference reported as ``arm minus baseline``.
 
+``--eval-arm`` names an arm of ``configs/finetune_decomposer.json``, and its ``eval_hops`` is
+**enforced**: every scored item's id hop prefix, on every side, must be a hop that arm is
+evaluated on. Without that check the arm's ``eval_hops`` is decorative, and a generalisation
+run (trained on 2-hop and 3-hop, claimed against 4-hop) could be scored on 2/3-hop rows with
+nothing in the output saying so.
+
 Two things it deliberately does not do:
 
-- **It never parses the evaluator's per-item file.** It only passes the paths through, so
-  the per-item schema change of PR #22 (a stamped object instead of a bare list) is the
-  evaluator's business and cannot break this script either side of that merge.
+- **It reads the evaluator's per-item file only for item ids.** Nothing else in it is
+  parsed, and both shapes are accepted - the bare list of earlier runs and the stamped
+  object of PR #22 (``{"schema": ..., "items": [...]}``) - so the schema change is still
+  the evaluator's business.
 - **It never compares runs scored under different settings.** All arms are scored by one
   invocation config, which is also what the evaluator's ``--compare`` requires.
 """
@@ -40,6 +53,7 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from finetune_data import hop_from_id, resolve_arm  # noqa: E402
 from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, runs_path  # noqa: E402
 
@@ -84,6 +98,102 @@ def _cost_block(run_dir: Path) -> tuple[dict[str, Any] | None, str | None]:
     return cost, None
 
 
+def per_item_ids(path: Path) -> list[str]:
+    """The ``item_id`` of every scored item, in file order.
+
+    Accepts both per-item shapes: a bare JSON list (runs before PR #22) and the stamped
+    object ``{"schema": ..., "items": [...]}`` (PR #22 onward). Only the ids are read.
+    """
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    rows = payload.get("items") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise SystemExit(
+            f"{path}: expected a per-item JSON list, or an object with an 'items' list "
+            f"(as written by the evaluator); got {type(rows).__name__}"
+        )
+    ids: list[str] = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict) or "item_id" not in row:
+            raise SystemExit(f"{path}: per-item row {i} has no 'item_id'")
+        ids.append(str(row["item_id"]))
+    return ids
+
+
+def assert_items_within_eval_hops(
+    arm_name: str,
+    per_item_path: Path,
+    item_ids: list[str],
+    eval_hops: list[int],
+    *,
+    max_reported: int,
+) -> dict[str, Any]:
+    """Refuse when a scored item is not from a hop depth this comparison is defined on.
+
+    ``eval_hops`` comes from the arm in ``configs/finetune_decomposer.json`` named by
+    ``--eval-arm``, and it is checked on **every** side, baseline included: a fine-tuned arm
+    scored on 4-hop rows against a baseline scored on all 600 is not a comparison, and the
+    generalisation claim (learned the task, did not memorise hop patterns) rests entirely on
+    the 4-hop restriction actually holding.
+    """
+    wanted = sorted({int(h) for h in eval_hops})
+    if not wanted:
+        raise SystemExit(
+            f"[arms] arm {arm_name!r}: eval_hops is empty in the config, so there is no hop "
+            "restriction to check against. Fix the arm definition."
+        )
+    if not item_ids:
+        raise SystemExit(
+            f"[arms] arm {arm_name!r}: {per_item_path} holds no scored items, so the "
+            "eval-hop check would pass without checking anything (and there is nothing to "
+            "compare). Re-score the arm."
+        )
+
+    hop_counts: dict[str, int] = {}
+    off_hop: list[str] = []
+    unparseable: list[str] = []
+    for item_id in item_ids:
+        hop = hop_from_id(item_id)
+        if hop is None:
+            unparseable.append(item_id)
+            continue
+        hop_counts[str(hop)] = hop_counts.get(str(hop), 0) + 1
+        if hop not in wanted:
+            off_hop.append(item_id)
+
+    def _listing(ids: list[str]) -> str:
+        shown = ids[:max_reported]
+        more = "" if len(ids) <= max_reported else f"\n  ... (+{len(ids) - max_reported} more)"
+        return "\n  " + "\n  ".join(shown) + more
+
+    if unparseable:
+        raise SystemExit(
+            f"[arms] REFUSING TO COMPARE: arm {arm_name!r} has {len(unparseable)} scored "
+            f"item(s) whose id carries no MuSiQue hop prefix (expected '2hop__...', "
+            f"'3hop1__...', '4hop2__...'), so they cannot be checked against eval_hops "
+            f"{wanted}. Offending "
+            f"ids:{_listing(unparseable)}\n"
+            f"  per-item file: {per_item_path}"
+        )
+    if off_hop:
+        raise SystemExit(
+            f"[arms] REFUSING TO COMPARE: arm {arm_name!r} was scored on "
+            f"{len(off_hop)} item(s) outside eval_hops {wanted} (hop counts in the file: "
+            f"{ {k: hop_counts[k] for k in sorted(hop_counts, key=int)} }). Offending "
+            f"ids:{_listing(off_hop)}\n"
+            f"  per-item file: {per_item_path}\n"
+            "Restrict this arm's predictions to the hops the --eval-arm is evaluated on (for "
+            "the generalisation arm that is 4-hop only, on BOTH sides), or pass an "
+            "--eval-arm whose eval_hops covers what was actually scored. Scoring a "
+            "hop-restricted arm on other hops makes the number answer a different question."
+        )
+    return {
+        "eval_hops": wanted,
+        "items_checked": len(item_ids),
+        "hop_counts": {k: hop_counts[k] for k in sorted(hop_counts, key=int)},
+        "asserted": True,
+    }
+
+
 def _fmt(value: Any) -> str:
     if value is None:
         return "unmeasured"
@@ -104,6 +214,12 @@ def _parse_args() -> argparse.Namespace:
         help="A decomposer run directory to score. Repeatable.",
     )
     p.add_argument("--baseline", required=True, help="Name of the arm every other arm is compared to")
+    p.add_argument(
+        "--eval-arm",
+        required=True,
+        help="Arm key in the config whose eval_hops every side of this comparison is checked "
+        "against (e.g. pool_2000 for hops 2/3/4, generalisation_2_3hop for 4-hop only).",
+    )
     p.add_argument("--config", default="finetune_decomposer.json", help="Committed config")
     p.add_argument("--evaluator-config", default=None, help="Override evaluation.evaluator_config")
     p.add_argument("--out-dir", type=Path, default=None, help="Override the output directory")
@@ -145,6 +261,11 @@ def main() -> None:
 
     quality_keys = list(require(eval_cfg, "quality_keys"))
     cost_keys = list(require(eval_cfg, "cost_keys"))
+    max_reported_ids = int(require(eval_cfg, "max_reported_ids"))
+
+    eval_arm = resolve_arm(cfg, args.eval_arm)
+    eval_hops = [int(h) for h in require(eval_arm, "eval_hops")]
+    print(f"[arms] eval-arm={args.eval_arm} eval_hops={eval_hops} (enforced on every side)")
 
     # ---- score every arm with one evaluator config ----
     per_arm: dict[str, dict[str, Any]] = {}
@@ -163,11 +284,22 @@ def main() -> None:
             ]
         )
         arm_metrics = _read_json(arm_out / f"{score_prefix}_metrics.json")
+        per_item_path = arm_out / f"{score_prefix}_per_item.json"
+        # Before any significance test: the items actually scored must be the hops this
+        # comparison is defined on. Cheap, and it fails before the bootstrap runs.
+        hop_record = assert_items_within_eval_hops(
+            name,
+            per_item_path,
+            per_item_ids(per_item_path),
+            eval_hops,
+            max_reported=max_reported_ids,
+        )
         cost, cost_note = _cost_block(run_dir)
         per_arm[name] = {
             "run_dir": str(run_dir),
             "eval_dir": str(arm_out),
-            "per_item_path": str(arm_out / f"{score_prefix}_per_item.json"),
+            "per_item_path": str(per_item_path),
+            "eval_hops_check": hop_record,
             "quality": {key: arm_metrics.get(key) for key in quality_keys},
             "cost": ({key: cost.get(key) for key in cost_keys} if cost else None),
             "cost_note": cost_note,
@@ -205,6 +337,14 @@ def main() -> None:
     note_lines = [
         f"- Evaluator: `{evaluator}` with config `{evaluator_cfg.get('_config_path')}`",
         f"- Baseline arm: `{args.baseline}`; differences below are arm minus baseline.",
+        f"- Eval-hop restriction: `--eval-arm {args.eval_arm}` -> hops {eval_hops}, asserted "
+        f"on every side ("
+        + "; ".join(
+            f"{name}: {record['eval_hops_check']['items_checked']} items "
+            f"{record['eval_hops_check']['hop_counts']}"
+            for name, record in per_arm.items()
+        )
+        + ")",
         "",
         "| arm | " + " | ".join(quality_keys) + " | " + " | ".join(cost_keys) + " |",
         "|---" * (1 + len(quality_keys) + len(cost_keys)) + "|",
@@ -251,6 +391,8 @@ def main() -> None:
         "run_id": current_run_id,
         "baseline": args.baseline,
         "difference_direction": "arm minus baseline",
+        "eval_arm": args.eval_arm,
+        "eval_hops": eval_hops,
         "evaluator_script": str(evaluator),
         "evaluator_config": evaluator_cfg.get("_config_path"),
         "quality_keys": quality_keys,
@@ -266,6 +408,9 @@ def main() -> None:
         "evaluator_config": evaluator_cfg.get("_config_path"),
         "arms": {name: str(path) for name, path in arms.items()},
         "baseline": args.baseline,
+        "eval_arm": args.eval_arm,
+        "eval_arm_spec": eval_arm,
+        "eval_hops": eval_hops,
         "out_dir": str(out_dir),
     }
     write_run_artifacts(

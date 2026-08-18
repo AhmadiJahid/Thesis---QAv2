@@ -6,10 +6,13 @@ prompt/completion formatting - is testable and smoke-testable before a run earns
 
 Three things this module is deliberate about:
 
-- **The train/eval overlap assertion is hard.** A fine-tuned arm that saw evaluation
-  questions is not a comparison arm, so :func:`assert_no_eval_overlap` raises and names the
-  offending ids rather than warning. It runs against the whole ADR 0007 evaluation set (all
-  hop depths), never only the hops an arm is evaluated on.
+- **The train/eval overlap assertion is hard, and cannot pass vacuously.** A fine-tuned arm
+  that saw evaluation questions is not a comparison arm, so :func:`assert_no_eval_overlap`
+  raises and names the offending ids rather than warning. It runs against the whole ADR 0007
+  evaluation set (all hop depths), never only the hops an arm is evaluated on. Because an
+  assertion against an *empty* id set would pass while proving nothing,
+  :func:`load_eval_ids` asserts the config-declared counts (200 per hop, 600 total) and
+  :func:`assert_no_eval_overlap` refuses outright when handed no evaluation ids.
 - **The training prompt is the prompting arm's prompt.** It is rendered by
   ``components/decomposer/run_decomposer.py``'s own template helpers, imported rather than
   reimplemented, with the few-shot block empty. v1's four copies of ``decomposer.py`` are
@@ -36,10 +39,12 @@ _DECOMPOSER_DIR = _REPO_ROOT / "components" / "decomposer"
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
 #: A bare "#3" reference (MuSiQue's own convention) that is not already bracketed.
 _BARE_REF_RX = re.compile(r"(?<!\[)#(\d+)")
-#: Cap on ids listed in a load record, so a pathological source cannot bloat a metrics JSON.
-_MAX_REPORTED_LOAD_IDS = 20
 
 REFERENCE_STYLES = ("as_is", "bracketed")
+
+#: Key in the *paths* config that overrides ``eval_set.expected`` (see
+#: :func:`expected_eval_counts`). Only configs/smoke_paths.json carries it.
+PATHS_EVAL_EXPECTED_KEY = "eval_set_expected"
 
 
 @dataclass(frozen=True)
@@ -99,15 +104,19 @@ def hop_from_id(row_id: str | None) -> int | None:
 
 
 def build_examples(
-    rows: list[dict[str, Any]], data_cfg: dict[str, Any]
+    rows: list[dict[str, Any]], data_cfg: dict[str, Any], *, max_reported_ids: int
 ) -> tuple[list[TrainingExample], dict[str, Any]]:
     """Turn source rows into examples, reporting what was dropped and why.
 
     The hop count comes from the row's own ``hop_count`` field when it has a usable one,
     else from the id prefix, else from the number of steps. Where two of those are
-    available and disagree the row is still kept (this is training data, not gold under
-    measurement) but the disagreement is counted, so a silent shift in the source cannot
-    pass unnoticed.
+    available and disagree the row is still kept here (this is training data, not gold under
+    measurement) but the disagreement is counted and the offending ids are listed, capped at
+    ``max_reported_ids``.
+
+    Counting is not always enough: for an arm that *filters* on hop depth the labels are
+    load-bearing, so :func:`select_arm_examples` turns any disagreement into a hard failure
+    when the arm declares ``train_hops``.
     """
     id_field = require(data_cfg, "id_field")
     question_field = require(data_cfg, "question_field")
@@ -122,6 +131,7 @@ def build_examples(
         "dropped_missing_steps": 0,
         "hop_disagreement_count": 0,
         "hop_disagreement_ids": [],
+        "hop_disagreement_ids_capped_at": int(max_reported_ids),
     }
     for row in rows:
         row_id = row.get(id_field)
@@ -147,7 +157,7 @@ def build_examples(
         candidates = [h for h in (field_hop, id_hop) if h is not None]
         if len({*candidates, len(steps)}) > 1:
             stats["hop_disagreement_count"] += 1
-            if len(stats["hop_disagreement_ids"]) < _MAX_REPORTED_LOAD_IDS:
+            if len(stats["hop_disagreement_ids"]) < int(max_reported_ids):
                 stats["hop_disagreement_ids"].append(row_id)
         hop = candidates[0] if candidates else len(steps)
 
@@ -162,17 +172,63 @@ def build_examples(
     return examples, stats
 
 
+def expected_eval_counts(
+    paths_cfg: dict[str, Any], eval_cfg: dict[str, Any]
+) -> tuple[int, int, str]:
+    """The declared evaluation-set counts: ``(ids_per_hop, total_ids, where they came from)``.
+
+    ADR 0007's 200-per-hop / 600-total live in ``eval_set.expected`` of the training config.
+    A *paths* config may override them under :data:`PATHS_EVAL_EXPECTED_KEY` - only
+    ``configs/smoke_paths.json`` does, because its fabricated fixture tree carries one row
+    per hop file. The override is a committed config value, not a relaxation in code: the
+    counts are asserted either way, and which block was used is recorded in the run's
+    metrics.
+    """
+    override = paths_cfg.get(PATHS_EVAL_EXPECTED_KEY)
+    if isinstance(override, dict):
+        source = f"{PATHS_EVAL_EXPECTED_KEY} in {paths_cfg.get('_config_path')}"
+        block = override
+    else:
+        source = f"eval_set.expected in {eval_cfg.get('_config_path', '<training config>')}"
+        block = require(eval_cfg, "expected")
+    per_hop = int(require(block, "ids_per_hop"))
+    total = int(require(block, "total_ids"))
+    hops = [int(h) for h in require(eval_cfg, "hops")]
+    if per_hop < 1 or total < 1:
+        raise SystemExit(
+            f"[finetune] {source} declares non-positive expected counts "
+            f"(ids_per_hop={per_hop}, total_ids={total}). The evaluation set cannot be empty: "
+            "the train/eval overlap assertion would have nothing to check."
+        )
+    if per_hop * len(hops) != total:
+        raise SystemExit(
+            f"[finetune] {source} is inconsistent: ids_per_hop={per_hop} over "
+            f"{len(hops)} hop file(s) is {per_hop * len(hops)}, but total_ids={total}. "
+            "A uniform per-hop count is assumed (ADR 0007: 200 per hop, 600 total); a "
+            "non-uniform evaluation set is a change to src/finetune_data.py, made "
+            "deliberately, not a count edited here."
+        )
+    return per_hop, total, source
+
+
 def load_eval_ids(
     paths_cfg: dict[str, Any], eval_cfg: dict[str, Any]
 ) -> tuple[set[str], dict[str, Any]]:
     """Ids of the ADR 0007 evaluation set, per hop file, with counts.
 
-    A missing file is fatal: an overlap assertion that silently checked against fewer
-    evaluation questions than the arm is evaluated on would be worse than no assertion.
+    Two hard failures, both about the same danger - an overlap assertion that checks against
+    fewer evaluation questions than it should still *passes*:
+
+    - a missing hop file is fatal;
+    - a hop file that does not yield exactly the declared number of distinct ids is fatal
+      (see :func:`expected_eval_counts`). That is what catches a mis-resolved ``id_field``, a
+      truncated or re-drawn file, and ids shared between two hop files, instead of letting
+      :func:`assert_no_eval_overlap` record ``asserted: true`` over an empty set.
     """
     template = require(paths_cfg, "datasets." + require(eval_cfg, "questions_template_key"))
     id_field = require(eval_cfg, "id_field")
     data_root = Path(paths_cfg["data_root_resolved"])
+    expected_per_hop, expected_total, expected_source = expected_eval_counts(paths_cfg, eval_cfg)
 
     ids: set[str] = set()
     per_hop: dict[str, int] = {}
@@ -187,14 +243,40 @@ def load_eval_ids(
                 f"config). Training cannot start without it: the train/eval overlap "
                 f"assertion has nothing to check against."
             )
+        hop_rows = load_jsonl(path)
         hop_ids = set()
-        for row in load_jsonl(path):
+        for row in hop_rows:
             value = row.get(id_field)
             if isinstance(value, str) and value.strip():
                 hop_ids.add(value.strip())
+        if len(hop_ids) != expected_per_hop:
+            raise SystemExit(
+                f"[finetune] REFUSING TO TRAIN: the {hop}-hop evaluation file yielded "
+                f"{len(hop_ids)} distinct id(s), expected {expected_per_hop} "
+                f"({expected_source}).\n"
+                f"  file: {path}\n"
+                f"  rows read: {len(hop_rows)}; id_field: {id_field!r}\n"
+                "An evaluation id set smaller than declared makes the train/eval overlap "
+                "assertion weaker than it claims to be - at zero ids it passes while "
+                "checking nothing. Usual causes: the wrong id_field for this file, a "
+                "truncated or re-drawn file, or duplicate ids inside it. The expected counts "
+                "are ADR 0007's; changing them is a decision about the evaluation set, not a "
+                "fix for this error."
+            )
         per_hop[str(hop)] = len(hop_ids)
         ids |= hop_ids
         files.append(str(path))
+
+    if len(ids) != expected_total:
+        raise SystemExit(
+            f"[finetune] REFUSING TO TRAIN: the evaluation set yielded {len(ids)} distinct "
+            f"id(s) across hops {[int(h) for h in require(eval_cfg, 'hops')]}, expected "
+            f"{expected_total} ({expected_source}).\n"
+            f"  per-hop counts: {per_hop}\n"
+            f"  files: {files}\n"
+            "Each hop file matched its own expected count, so the shortfall means ids are "
+            "shared between hop files - the evaluation set is not what ADR 0007 describes."
+        )
 
     record = {
         "questions_template_key": require(eval_cfg, "questions_template_key"),
@@ -202,6 +284,10 @@ def load_eval_ids(
         "files": files,
         "ids_per_hop": per_hop,
         "num_ids": len(ids),
+        "expected_ids_per_hop": expected_per_hop,
+        "expected_total_ids": expected_total,
+        "expected_counts_source": expected_source,
+        "expected_counts_asserted": True,
     }
     return ids, record
 
@@ -213,7 +299,19 @@ def assert_no_eval_overlap(
 
     Fails loudly and names the offenders (capped at ``max_reported``). Overlap makes the
     arm's evaluation numbers meaningless, and a warning in a log tail is not a guard.
+
+    An empty ``eval_ids`` is refused outright rather than reported as a clean check: over an
+    empty set there is nothing to overlap with, so the record would say ``asserted: true``
+    having proved nothing. :func:`load_eval_ids` should have failed first; this is the
+    backstop for any other caller.
     """
+    if not eval_ids:
+        raise SystemExit(
+            "[finetune] REFUSING TO TRAIN: the evaluation id set is empty, so the train/eval "
+            "overlap check would pass without checking anything. Load the ADR 0007 "
+            "evaluation ids (finetune_data.load_eval_ids, which asserts the declared "
+            "200-per-hop / 600-total counts) before asserting disjointness."
+        )
     train_ids = [ex.row_id for ex in examples]
     overlap = sorted({row_id for row_id in train_ids if row_id in eval_ids})
     if overlap:
@@ -312,11 +410,39 @@ def select_arm_examples(
     data_cfg: dict[str, Any],
     *,
     seed: int,
+    max_reported_ids: int,
     limit: int | None = None,
 ) -> tuple[list[TrainingExample], dict[str, Any]]:
-    """Apply the arm's hop filter and cap. Returns (examples, a record of the selection)."""
-    examples, load_stats = build_examples(rows, data_cfg)
+    """Apply the arm's hop filter and cap. Returns (examples, a record of the selection).
+
+    For an arm that declares ``train_hops`` (the generalisation arm trains on 2-hop and
+    3-hop only), a row whose hop signals disagree is **fatal**: the filter decides which
+    rows the model sees, so a wrong hop label there silently changes what the arm is. Arms
+    with ``train_hops: null`` train on every row regardless, so for them the disagreement is
+    recorded and not fatal.
+    """
+    examples, load_stats = build_examples(rows, data_cfg, max_reported_ids=max_reported_ids)
     train_hops = require(arm, "train_hops")
+    if train_hops is not None and load_stats["hop_disagreement_count"]:
+        shown = load_stats["hop_disagreement_ids"]
+        more = (
+            ""
+            if load_stats["hop_disagreement_count"] <= len(shown)
+            else f"\n  ... (+{load_stats['hop_disagreement_count'] - len(shown)} more)"
+        )
+        raise SystemExit(
+            f"[finetune] REFUSING TO TRAIN: this arm filters on hop depth "
+            f"(train_hops={train_hops}), and {load_stats['hop_disagreement_count']} source "
+            f"row(s) carry disagreeing hop signals - the "
+            f"{data_cfg.get('hop_count_field')!r} field, the id prefix and the number of "
+            f"steps do not agree. Offending ids:\n  "
+            + "\n  ".join(shown)
+            + more
+            + "\nThe hop filter is only as trustworthy as the labels it filters on: with a "
+            "wrong label, rows of the excluded depth reach training and the generalisation "
+            "claim is void. Fix the source, or use an arm with train_hops: null (where the "
+            "disagreement is recorded rather than fatal)."
+        )
     after_hops = filter_hops(examples, train_hops)
     max_examples = require(arm, "max_examples")
     stratify = bool(require(arm, "stratify_cap_by_hop"))
@@ -327,6 +453,7 @@ def select_arm_examples(
     record = {
         "source_rows": load_stats,
         "train_hops": train_hops,
+        "hop_disagreement_fatal": train_hops is not None,
         "num_after_hop_filter": len(after_hops),
         "max_examples": max_examples,
         "stratify_cap_by_hop": stratify,

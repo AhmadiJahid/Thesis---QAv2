@@ -63,6 +63,15 @@ DATA_CFG = {
     "step_fields": ["question_decomposition", "few_shot_decomposition_musique"],
 }
 
+#: The report cap comes from the committed config, not from a constant in the module under
+#: test (there is none any more) and not from a literal here.
+MAX_LOAD_IDS = int(require(load_config(CONFIG_NAME), "overlap_check.max_reported_load_ids"))
+
+
+def _built(rows: list[dict[str, Any]]) -> tuple[list[fd.TrainingExample], dict[str, Any]]:
+    """``build_examples`` with the committed report cap."""
+    return fd.build_examples(rows, DATA_CFG, max_reported_ids=MAX_LOAD_IDS)
+
 
 class TestConfigLoads(unittest.TestCase):
     """The committed config has the three arms and the keys every consumer requires."""
@@ -128,16 +137,14 @@ class TestOverlapAssertion(unittest.TestCase):
     """Overlap between training data and the evaluation set is a hard failure."""
 
     def test_disjoint_sets_pass_and_report_counts(self) -> None:
-        examples, _ = fd.build_examples(_rows(("2hop__t1", 2), ("3hop1__t2", 3)), DATA_CFG)
+        examples, _ = _built(_rows(("2hop__t1", 2), ("3hop1__t2", 3)))
         record = fd.assert_no_eval_overlap(examples, {"2hop__d1"}, max_reported=20)
         self.assertEqual(record["overlap_count"], 0)
         self.assertEqual(record["checked_training_ids"], 2)
         self.assertTrue(record["asserted"])
 
     def test_overlap_raises_and_names_the_offending_ids(self) -> None:
-        examples, _ = fd.build_examples(
-            _rows(("2hop__t1", 2), ("2hop__d1", 2), ("4hop1__d2", 4)), DATA_CFG
-        )
+        examples, _ = _built(_rows(("2hop__t1", 2), ("2hop__d1", 2), ("4hop1__d2", 4)))
         with self.assertRaises(SystemExit) as ctx:
             fd.assert_no_eval_overlap(examples, {"2hop__d1", "4hop1__d2"}, max_reported=20)
         message = str(ctx.exception)
@@ -148,7 +155,7 @@ class TestOverlapAssertion(unittest.TestCase):
 
     def test_the_offending_id_list_is_capped_and_says_how_many_more(self) -> None:
         overlapping = [(f"2hop__d{i}", 2) for i in range(10)]
-        examples, _ = fd.build_examples(_rows(*overlapping), DATA_CFG)
+        examples, _ = _built(_rows(*overlapping))
         eval_ids = {row_id for row_id, _ in overlapping}
         with self.assertRaises(SystemExit) as ctx:
             fd.assert_no_eval_overlap(examples, eval_ids, max_reported=3)
@@ -165,6 +172,68 @@ class TestOverlapAssertion(unittest.TestCase):
         self.assertEqual(record["num_ids"], len(eval_ids))
         # The fixture set carries one id per hop file; the real set carries 200 (ADR 0007).
         self.assertEqual(sorted(record["ids_per_hop"]), ["2", "3", "4"])
+        # ... and the counts it found are the ones the fixture paths config declares, asserted.
+        self.assertEqual(record["expected_ids_per_hop"], 1)
+        self.assertEqual(record["expected_total_ids"], 3)
+        self.assertTrue(record["expected_counts_asserted"])
+        self.assertIn("smoke_paths.json", record["expected_counts_source"])
+
+    def test_the_committed_config_declares_the_adr_0007_counts(self) -> None:
+        """200 per hop and 600 in total are config values, so they can be asserted."""
+        cfg = load_config(CONFIG_NAME)
+        expected = require(cfg, "eval_set.expected")
+        self.assertEqual(expected["ids_per_hop"], 200)
+        self.assertEqual(expected["total_ids"], 600)
+        # No paths override: configs/paths.json must not relax the real counts. Read with
+        # load_config, not load_paths, so QAV2_PATHS_CONFIG (set when the smoke test runs
+        # this suite) cannot substitute the fixture paths config here.
+        real_paths = load_config("paths.json")
+        self.assertNotIn(fd.PATHS_EVAL_EXPECTED_KEY, real_paths)
+        per_hop, total, source = fd.expected_eval_counts(real_paths, require(cfg, "eval_set"))
+        self.assertEqual((per_hop, total), (200, 600))
+        self.assertIn("eval_set.expected", source)
+
+    def test_a_misresolved_id_field_is_fatal_instead_of_a_vacuous_pass(self) -> None:
+        """The C1 failure: zero eval ids used to make the overlap check pass silently."""
+        cfg = load_config(CONFIG_NAME)
+        paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
+        eval_cfg = dict(require(cfg, "eval_set"))
+        eval_cfg["id_field"] = "question_id"  # the field this dataset does not use
+        with self.assertRaises(SystemExit) as ctx:
+            fd.load_eval_ids(paths_cfg, eval_cfg)
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO TRAIN", message)
+        self.assertIn("0 distinct id(s)", message)
+        self.assertIn("question_id", message)
+
+    def test_a_short_hop_file_is_fatal(self) -> None:
+        """A file with fewer ids than declared: same class of failure, caught the same way."""
+        cfg = load_config(CONFIG_NAME)
+        paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
+        # The fixture files hold 1 row each; declaring the real 200/600 must fail here.
+        eval_cfg = dict(require(cfg, "eval_set"))
+        eval_cfg["expected"] = {"ids_per_hop": 200, "total_ids": 600}
+        paths_cfg = {k: v for k, v in paths_cfg.items() if k != fd.PATHS_EVAL_EXPECTED_KEY}
+        with self.assertRaises(SystemExit) as ctx:
+            fd.load_eval_ids(paths_cfg, eval_cfg)
+        message = str(ctx.exception)
+        self.assertIn("1 distinct id(s), expected 200", message)
+
+    def test_inconsistent_declared_counts_are_refused(self) -> None:
+        cfg = load_config(CONFIG_NAME)
+        eval_cfg = dict(require(cfg, "eval_set"))
+        eval_cfg["expected"] = {"ids_per_hop": 200, "total_ids": 60}
+        with self.assertRaises(SystemExit) as ctx:
+            fd.expected_eval_counts({"_config_path": "x"}, eval_cfg)
+        self.assertIn("inconsistent", str(ctx.exception))
+
+    def test_an_empty_eval_id_set_is_refused_outright(self) -> None:
+        examples, _ = _built(_rows(("2hop__t1", 2)))
+        with self.assertRaises(SystemExit) as ctx:
+            fd.assert_no_eval_overlap(examples, set(), max_reported=20)
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO TRAIN", message)
+        self.assertIn("empty", message)
 
     def test_the_fixture_arms_have_no_overlap_with_the_fixture_eval_set(self) -> None:
         cfg = load_config(CONFIG_NAME)
@@ -174,7 +243,11 @@ class TestOverlapAssertion(unittest.TestCase):
             arm = fd.resolve_arm(cfg, name)
             rows = fd.load_jsonl(fd.arm_source_path(arm, paths_cfg))
             examples, _ = fd.select_arm_examples(
-                arm, rows, require(cfg, "data"), seed=int(require(cfg, "seed"))
+                arm,
+                rows,
+                require(cfg, "data"),
+                seed=int(require(cfg, "seed")),
+                max_reported_ids=MAX_LOAD_IDS,
             )
             record = fd.assert_no_eval_overlap(examples, eval_ids, max_reported=20)
             self.assertEqual(record["overlap_count"], 0, name)
@@ -190,17 +263,17 @@ class TestArmSelection(unittest.TestCase):
 
     def test_generalisation_filter_drops_4_hop_rows(self) -> None:
         rows = _rows(("2hop__a", 2), ("3hop1__b", 3), ("4hop1__c", 4), ("4hop2__d", 4))
-        examples, _ = fd.build_examples(rows, DATA_CFG)
+        examples, _ = _built(rows)
         kept = fd.filter_hops(examples, [2, 3])
         self.assertEqual([ex.row_id for ex in kept], ["2hop__a", "3hop1__b"])
         self.assertEqual(fd.hop_counts(kept), {"2": 1, "3": 1})
 
     def test_no_hop_filter_keeps_everything(self) -> None:
-        examples, _ = fd.build_examples(_rows(("2hop__a", 2), ("4hop1__c", 4)), DATA_CFG)
+        examples, _ = _built(_rows(("2hop__a", 2), ("4hop1__c", 4)))
         self.assertEqual(len(fd.filter_hops(examples, None)), 2)
 
     def test_cap_is_seeded_and_reproducible(self) -> None:
-        examples, _ = fd.build_examples(_rows(*[(f"2hop__r{i}", 2) for i in range(20)]), DATA_CFG)
+        examples, _ = _built(_rows(*[(f"2hop__r{i}", 2) for i in range(20)]))
         first = fd.cap_examples(examples, 5, stratify_by_hop=False, seed=42)
         again = fd.cap_examples(examples, 5, stratify_by_hop=False, seed=42)
         other = fd.cap_examples(examples, 5, stratify_by_hop=False, seed=7)
@@ -209,14 +282,14 @@ class TestArmSelection(unittest.TestCase):
         self.assertNotEqual([e.row_id for e in first], [e.row_id for e in other])
 
     def test_cap_above_the_available_rows_is_a_no_op(self) -> None:
-        examples, _ = fd.build_examples(_rows(("2hop__a", 2), ("3hop1__b", 3)), DATA_CFG)
+        examples, _ = _built(_rows(("2hop__a", 2), ("3hop1__b", 3)))
         self.assertEqual(len(fd.cap_examples(examples, 2000, stratify_by_hop=True, seed=42)), 2)
 
     def test_stratified_cap_spreads_across_hop_buckets(self) -> None:
         rows = [(f"2hop__a{i}", 2) for i in range(10)]
         rows += [(f"3hop1__b{i}", 3) for i in range(10)]
         rows += [(f"4hop1__c{i}", 4) for i in range(2)]
-        examples, _ = fd.build_examples(_rows(*rows), DATA_CFG)
+        examples, _ = _built(_rows(*rows))
         selected = fd.cap_examples(examples, 9, stratify_by_hop=True, seed=42)
         counts = fd.hop_counts(selected)
         self.assertEqual(len(selected), 9)
@@ -231,7 +304,7 @@ class TestArmSelection(unittest.TestCase):
             "question": "Who directed it?",
             "few_shot_decomposition_musique": ["Who scored it?", "Who directed #1?"],
         }
-        examples, stats = fd.build_examples([pool_row], DATA_CFG)
+        examples, stats = _built([pool_row])
         self.assertEqual(len(examples), 1)
         self.assertEqual(examples[0].steps, ("Who scored it?", "Who directed #1?"))
         self.assertEqual(stats["dropped_missing_steps"], 0)
@@ -243,15 +316,70 @@ class TestArmSelection(unittest.TestCase):
             {"id": "2hop__noq", "question": "  ", "question_decomposition": [{"question": "s?"}]},
             {"question": "q?", "question_decomposition": [{"question": "s?"}]},
         ]
-        examples, stats = fd.build_examples(rows, DATA_CFG)
+        examples, stats = _built(rows)
         self.assertEqual([ex.row_id for ex in examples], ["2hop__ok"])
         self.assertEqual(stats["dropped_missing_steps"], 1)
         self.assertEqual(stats["dropped_missing_question"], 1)
         self.assertEqual(stats["dropped_missing_id"], 1)
 
+    def test_hop_disagreement_is_fatal_for_an_arm_that_filters_on_hops(self) -> None:
+        """The generalisation arm's claim rests on the hop labels, so a mismatch is fatal."""
+        cfg = load_config(CONFIG_NAME)
+        arm = fd.resolve_arm(cfg, "generalisation_2_3hop")
+        rows = _rows(("2hop__good", 2), ("3hop1__b", 3))
+        # This row says 4-hop in its id and carries 2 steps: the signals disagree.
+        rows += [
+            {
+                "id": "4hop1__liar",
+                "question": "q?",
+                "question_decomposition": [{"question": "s1?"}, {"question": "s2?"}],
+            }
+        ]
+        with self.assertRaises(SystemExit) as ctx:
+            fd.select_arm_examples(
+                arm, rows, require(cfg, "data"), seed=42, max_reported_ids=MAX_LOAD_IDS
+            )
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO TRAIN", message)
+        self.assertIn("4hop1__liar", message)
+        self.assertIn("train_hops=[2, 3]", message)
+
+    def test_hop_disagreement_is_not_fatal_for_an_arm_without_a_hop_filter(self) -> None:
+        cfg = load_config(CONFIG_NAME)
+        arm = fd.resolve_arm(cfg, "full_train")
+        rows = _rows(("2hop__good", 2))
+        rows += [
+            {
+                "id": "4hop1__liar",
+                "question": "q?",
+                "question_decomposition": [{"question": "s1?"}, {"question": "s2?"}],
+            }
+        ]
+        examples, record = fd.select_arm_examples(
+            arm, rows, require(cfg, "data"), seed=42, max_reported_ids=MAX_LOAD_IDS
+        )
+        self.assertEqual(len(examples), 2)
+        self.assertFalse(record["hop_disagreement_fatal"])
+        self.assertEqual(record["source_rows"]["hop_disagreement_count"], 1)
+        self.assertEqual(record["source_rows"]["hop_disagreement_ids"], ["4hop1__liar"])
+
+    def test_the_reported_id_cap_comes_from_the_config(self) -> None:
+        rows = [
+            {
+                "id": f"4hop1__liar{i}",
+                "question": "q?",
+                "question_decomposition": [{"question": "s?"}],
+            }
+            for i in range(5)
+        ]
+        _, stats = fd.build_examples(rows, DATA_CFG, max_reported_ids=2)
+        self.assertEqual(stats["hop_disagreement_count"], 5)
+        self.assertEqual(len(stats["hop_disagreement_ids"]), 2)
+        self.assertEqual(stats["hop_disagreement_ids_capped_at"], 2)
+
     def test_hop_disagreement_is_recorded_not_hidden(self) -> None:
         rows = [{"id": "4hop1__x", "question": "q?", "question_decomposition": [{"question": "s?"}]}]
-        examples, stats = fd.build_examples(rows, DATA_CFG)
+        examples, stats = _built(rows)
         self.assertEqual(stats["hop_disagreement_count"], 1)
         self.assertEqual(stats["hop_disagreement_ids"], ["4hop1__x"])
         self.assertEqual(examples[0].hop, 4)
@@ -260,7 +388,9 @@ class TestArmSelection(unittest.TestCase):
         cfg = load_config(CONFIG_NAME)
         arm = fd.resolve_arm(cfg, "generalisation_2_3hop")
         rows = _rows(("2hop__a", 2), ("3hop1__b", 3), ("4hop1__c", 4))
-        examples, record = fd.select_arm_examples(arm, rows, require(cfg, "data"), seed=42)
+        examples, record = fd.select_arm_examples(
+            arm, rows, require(cfg, "data"), seed=42, max_reported_ids=MAX_LOAD_IDS
+        )
         self.assertEqual(record["train_hops"], [2, 3])
         self.assertEqual(record["num_after_hop_filter"], 2)
         self.assertEqual(record["num_selected"], 2)
@@ -424,6 +554,37 @@ class TestModelSizeGateWiring(unittest.TestCase):
         self.assertEqual(record["total_parameters"], 100)
         self.assertAlmostEqual(record["trainable_percent"], 10.0)
 
+    def test_the_total_is_the_model_size_count_not_a_raw_numel_sum(self) -> None:
+        """Under 4-bit loading a numel sum halves the model; the record must not.
+
+        ``transformers``' ``num_parameters`` counts a packed ``Params4bit`` as the parameters
+        it stores, so ``src/model_size.py``'s ``count_parameters`` is the denominator that
+        matches ``base_model_size.parameter_count`` in the same metrics JSON. This stub
+        reports the two differently on purpose: 200 from ``num_parameters``, 100 from the
+        parameter list.
+        """
+
+        class _Param:
+            def __init__(self, n: int, trainable: bool) -> None:
+                self._n = n
+                self.requires_grad = trainable
+
+            def numel(self) -> int:
+                return self._n
+
+        class _PackedModel:
+            def num_parameters(self) -> int:
+                return 200
+
+            def parameters(self):
+                return [_Param(90, False), _Param(10, True)]
+
+        record = train_lora.trainable_parameter_record(_PackedModel())
+        self.assertEqual(record["trainable_parameters"], 10)
+        self.assertEqual(record["total_parameters"], 200)
+        self.assertAlmostEqual(record["trainable_percent"], 5.0)
+        self.assertIn("count_parameters", record["counting_note"])
+
 
 def _trl_and_peft_available() -> bool:
     try:
@@ -472,6 +633,147 @@ class TestTrainerConfigBuildsFromCommittedConfig(unittest.TestCase):
 
         dataset = Dataset.from_list([{"prompt": "p", "completion": "c"}])
         self.assertEqual(sorted(dataset.column_names), ["completion", "prompt"])
+
+
+class TestAdapterRequiresZeroShot(unittest.TestCase):
+    """``--adapter`` without ``--no-few-shot`` is refused, not warned about."""
+
+    def _check(self, **kwargs):
+        import run_decomposer
+
+        return run_decomposer.check_adapter_few_shot_combination(**kwargs)
+
+    def test_adapter_without_no_few_shot_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(adapter="runs/x/adapter", no_few_shot=False, override=False)
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO RUN", message)
+        self.assertIn("--no-few-shot", message)
+        self.assertIn("--adapter-with-few-shot-i-know", message)
+
+    def test_adapter_with_no_few_shot_is_the_fine_tuned_arm(self) -> None:
+        record = self._check(adapter="runs/x/adapter", no_few_shot=True, override=False)
+        self.assertEqual(record["adapter"], "runs/x/adapter")
+        self.assertTrue(record["no_few_shot"])
+        self.assertFalse(record["adapter_few_shot_override"])
+
+    def test_the_named_override_is_honoured_and_recorded(self) -> None:
+        record = self._check(adapter="runs/x/adapter", no_few_shot=False, override=True)
+        self.assertTrue(record["adapter_few_shot_override"])
+        self.assertFalse(record["no_few_shot"])
+
+    def test_the_prompting_arm_is_untouched(self) -> None:
+        record = self._check(adapter=None, no_few_shot=False, override=False)
+        self.assertIsNone(record["adapter"])
+
+    def test_the_override_flag_is_on_the_parser(self) -> None:
+        import run_decomposer
+
+        self.assertEqual(
+            run_decomposer.ADAPTER_FEW_SHOT_OVERRIDE_FLAG, "--adapter-with-few-shot-i-know"
+        )
+
+
+class TestEvalHopsAreEnforced(unittest.TestCase):
+    """An arm's ``eval_hops`` decides which items may be scored, on every side."""
+
+    def setUp(self) -> None:
+        import compare_decomposer_arms
+
+        self.mod = compare_decomposer_arms
+        self.cfg = load_config(CONFIG_NAME)
+        self.tmp = Path(__file__).resolve().parent / "_tmp_eval_hops"
+        self.tmp.mkdir(exist_ok=True)
+
+    def tearDown(self) -> None:
+        for path in self.tmp.glob("*.json"):
+            path.unlink()
+        self.tmp.rmdir()
+
+    def _write(self, name: str, payload: Any) -> Path:
+        path = self.tmp / name
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def _rows(self, *ids: str) -> list[dict[str, Any]]:
+        return [{"item_id": i, "step_f1": 1.0} for i in ids]
+
+    def test_both_per_item_shapes_yield_the_ids(self) -> None:
+        bare = self._write("bare.json", self._rows("2hop__a", "4hop1__b"))
+        stamped = self._write(
+            "stamped.json",
+            {"schema": "musique_decomposition_per_item/1", "items": self._rows("2hop__a")},
+        )
+        self.assertEqual(self.mod.per_item_ids(bare), ["2hop__a", "4hop1__b"])
+        self.assertEqual(self.mod.per_item_ids(stamped), ["2hop__a"])
+
+    def test_items_inside_the_arms_eval_hops_pass_and_are_recorded(self) -> None:
+        arm = fd.resolve_arm(self.cfg, "pool_2000")
+        record = self.mod.assert_items_within_eval_hops(
+            "prompting",
+            self.tmp / "x.json",
+            ["2hop__a", "3hop1__b", "4hop2__c"],
+            require(arm, "eval_hops"),
+            max_reported=20,
+        )
+        self.assertEqual(record["eval_hops"], [2, 3, 4])
+        self.assertEqual(record["items_checked"], 3)
+        self.assertEqual(record["hop_counts"], {"2": 1, "3": 1, "4": 1})
+        self.assertTrue(record["asserted"])
+
+    def test_a_generalisation_comparison_refuses_2_and_3_hop_items(self) -> None:
+        arm = fd.resolve_arm(self.cfg, "generalisation_2_3hop")
+        with self.assertRaises(SystemExit) as ctx:
+            self.mod.assert_items_within_eval_hops(
+                "finetuned_2_3hop",
+                self.tmp / "x.json",
+                ["4hop1__ok", "2hop__nope", "3hop1__nope"],
+                require(arm, "eval_hops"),
+                max_reported=20,
+            )
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO COMPARE", message)
+        self.assertIn("2hop__nope", message)
+        self.assertIn("3hop1__nope", message)
+        self.assertNotIn("4hop1__ok", message)
+
+    def test_the_baseline_side_is_checked_too(self) -> None:
+        """A 4-hop-only arm against a baseline scored on all 600 is not a comparison."""
+        with self.assertRaises(SystemExit) as ctx:
+            self.mod.assert_items_within_eval_hops(
+                "prompting", self.tmp / "x.json", ["2hop__a"], [4], max_reported=20
+            )
+        self.assertIn("prompting", str(ctx.exception))
+
+    def test_an_id_without_a_hop_prefix_is_fatal(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self.mod.assert_items_within_eval_hops(
+                "prompting", self.tmp / "x.json", ["no_hop_prefix"], [2, 3, 4], max_reported=20
+            )
+        message = str(ctx.exception)
+        self.assertIn("no MuSiQue hop prefix", message)
+        self.assertIn("no_hop_prefix", message)
+
+    def test_no_scored_items_is_fatal_rather_than_a_vacuous_pass(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self.mod.assert_items_within_eval_hops(
+                "prompting", self.tmp / "x.json", [], [2, 3, 4], max_reported=20
+            )
+        self.assertIn("no scored items", str(ctx.exception))
+
+    def test_the_offending_id_list_is_capped(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self.mod.assert_items_within_eval_hops(
+                "prompting",
+                self.tmp / "x.json",
+                [f"2hop__x{i}" for i in range(10)],
+                [4],
+                max_reported=3,
+            )
+        self.assertIn("(+7 more)", str(ctx.exception))
+
+    def test_the_cap_is_a_config_value(self) -> None:
+        self.assertEqual(int(require(self.cfg, "evaluation.max_reported_ids")), 20)
 
 
 class TestCostReporting(unittest.TestCase):
