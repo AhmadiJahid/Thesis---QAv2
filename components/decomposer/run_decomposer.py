@@ -75,6 +75,7 @@ from seeding import new_rng, set_global_seed  # noqa: E402
 from step_lines import (  # noqa: E402
     completed_step_line_count,
     post_process_generation,
+    split_step_lines,
     step_line_count,
     trim_to_step_lines,
 )
@@ -476,7 +477,15 @@ def examples_from_reranked_row(
                 "'pool_few_shot_decomposition_musique'. The pool is corrupt: "
                 "re-run enrich_pool_decompositions.py and rebuild similarity/rerank."
             )
-        out.append({"question": cand.get("pool_question", ""), "decomposition": decomp})
+        out.append(
+            {
+                # pool_id travels with the exemplar so a refusal can name the offending row
+                # (exemplar_gold_hop_count) and so the prompt log is traceable to the pool.
+                "pool_id": cand.get("pool_id"),
+                "question": cand.get("pool_question", ""),
+                "decomposition": decomp,
+            }
+        )
     if len(out) != k:
         raise AssertionError(
             f"[decomposer] query_id={query_id!r} assembled {len(out)} examples but requested k={k}."
@@ -494,13 +503,73 @@ def examples_from_reranked_row(
     return out, self_excluded
 
 
-def format_few_shot_examples(examples: list[dict], hop_count: int | None) -> str:
-    """Format (question, decomposition) pairs. Omit the hop line when unguided."""
+#: What the ``Hop count:`` line above each few-shot exemplar states, in a *guided* prompt.
+#: ``exemplar_gold`` - the exemplar's own gold hop count, i.e. the number of steps in its own
+#: gold decomposition. Jahid's decision of 2026-08-19 (issue #12) for the MuSiQue conditions.
+#: ``query`` - the query's hop count on every exemplar. This is v1's behaviour, kept for the
+#: MetaQA path so that path's prompts are not changed by a MuSiQue decision.
+EXEMPLAR_HOP_MODES = ("exemplar_gold", "query")
+
+
+def exemplar_gold_hop_count(example: dict) -> int:
+    """The exemplar's own gold hop count: the step count of its gold decomposition.
+
+    Counted with ``src/step_lines.py::split_step_lines``, the same splitter the evaluator
+    scores step counts with, so "hop count 3" on an exemplar means the three steps that
+    would be scored. A missing or empty decomposition is a refusal, not a fallback to the
+    query's hop count: that fallback is exactly the behaviour Jahid's 2026-08-19 decision
+    removed, and re-introducing it for a broken pool row would put a wrong number in the
+    prompt while looking fine.
+    """
+    pool_id = example.get("pool_id") or example.get("id") or "<unknown pool id>"
+    steps = split_step_lines(example.get("decomposition") or "")
+    if not steps:
+        raise SystemExit(
+            f"[decomposer] few-shot exemplar {pool_id!r} has no usable gold decomposition, so "
+            "its own gold hop count cannot be stated on its 'Hop count:' line "
+            f"(decomposition={example.get('decomposition')!r}).\n"
+            "Per Jahid's 2026-08-19 decision each exemplar's hop line carries that exemplar's "
+            "own gold step count, and there is deliberately no fallback to the query's hop "
+            "count. Rebuild the retrieval input / pool so every exemplar ships its gold "
+            "decomposition (enrich_pool_decompositions.py fills "
+            "pool_few_shot_decomposition_musique)."
+        )
+    return len(steps)
+
+
+def format_few_shot_examples(
+    examples: list[dict],
+    hop_count: int | None,
+    *,
+    exemplar_hop_mode: str = "query",
+) -> str:
+    """Format (question, decomposition) pairs. Omit the hop line when unguided.
+
+    In a guided prompt every exemplar gets a ``Hop count:`` line. What that number is comes
+    from ``exemplar_hop_mode`` (see :data:`EXEMPLAR_HOP_MODES`), because it is a design
+    decision rather than an implementation detail: v1 stamped the *query's* hop count on
+    every exemplar, which meant most exemplar hop lines disagreed with the exemplar shown
+    beneath them. Jahid decided on 2026-08-19 that the MuSiQue conditions state each
+    exemplar's own gold hop count instead; the MetaQA path keeps v1's behaviour.
+
+    The query's own hop line (the ``{hop_count}`` slot in the prompt template) is unaffected
+    either way, and an unguided prompt has no hop line anywhere.
+    """
+    if exemplar_hop_mode not in EXEMPLAR_HOP_MODES:
+        raise SystemExit(
+            f"unknown exemplar hop mode {exemplar_hop_mode!r} (expected one of "
+            f"{list(EXEMPLAR_HOP_MODES)})"
+        )
     blocks = []
     for ex in examples:
         if hop_count is not None:
+            exemplar_hop = (
+                exemplar_gold_hop_count(ex)
+                if exemplar_hop_mode == "exemplar_gold"
+                else hop_count
+            )
             block = (
-                f"Hop count: {hop_count}\n"
+                f"Hop count: {exemplar_hop}\n"
                 f"Question: {ex['question']}\n"
                 f"Decomposition:\n{ex['decomposition']}"
             )
@@ -1257,6 +1326,14 @@ def main() -> None:
     quantization = args.quantization or require(model_cfg, "loader.quantization")
     hops = [int(h) for h in require(cfg, "hops")]
     unguided_hop_placeholder = require(cfg, "unguided_hop_placeholder")
+    # Required in every config rather than defaulted here: what an exemplar's hop line says is
+    # a design decision (Jahid, 2026-08-19), and the two configs answer it differently.
+    exemplar_hop_mode = require(cfg, "few_shot_exemplar_hop_count")
+    if exemplar_hop_mode not in EXEMPLAR_HOP_MODES:
+        raise SystemExit(
+            f"few_shot_exemplar_hop_count in {cfg.get('_config_path', '<config>')} is "
+            f"{exemplar_hop_mode!r}; expected one of {list(EXEMPLAR_HOP_MODES)}"
+        )
 
     prompt_style = require(model_cfg, "prompt_style")
     generation_overrides = optional(cfg, "generation_overrides")
@@ -1380,6 +1457,7 @@ def main() -> None:
         "seeded": seeded,
         "sample_size": sample_size,
         "hops": hops,
+        "few_shot_exemplar_hop_count": exemplar_hop_mode,
         "questions_template_key": require(cfg, "questions_template_key"),
         "questions_format": require(cfg, "questions_format"),
         "device": device,
@@ -1701,7 +1779,13 @@ def main() -> None:
                 )
                 source = "random"
 
-        few_shot_str = format_few_shot_examples(sampled, hop_input) if sampled else ""
+        few_shot_str = (
+            format_few_shot_examples(
+                sampled, hop_input, exemplar_hop_mode=exemplar_hop_mode
+            )
+            if sampled
+            else ""
+        )
         cost: dict[str, Any] = {
             "prompt_tokens": None,
             "completion_tokens": None,

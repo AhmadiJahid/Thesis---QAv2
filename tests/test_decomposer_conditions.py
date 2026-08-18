@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -100,6 +101,13 @@ def test_metaqa_defaults_unchanged() -> None:
     check("metaqa config has no conditions block", "conditions" not in cfg)
     check("metaqa config has no generation overrides", "generation_overrides" not in cfg)
     check("metaqa seed is 42", cfg["seed"] == 42, repr(cfg["seed"]))
+    # Jahid's 2026-08-19 exemplar-hop decision was taken for the MuSiQue conditions; the
+    # MetaQA path keeps v1's behaviour, so this config must still say "query".
+    check(
+        "metaqa exemplar hop lines still state the query's hop count (v1)",
+        cfg["few_shot_exemplar_hop_count"] == "query",
+        repr(cfg["few_shot_exemplar_hop_count"]),
+    )
 
 
 def test_musique_config() -> dict:
@@ -120,6 +128,11 @@ def test_musique_config() -> dict:
     check("musique sample_size is null", cfg["sample_size"] is None)
     check("musique seed matches metaqa seed 42", cfg["seed"] == 42, repr(cfg["seed"]))
     check("eval_rows_per_hop is 200", cfg["eval_rows_per_hop"] == 200)
+    check(
+        "musique exemplar hop lines state the exemplar's own gold hop count",
+        cfg["few_shot_exemplar_hop_count"] == "exemplar_gold",
+        repr(cfg["few_shot_exemplar_hop_count"]),
+    )
     check(
         "max_new_tokens override is present",
         require(cfg, "generation_overrides.max_new_tokens") == 256,
@@ -324,6 +337,66 @@ def test_compound_hop_lines_are_refused() -> None:
         "the derivation would otherwise have dropped 'Output ONLY the steps.'",
         "Output ONLY the steps." not in rd.derive_unguided_template(guided),
     )
+
+
+def test_exemplar_hop_lines() -> None:
+    """Each exemplar's hop line is its OWN gold step count (Jahid, 2026-08-19, issue #12)."""
+    print("[exemplar hop lines]")
+    examples = [
+        {"pool_id": "2hop__p1", "question": "q1?", "decomposition": "1. a?\n2. b?"},
+        {"pool_id": "4hop1__p2", "question": "q2?", "decomposition": "a?\nb?\nc?\nd?"},
+    ]
+    # Hand-computed: 2 steps and 4 steps, whatever the query's hop count is (here 3).
+    block = rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="exemplar_gold")
+    hops = [int(m) for m in re.findall(r"Hop count: (\d+)", block)]
+    check("exemplar_gold states each exemplar's own step count", hops == [2, 4], str(hops))
+    check(
+        "exemplar_gold ignores the query's hop count",
+        "Hop count: 3" not in block,
+    )
+    check(
+        "the per-exemplar count is the shared splitter's",
+        [rd.exemplar_gold_hop_count(e) for e in examples]
+        == [len(split_step_lines(e["decomposition"])) for e in examples],
+    )
+
+    # v1's behaviour is still available, and is what the MetaQA config selects.
+    v1_block = rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="query")
+    v1_hops = [int(m) for m in re.findall(r"Hop count: (\d+)", v1_block)]
+    check("query mode stamps the query's hop count on every exemplar", v1_hops == [3, 3], str(v1_hops))
+    check(
+        "the two modes differ only in the hop lines",
+        re.sub(r"Hop count: \d+", "Hop count: X", block)
+        == re.sub(r"Hop count: \d+", "Hop count: X", v1_block),
+    )
+
+    # An unguided prompt has no hop line at all, in either mode.
+    for mode in rd.EXEMPLAR_HOP_MODES:
+        unguided_block = rd.format_few_shot_examples(examples, None, exemplar_hop_mode=mode)
+        check(f"unguided block has no hop line ({mode})", "Hop count" not in unguided_block)
+
+    # A missing or empty gold decomposition is a refusal naming the pool id - no fallback.
+    for broken, why in (
+        ({"pool_id": "2hop__bad", "question": "q?", "decomposition": ""}, "an empty decomposition"),
+        ({"pool_id": "2hop__none", "question": "q?", "decomposition": None}, "a missing decomposition"),
+        ({"pool_id": "2hop__blank", "question": "q?", "decomposition": "\n  \n"}, "a blank decomposition"),
+    ):
+        try:
+            rd.format_few_shot_examples([broken], 3, exemplar_hop_mode="exemplar_gold")
+        except SystemExit as exc:
+            check(
+                f"refused: {why}, naming the pool id",
+                broken["pool_id"] in str(exc) and "no fallback" in str(exc),
+            )
+        else:
+            check(f"refused: {why}, naming the pool id", False)
+
+    try:
+        rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="whatever")
+    except SystemExit:
+        check("an unknown exemplar hop mode is refused", True)
+    else:
+        check("an unknown exemplar hop mode is refused", False)
 
 
 def test_prompt_selection(cfg: dict) -> None:
@@ -737,6 +810,16 @@ def test_self_exclusion() -> None:
 # --------------------------------------------------------------- end-to-end arms
 
 
+#: An exemplar block in a rendered guided prompt: its stated hop count and its decomposition.
+#: The block ends at the next exemplar or at the "Task:" section (the query's own block).
+_EXEMPLAR_BLOCK_RX = re.compile(
+    r"Hop count: (\d+)\nQuestion: .*?\nDecomposition:\n(.*?)(?=\n\nHop count: |\n\nTask:)",
+    re.DOTALL,
+)
+#: The query's own hop line, which lives under "Task:" and keeps the query's gold hop count.
+_QUERY_HOP_RX = re.compile(r"Task:\nHop count: (\d+)")
+
+
 def _prompt_body(log_text: str) -> str:
     """The rendered prompt out of a prompts_log file, without header or response."""
     after = log_text.split("--- Prompt (", 1)[1]
@@ -824,6 +907,39 @@ def test_conditions_end_to_end() -> None:
             check(f"oracle_guided prompt {fname} injects '{want}'", want in body)
         hops_seen = sorted({r["hop_count"] for r in arms["oracle_guided"]["results"]})
         check("oracle_guided covered hops 2/3/4", hops_seen == [2, 3, 4], str(hops_seen))
+
+        # 2b. Every EXEMPLAR hop line states that exemplar's own gold step count (Jahid,
+        #     2026-08-19). Read off the rendered prompts, not the formatter: this is the
+        #     check that the decision actually reached the prompt. The query's hop line is
+        #     the last one (under "Task:") and is excluded here - check 2 covers it.
+        exemplar_lines = contradictions = 0
+        for fname, body in sorted(arms["oracle_guided"]["prompts"].items()):
+            for stated, decomp in _EXEMPLAR_BLOCK_RX.findall(body):
+                exemplar_lines += 1
+                if int(stated) != len(split_step_lines(decomp)):
+                    contradictions += 1
+        check(
+            f"every exemplar hop line equals its own decomposition's step count "
+            f"({exemplar_lines} exemplar lines)",
+            exemplar_lines > 0 and contradictions == 0,
+            f"contradictions={contradictions}",
+        )
+        # The query's hop line is untouched by the change: still the row's gold depth, and
+        # it can differ from every exemplar's, which is the point.
+        query_hops = [
+            int(_QUERY_HOP_RX.search(body).group(1))
+            for _, body in sorted(arms["oracle_guided"]["prompts"].items())
+        ]
+        check(
+            "the query hop line is still the row's gold hop count",
+            query_hops == [r["hop_count"] for r in arms["oracle_guided"]["results"]],
+            str(query_hops),
+        )
+        check(
+            "the arms record which exemplar hop rule they ran under",
+            {a["snapshot"]["few_shot_exemplar_hop_count"] for a in arms.values()}
+            == {"exemplar_gold"},
+        )
 
         # 3. unguided_capped - same prompt as unguided (the cap is a decoding-time rule, not
         #    a prompt change) and the cap from the config is wired through.
@@ -1074,6 +1190,48 @@ def test_conditions_end_to_end() -> None:
         shutil.rmtree(out_root, ignore_errors=True)
 
 
+def test_metaqa_guided_prompt_is_unchanged() -> None:
+    """The MetaQA path still stamps the QUERY's hop count on every exemplar (v1).
+
+    Jahid's 2026-08-19 exemplar-hop decision was taken for the MuSiQue conditions. The two
+    paths share ``format_few_shot_examples``, so the behaviour is selected by
+    ``few_shot_exemplar_hop_count`` in each config - and this check is what stops the MuSiQue
+    decision from leaking into MetaQA prompts.
+    """
+    print("[metaqa guided prompt]")
+    out_root = Path(tempfile.mkdtemp(prefix="qav2-metaqa-guided-"))
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "components" / "decomposer" / "run_decomposer.py"),
+                "--model", E2E_MODEL, "--guided", "--dry-run", "--dry-run-limit", "2",
+                "--retrieval-input", str(REPO_ROOT / "tests" / "fixtures" / "retrieval" / "top20.jsonl"),
+                "--retrieval-mode", "uniform", "--retrieval-k", "5",
+                "--output-root", str(out_root),
+            ],
+            env=_runner_env(), capture_output=True, text=True,
+        )
+        check("a guided MetaQA dry run still succeeds", proc.returncode == 0, f"rc={proc.returncode}")
+        run_dir = sorted(out_root.iterdir())[0]
+        snapshot = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+        check(
+            "the MetaQA run records the v1 exemplar hop rule",
+            snapshot["few_shot_exemplar_hop_count"] == "query",
+            snapshot["few_shot_exemplar_hop_count"],
+        )
+        for path in sorted((run_dir / "prompts_log").glob("prompt_idx*.txt")):
+            body = _prompt_body(path.read_text(encoding="utf-8"))
+            hops = re.findall(r"Hop count: (\d+)", body)
+            check(
+                f"{path.name}: every hop line is the query's hop count (v1 behaviour)",
+                len(hops) > 1 and len(set(hops)) == 1,
+                str(hops),
+            )
+    finally:
+        shutil.rmtree(out_root, ignore_errors=True)
+
+
 # ----------------------------------------------------------------- data resolution
 
 
@@ -1119,6 +1277,7 @@ def main() -> int:
     test_conditions(cfg)
     test_prompt_invariant(cfg)
     test_compound_hop_lines_are_refused()
+    test_exemplar_hop_lines()
     test_prompt_selection(cfg)
     test_guided_cli_cannot_override_a_condition(cfg)
     test_shared_step_normalization()
@@ -1129,6 +1288,7 @@ def main() -> int:
     test_stopping_criteria_adapter()
     test_self_exclusion()
     test_conditions_end_to_end()
+    test_metaqa_guided_prompt_is_unchanged()
     if args.skip_data_checks:
         print("[evaluation set] skipped (--skip-data-checks)")
     else:

@@ -38,7 +38,7 @@ When **not** to write one:
 | [0010](./0010-keep-the-router-as-a-hop-count-regressor-prioritize-fine-tuning.md) | Keep the Router, as a Hop-Count Regressor; Prioritize Fine-Tuning | Accepted |
 | [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md) | Comparison-Artifact Conventions and the Significance-Claim Floor | Accepted (provisional items pending Jahid/supervisor) |
 | [0012](./0012-fine-tuning-arm-conventions-for-the-decomposer.md) | Fine-Tuning Arm Conventions for the Decomposer | Accepted (open items pending Jahid/supervisor) |
-| [0013](./0013-guided-vs-unguided-condition-conventions-on-the-musique-set.md) | Guided-vs-Unguided Condition Conventions on the MuSiQue Set | Accepted (three open questions for Jahid) |
+| [0013](./0013-guided-vs-unguided-condition-conventions-on-the-musique-set.md) | Guided-vs-Unguided Condition Conventions on the MuSiQue Set | Accepted (two open questions for Jahid) |
 
 ---
 

@@ -1,6 +1,6 @@
 # 0013. Guided-vs-Unguided Condition Conventions on the MuSiQue Set
 
-- **Status**: Accepted (three items are open questions for Jahid, marked below)
+- **Status**: Accepted (two items remain open questions for Jahid, marked below; the third was decided on 2026-08-19)
 - **Date**: 2026-08-19 (amended the same day after the PR #21 delta re-review)
 
 Records the conventions established by PR #21 (issue #12) for the guided-versus-unguided
@@ -123,14 +123,42 @@ decision it protects:
 - **An unguided prompt that mentions the hop count** (`unguided_prompt_must_omit_hop_count`),
   including a hardcoded hop line with no placeholder in it.
 
-**8. Self-exclusion on every few-shot path.** An exemplar that is the query itself — same id,
+**8. Every hop line in a guided prompt states a *gold* hop count, and there are two kinds.**
+Decided by Jahid on 2026-08-19 (recorded on issue #12), resolving what this ADR first filed as
+open question 3:
+
+- the **query's** hop line (the `{hop_count}` slot in the prompt template) states the query's
+  gold hop count — unchanged;
+- each **few-shot exemplar's** `Hop count:` line states **that exemplar's own gold hop count**,
+  defined as the number of steps in its own gold decomposition
+  (`pool_few_shot_decomposition_musique`), counted with `src/step_lines.py::split_step_lines`;
+- the unguided arms carry no hop line anywhere — also unchanged.
+
+An exemplar whose gold decomposition is missing or empty is a **refusal** naming its pool id.
+There is deliberately no fallback to the query's hop count: that fallback is the behaviour this
+decision removes, and it would put a wrong number in the prompt while looking healthy.
+
+This **deviates from v1's prompt behaviour.** v1's `format_few_shot_examples` stamped the
+*query's* hop count on every exemplar, so most exemplar hop lines disagreed with the exemplar
+printed beneath them — measured at **1740 of 3000 (58.0%)** on the 600 `oracle_guided` prompts
+of the 2026-08-19 dry run, and **0 of 3000** after the change. The guided numbers in Jahid's v1
+slides were therefore produced under a different prompt and are **not directly comparable** to
+v2's guided arm. The MetaQA path keeps v1's behaviour (`few_shot_exemplar_hop_count: "query"` in
+`configs/decomposer.json`), verified byte-identical before and after, because this decision was
+taken for the MuSiQue conditions and no one asked to change MetaQA prompts.
+
+Two options were **not** taken: dropping the exemplar hop lines in both arms (leaving the query
+hop line as the only difference), and keeping v1's behaviour with the confound stated in the
+thesis.
+
+**9. Self-exclusion on every few-shot path.** An exemplar that is the query itself — same id,
 or the same question text after normalization — is dropped from the ranked list before the
 top-k is taken, on the reranked, bi-encoder and random-fallback paths alike, and the drop count
 is recorded in the metrics. This is latent while the pool comes from MuSiQue train and the
 queries from dev; it is leakage the moment a pool is drawn from the same split, and it would
 read as a quality gain rather than as an error.
 
-**9. Comparison artifacts are content-addressed.** Each run's snapshot records `prompt_sha256`
+**10. Comparison artifacts are content-addressed.** Each run's snapshot records `prompt_sha256`
 and `retrieval.input_sha256`. The retrieval file lives outside git (data never enters git), so
 "the same path" does not prove "the same bytes"; per ADR 0011's spirit, the three arms'
 comparability has to be checkable from the committed artifacts alone.
@@ -149,6 +177,12 @@ comparability has to be checkable from the committed artifacts alone.
   inside one clause.
 - The smoke test and the fixture-based conditions test must pass `--retrieval-input` and
   `--allow-unpinned-eval-set`; a real arm passes neither of those opt-outs.
+- v2's guided prompt differs from v1's in two ways now (the derived unguided prompt, item 3,
+  and the exemplar hop lines, item 8), so **v1's guided MuSiQue numbers are not a baseline for
+  v2's guided arm.** A v1-vs-v2 comparison would have to be re-run under v2's prompts.
+- `format_few_shot_examples` is shared with the MetaQA path, so its behaviour is now selected
+  by `few_shot_exemplar_hop_count` per config rather than being a property of the function. A
+  future caller has to state which rule it wants; there is no default in code.
 - Per-row results now carry `decomposition_raw`, `step_lines`, `hit_max_new_tokens` and
   `stopped_at_step_line_cap` in every arm, alongside the `prompt_tokens` /
   `completion_tokens` / `latency_seconds` cost fields of ADR
@@ -170,18 +204,8 @@ comparability has to be checkable from the committed artifacts alone.
 2. **Is `max_new_tokens: 256` the intended token cap?** It is a plumbing default carried from
    the largest per-model value, unmeasured. It bounds the uncapped arms, so it is part of the
    experiment's definition rather than an implementation detail.
-3. **The few-shot exemplar hop lines contradict the exemplars, and that is a confound in the
-   `oracle_guided` arm.** `format_few_shot_examples` (ported from v1) writes a
-   `Hop count: <n>` line above each exemplar using the **query's** hop count, not the
-   exemplar's own step count. Measured on the 600 `oracle_guided` prompts of the 2026-08-19
-   dry run (5 exemplars per prompt, 3000 exemplar hop lines): **1740 of 3000 (58.0%)** carry a
-   hop count that disagrees with the number of steps in the exemplar shown beneath it. So the
-   guided arm's prompt contains majority-incorrect hop labels, which is a different treatment
-   from "the gold hop count is stated". Three options, none chosen here: label each exemplar
-   with its **own** step count; drop the exemplar hop lines in **both** arms (keeping the query
-   hop line as the only difference); or keep v1's behaviour and state the confound in the
-   thesis. This is Jahid's design call — the behaviour was deliberately left untouched by this
-   PR, and no agent should change it.
+*(A third open question — what the few-shot exemplar hop lines should say — was decided by
+Jahid on 2026-08-19 and is now Decision item 8.)*
 
 ## Alternatives considered
 

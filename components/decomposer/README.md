@@ -41,7 +41,7 @@ condition that tries to move them, so the arms cannot drift apart.
 | condition | prompt | generation |
 |---|---|---|
 | `unguided` | no hop count | `generation_overrides.max_new_tokens` only |
-| `oracle_guided` | gold hop count of the question's source file | same |
+| `oracle_guided` | the query's gold hop count, and each exemplar's own gold hop count | same |
 | `unguided_capped` | no hop count | stops after `stop_after_step_lines` step lines (default 8) |
 
 The cap is a `StoppingCriteria` during decoding, plus a trim of the partial line the
@@ -53,6 +53,16 @@ and `metrics.json` reports `rows_at_step_line_cap` on the same count. Next to it
 (read from the criterion's state) — a model that ends on exactly the cap by itself is not a
 capped generation, and only the second number is causal. Both are defined in
 `metrics.json`'s `truncation_definitions`.
+
+**Hop lines in a guided prompt are gold, and there are two kinds** (Jahid's decision of
+2026-08-19, issue #12; ADR 0013 item 8). The query's hop line states the query's gold hop count;
+each few-shot exemplar's `Hop count:` line states *that exemplar's own* gold hop count — the
+number of steps in its own gold decomposition, counted with the shared splitter. An exemplar
+with no usable gold decomposition is refused, naming its pool id, rather than falling back to
+the query's hop count. This is selected by `few_shot_exemplar_hop_count` per config: the MuSiQue
+config sets `exemplar_gold`, and `configs/decomposer.json` keeps v1's `query` so MetaQA guided
+prompts are unchanged (verified byte-identical). v1 stamped the query's hop count on every
+exemplar, so v1's guided numbers are not directly comparable to v2's.
 
 **The arms differ in hop information and nothing else — enforced, not asserted.** The
 config sets two guards, both refusals:
