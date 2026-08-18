@@ -139,13 +139,24 @@ def _stages() -> list[Stage]:
                 musique_eval_dir / "eval_per_item.json",
             ],
             expect_metrics=[
-                # Deterministic over the fixture: 4 predictions in, 1 with no gold row.
-                (musique_eval_dir / "eval_metrics.json", "total_evaluated", 3),
+                # Deterministic over the fixture: 5 predictions in, 1 with no gold row.
+                (musique_eval_dir / "eval_metrics.json", "total_evaluated", 4),
                 (musique_eval_dir / "eval_metrics.json", "missing_gold_count", 1),
-                (musique_eval_dir / "eval_metrics.json", "exact_match_rate", 2 / 3),
-                (musique_eval_dir / "eval_metrics.json", "step_f1_macro", 8 / 9),
-                (musique_eval_dir / "eval_metrics.json", "rouge_l_f1_macro", 32 / 33),
-                (musique_eval_dir / "eval_metrics.json", "composite_score", 0.9222222222222222),
+                (musique_eval_dir / "eval_metrics.json", "exact_match_rate", 3 / 4),
+                (musique_eval_dir / "eval_metrics.json", "step_f1_macro", 11 / 12),
+                (musique_eval_dir / "eval_metrics.json", "rouge_l_f1_macro", 51 / 55),
+                (musique_eval_dir / "eval_metrics.json", "composite_score", 113 / 120),
+                # 1 - over - under over the 4 rows, all of which match gold in step count.
+                (musique_eval_dir / "eval_metrics.json", "step_count_exact_rate", 1.0),
+                # The two gold-hop-2 rows are 2hop__d001_a (identical to gold) and
+                # 2hop__d004_p (differs from gold ONLY by punctuation). _normalize_step
+                # strips punctuation, so both score a perfect exact match; _tokenize does
+                # not, so ROUGE-L sees 8 of 10 tokens on the punctuation row -> (1 + 0.8)/2.
+                # Deleting the punctuation-strip line in _normalize_step drops this
+                # exact_match_rate to 0.5 and turns the stage red.
+                (musique_eval_dir / "eval_metrics.json", "per_gold_hop_metrics.2.exact_match_rate", 1.0),
+                (musique_eval_dir / "eval_metrics.json", "per_gold_hop_metrics.2.step_f1_macro", 1.0),
+                (musique_eval_dir / "eval_metrics.json", "per_gold_hop_metrics.2.rouge_l_f1_macro", 0.9),
             ],
             note="string-level MuSiQue decomposition scoring against gold",
         ),
@@ -516,17 +527,19 @@ def _stages() -> list[Stage]:
             ],
             expect_metrics=[
                 # Both fixture arms hold the same predictions, so the comparison is exactly
-                # zero by construction: this pins the wiring, not a result.
-                (arms_out / "arms_metrics.json", "comparisons.finetuned_vs_prompting.num_aligned_items", 3),
+                # zero by construction: this pins the wiring, not a result. The item count is
+                # 4 because the fixture's 5 predictions match 4 gold rows (the fifth has no
+                # gold, by design); it was 3 before PR #22 added the fourth gold row.
+                (arms_out / "arms_metrics.json", "comparisons.finetuned_vs_prompting.num_aligned_items", 4),
                 (
                     arms_out / "arms_metrics.json",
                     "comparisons.finetuned_vs_prompting.bootstrap.composite_score.difference",
                     0.0,
                 ),
                 (arms_out / "arms_metrics.json", "arms.prompting.cost.mean_total_tokens_per_query", 560.0),
-                # The eval-hop restriction was checked, on both sides, over the 3 scored items.
-                (arms_out / "arms_metrics.json", "arms.prompting.eval_hops_check.items_checked", 3),
-                (arms_out / "arms_metrics.json", "arms.finetuned.eval_hops_check.items_checked", 3),
+                # The eval-hop restriction was checked, on both sides, over the 4 scored items.
+                (arms_out / "arms_metrics.json", "arms.prompting.eval_hops_check.items_checked", 4),
+                (arms_out / "arms_metrics.json", "arms.finetuned.eval_hops_check.items_checked", 4),
             ],
             note="score two arms with one evaluator config, assert both against the "
             "--eval-arm's eval_hops, compare them paired, and put cost next to quality in "
