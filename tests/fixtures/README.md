@@ -33,7 +33,13 @@ data_root/                     # stands in for the real data_root (configs/smoke
     chunks_only_question_masked/{bert_large_NER,roberta_large_ner_english}/
       ..._train_0_questions_2_hop.jsonl   # two NER variants of the same rows
 predictions/                   # decomposer-shaped prediction files
-retrieval/                     # a similarity top-k file (also used as decomposer input)
+retrieval/
+  top20.jsonl                  # a similarity top-k file (also used as decomposer input)
+  top5_musique_conditions.jsonl # retrieval input for the three MuSiQue conditions: one row
+                               # per dev_sample fixture question (9), typed_top_k of 6 so
+                               # k=5 still holds after self-exclusion. The first row lists
+                               # the query itself as its top candidate, so the smoke test
+                               # exercises the self-exclusion path.
 pool_sweep_summary/            # a sweep summary CSV for the plotting script
 router_runs/                   # two completed router runs for the analysis script
 decomposer_run/                # a run directory with analysis/ dumps

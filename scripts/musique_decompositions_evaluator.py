@@ -51,6 +51,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from run_artifacts import now_iso, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, resolve_path, runs_path  # noqa: E402
 from seeding import set_global_seed  # noqa: E402
+from step_lines import split_step_lines  # noqa: E402
 
 _WS_RX = re.compile(r"\s+")
 _PUNCT_KEEP_HASH_RX = re.compile(r"[^\w\s#]")
@@ -66,8 +67,9 @@ METRIC_DEFINITIONS: dict[str, Any] = {
     ),
     "step_splitting": (
         "a string decomposition is split on newlines and a leading '<n>. ' enumerator "
-        "is removed per line; a list decomposition takes each string, or each item's "
-        "'question' field"
+        "is removed per line (src/step_lines.py::split_step_lines, shared with the "
+        "decomposer's step-line budget so both count the same steps); a list "
+        "decomposition takes each string, or each item's 'question' field"
     ),
     "question_matching": (
         "a prediction is joined to gold by its question text, lowercased and "
@@ -231,14 +233,10 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in _WS_RX.sub(" ", text.strip().lower()).split(" ") if t]
 
 
-def _split_decomposition_text(text: str) -> list[str]:
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    cleaned: list[str] = []
-    for ln in lines:
-        ln = re.sub(r"^\s*\d+\.\s*", "", ln)
-        if ln:
-            cleaned.append(ln)
-    return cleaned
+#: The step splitter now lives in ``src/step_lines.py`` so the decomposer's step-line
+#: budget is counted with the same rule this evaluator scores with (issue #12 review).
+#: The alias is kept because it is this module's established name for it.
+_split_decomposition_text = split_step_lines
 
 
 def _decomp_to_steps(value: Any) -> list[str]:

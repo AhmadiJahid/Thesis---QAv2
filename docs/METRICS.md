@@ -14,8 +14,12 @@ differently score as a mismatch.
 
 - **Predictions** (`--predictions`): a JSON list of objects with `question` and
   `decomposition`. A string `decomposition` is split on newlines with a leading `<n>. `
-  enumerator removed per line (`_split_decomposition_text`); a list `decomposition` takes
-  each string, or each element's `question` field (`_decomp_to_steps`).
+  enumerator removed per line (`split_step_lines` in `src/step_lines.py`, aliased here as
+  `_split_decomposition_text`); a list `decomposition` takes each string, or each element's
+  `question` field (`_decomp_to_steps`). That splitter is shared with the decomposer: the
+  `unguided_capped` condition's step-line budget and its rows-at-cap counter are defined on
+  the same function, so "a cap of 8 step lines" and "8 steps" in this report are the same
+  count.
 - **Gold**: JSONL rows with `question` and `question_decomposition`, keyed by the question
   text lowercased and whitespace-collapsed (`_load_gold`, `_normalize_question`).
 - **Gold carries two step-count denominators, and they are asserted equal at load.**

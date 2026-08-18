@@ -178,6 +178,12 @@ def get_decomposer_pool_embeddings(
     return (all_items, emb, model)
 
 
+def _normalize_for_exclusion(text: Any) -> str:
+    if not isinstance(text, str):
+        return ""
+    return " ".join(text.strip().lower().split())
+
+
 def top_k_similar_decomposer(
     query: str,
     items: list[dict],
@@ -186,14 +192,54 @@ def top_k_similar_decomposer(
     *,
     model_id: str,
     k: int,
+    exclude_question: str | None = None,
+    exclude_ids: list[str] | set[str] | None = None,
 ) -> list[tuple[dict, float]]:
-    """Top-k similar from the combined decomposer pool. Query should be masked."""
+    """Top-k similar from the combined decomposer pool. Query should be masked.
+
+    ``exclude_question`` / ``exclude_ids`` implement **self-exclusion**: a pool item that is
+    the query itself (same normalized question text, same masked text, or same id) is skipped
+    before the top-k is taken, so k neighbours are still returned. This is latent while the
+    pool comes from a different split than the queries, and load-bearing the moment it does
+    not: a query retrieving its own gold decomposition as a few-shot example is leakage that
+    would read as a quality gain. Asserted below rather than assumed.
+    """
     use_prefix = _needs_e5_prefix(model_id)
     to_encode = [f"query: {query}"] if use_prefix else [query]
     q_emb = model.encode(to_encode, normalize_embeddings=True)[0]
     scores = np.dot(embeddings, q_emb)
     idx_scores = sorted(enumerate(scores), key=lambda x: -x[1])
-    return [(items[idx], float(sim)) for idx, sim in idx_scores[:k]]
+
+    wanted_question = _normalize_for_exclusion(exclude_question)
+    wanted_query = _normalize_for_exclusion(query)
+    excluded_ids = {str(i) for i in (exclude_ids or []) if i is not None}
+
+    def is_self(item: dict) -> bool:
+        if excluded_ids and str(item.get("id") or item.get("pool_id") or "") in excluded_ids:
+            return True
+        item_question = _normalize_for_exclusion(item.get("question"))
+        item_masked = _normalize_for_exclusion(item.get("masked"))
+        if wanted_question and wanted_question in (item_question, item_masked):
+            return True
+        # `query` is the masked form of the query, so compare it against the masked pool text.
+        return bool(wanted_query) and wanted_query == item_masked
+
+    out: list[tuple[dict, float]] = []
+    for idx, sim in idx_scores:
+        item = items[idx]
+        if (exclude_question or excluded_ids) and is_self(item):
+            continue
+        out.append((item, float(sim)))
+        if len(out) >= k:
+            break
+    if exclude_question or excluded_ids:
+        for item, _ in out:
+            if is_self(item):
+                raise AssertionError(
+                    "top_k_similar_decomposer returned the query itself as a few-shot "
+                    "example despite self-exclusion; this is a bug in the filter above."
+                )
+    return out
 
 
 def get_pool_embeddings(

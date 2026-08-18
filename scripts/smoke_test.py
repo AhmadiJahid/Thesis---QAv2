@@ -54,6 +54,10 @@ DATA_ROOT = FIXTURES / "data_root"
 RUNS_ROOT = REPO_ROOT / "runs" / "smoke"
 WORK = RUNS_ROOT / "work"
 
+#: Retrieval input for the three MuSiQue condition stages. configs/decomposer_musique.json
+#: sets retrieval.require_input, so those stages must pass one (see the stages' comment).
+MUSIQUE_CONDITIONS_RETRIEVAL = FIXTURES / "retrieval" / "top5_musique_conditions.jsonl"
+
 MUSIQUE_SCRIPTS = REPO_ROOT / "MusiQue" / "scripts"
 SCRIPTS = REPO_ROOT / "scripts"
 COMPONENTS = REPO_ROOT / "components"
@@ -463,15 +467,25 @@ def _stages() -> list[Stage]:
         ),
         # The three arms of issue #12, one stage each. mistral_7b_instruct is used because
         # it ships an unguided prompt: a folder without one cannot run the unguided arms
-        # (configs/decomposer_musique.json sets unguided_prompt_must_omit_hop_count). The
-        # few-shot examples come from the committed MetaQA pool via the seeded random
-        # fallback - a real MuSiQue run passes --retrieval-input instead.
+        # (configs/decomposer_musique.json sets unguided_prompt_must_omit_hop_count and
+        # unguided_prompt_must_equal_guided_minus_hop_lines).
+        #
+        # Two flags every MuSiQue stage needs, and why:
+        #   --retrieval-input        the config sets retrieval.require_input, so a run with
+        #                            no retrieval file is refused rather than falling back
+        #                            to random MetaQA exemplars (ADR 0006's fixed method).
+        #   --allow-unpinned-eval-set the fixtures hold 3 rows per hop, not the pinned 200
+        #                            (ADR 0007), so the pinned-set assertion is opted out of
+        #                            explicitly and the metrics record it. A real arm never
+        #                            passes this flag.
         Stage(
             name="decomposer_dry_run_musique_unguided",
             cmd=[
                 sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
                 "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
                 "--condition", "unguided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
                 "--output-root", decomposer_musique / "unguided",
             ],
             expect_dir_globs=[
@@ -480,7 +494,7 @@ def _stages() -> list[Stage]:
                 (decomposer_musique / "unguided", "*/config.json"),
                 (decomposer_musique / "unguided", "*/notes.md"),
             ],
-            note="MuSiQue JSONL questions, no hop count in the prompt",
+            note="MuSiQue conditions: no hop count in the prompt",
         ),
         Stage(
             name="decomposer_dry_run_musique_oracle_guided",
@@ -488,10 +502,12 @@ def _stages() -> list[Stage]:
                 sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
                 "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
                 "--condition", "oracle_guided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
                 "--output-root", decomposer_musique / "oracle_guided",
             ],
             expect_dir_globs=[(decomposer_musique / "oracle_guided", "*/results.json")],
-            note="MuSiQue JSONL questions, gold hop count injected into the prompt",
+            note="MuSiQue conditions: gold hop count injected into the prompt",
         ),
         Stage(
             name="decomposer_dry_run_musique_unguided_capped",
@@ -499,10 +515,12 @@ def _stages() -> list[Stage]:
                 sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
                 "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
                 "--condition", "unguided_capped", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
                 "--output-root", decomposer_musique / "unguided_capped",
             ],
             expect_dir_globs=[(decomposer_musique / "unguided_capped", "*/results.json")],
-            note="MuSiQue JSONL questions, step-line cap configured (no generation in a dry run)",
+            note="MuSiQue conditions: step-line cap configured (no generation in a dry run)",
         ),
         Stage(
             name="smoke_runner_subsample",

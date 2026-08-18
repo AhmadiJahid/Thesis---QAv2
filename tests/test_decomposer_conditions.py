@@ -12,17 +12,28 @@ What it covers:
    in the prompt and the step-line budget.
 2. **MetaQA defaults unchanged** - ``configs/decomposer.json`` still has guided=false,
    hops [1, 2, 3], the MetaQA template and no conditions block.
-3. **The step-line stopping rule** - ``count_step_lines`` / ``trim_to_step_lines`` /
+3. **The prompt invariant** - every model folder that ships an unguided prompt has one that
+   equals its guided prompt minus the hop-bearing lines, byte for byte. A tampered prompt
+   (a rule added, a rule dropped) fails the guard.
+4. **The step-line stopping rule** - the shared step normalization in ``src/step_lines.py``
+   (the same function the evaluator scores with), ``trim_to_step_lines`` and
    ``StepLineStopper`` against synthetic token streams with hand-computed expectations,
-   plus the transformers ``StoppingCriteria`` adapter driven by a fake tokenizer.
-4. **The three arms end to end** - the real runner is executed in ``--dry-run`` against
+   plus the transformers ``StoppingCriteria`` adapter driven by a fake tokenizer, including
+   a ``<think>`` preamble that must not consume the budget.
+5. **Self-exclusion** - a retrieved exemplar that is the query itself is dropped on both
+   the reranked and the bi-encoder path, and the top-k is still k.
+6. **The three arms end to end** - the real runner is executed in ``--dry-run`` against
    the fabricated fixtures once per condition, and the *prompts it wrote* are compared:
    unguided carries no hop count at all, oracle_guided carries the gold hop count of the
-   file each question came from, unguided_capped builds byte-identical prompts to unguided
-   and carries the configured cap. Model, seed, decoding, retrieval and the question ids
-   must be identical across all three. Also checks that a model folder without an unguided
-   prompt is refused for an unguided arm. Writes to a temp dir and deletes it.
-5. **The evaluation set resolves** - the three pinned files of ADR 0007 exist under
+   row's id, unguided_capped builds byte-identical prompts to unguided and carries the
+   configured cap. The guided prompts equal the unguided ones once hop-bearing lines are
+   removed - the mechanical version of "the arms differ in hop information only". Model,
+   seed, decoding, retrieval (path *and* sha256) and the question ids must be identical
+   across all three. Writes to a temp dir and deletes it.
+7. **Refusals** - a model folder without an unguided prompt, a run with no retrieval input
+   (``retrieval.require_input``), a row count that is not the pinned per-hop set, and a
+   query id whose hop depth cannot be parsed are each refused with a non-zero exit.
+8. **The evaluation set resolves** - the three pinned files of ADR 0007 exist under
    ``data_root`` with ``eval_rows_per_hop`` rows each. Skipped with ``--skip-data-checks``
    (the smoke test runs against fabricated fixtures, which are not that set).
 
@@ -47,6 +58,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "components" / "decomposer"))
 
 from run_config import PATHS_CONFIG_ENV, load_config, load_paths, require, resolve_path  # noqa: E402
+from step_lines import split_step_lines  # noqa: E402
 
 import run_decomposer as rd  # noqa: E402
 
@@ -57,6 +69,11 @@ CHECKS: list[str] = []
 #: ships an unguided prompt, which the unguided arms require.
 E2E_MODEL = "mistral_7b_instruct"
 E2E_ROWS = 9
+#: configs/decomposer_musique.json sets retrieval.require_input, so the fixture runs pass a
+#: retrieval file; it holds one row per fixture question (9), not the pinned 600, which is
+#: why they also pass --allow-unpinned-eval-set.
+E2E_RETRIEVAL = REPO_ROOT / "tests" / "fixtures" / "retrieval" / "top5_musique_conditions.jsonl"
+MODELS_DIR = REPO_ROOT / "components" / "decomposer" / "models"
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
@@ -182,10 +199,82 @@ def test_conditions(cfg: dict) -> None:
         check("rejects an override key the model does not define", False)
 
 
+def test_prompt_invariant(cfg: dict) -> None:
+    """The unguided prompt of every folder that has one == guided minus hop-bearing lines.
+
+    This is the mechanical form of Jahid's design (plan prompt 4): three conditions on the
+    same set, "everything else held identical", unguided = "no hop count in the prompt". A
+    residual delta - v1's mistral prompt added "Decompose into the minimal number of atomic
+    steps.", v1's qwen3_5_9b prompt dropped the whole 7-rule block - is a second difference
+    between the arms, so it fails here.
+    """
+    print("[prompt invariant]")
+    check(
+        "the musique config demands the invariant",
+        require(cfg, "unguided_prompt_must_equal_guided_minus_hop_lines") is True,
+    )
+    folders = sorted(
+        d.name
+        for d in MODELS_DIR.iterdir()
+        if d.is_dir() and load_config(d / "config.json").get("unguided_prompt_file")
+    )
+    check(
+        "folders shipping an unguided prompt",
+        folders == ["mistral_7b_instruct", "qwen3_5_9b"],
+        str(folders),
+    )
+    for folder in folders:
+        model_cfg = load_config(MODELS_DIR / folder / "config.json")
+        guided_path = MODELS_DIR / folder / model_cfg["prompt_file"]
+        unguided_path = MODELS_DIR / folder / model_cfg["unguided_prompt_file"]
+        guided = guided_path.read_bytes().decode("utf-8")
+        unguided = unguided_path.read_bytes().decode("utf-8")
+        removed = rd.hop_bearing_lines(guided)
+        check(f"{folder}: guided prompt has hop lines", len(removed) == 2, str(removed))
+        check(
+            f"{folder}: unguided == guided minus hop lines (bytes)",
+            unguided == rd.derive_unguided_template(guided),
+        )
+        check(f"{folder}: unguided prompt has no hop line", not rd.hop_bearing_lines(unguided))
+        record = rd.assert_unguided_is_guided_minus_hop_lines(
+            guided_template=guided,
+            unguided_template=unguided,
+            guided_path=guided_path,
+            unguided_path=unguided_path,
+            model=folder,
+            config_src="<test>",
+        )
+        check(f"{folder}: guard passes and records the removed lines", record["checked"] is True)
+        # Every other line survives: same line count minus the hop lines, in order.
+        kept_guided = [ln for ln in guided.splitlines() if not rd._HOP_LINE_RX.search(ln)]
+        check(
+            f"{folder}: every non-hop line is preserved in order",
+            kept_guided == unguided.splitlines(),
+        )
+        # ... and a tampered unguided prompt is caught, in both directions.
+        for tampered, why in (
+            (unguided + "- Decompose into the minimal number of atomic steps.\n", "an added rule"),
+            ("\n".join(unguided.splitlines()[:-1]) + "\n", "a dropped line"),
+        ):
+            try:
+                rd.assert_unguided_is_guided_minus_hop_lines(
+                    guided_template=guided,
+                    unguided_template=tampered,
+                    guided_path=guided_path,
+                    unguided_path=unguided_path,
+                    model=folder,
+                    config_src="<test>",
+                )
+            except SystemExit:
+                check(f"{folder}: guard rejects {why}", True)
+            else:
+                check(f"{folder}: guard rejects {why}", False)
+
+
 def test_prompt_selection(cfg: dict) -> None:
     """Guided vs unguided picks a different prompt file when the model folder has both."""
     print("[prompt selection]")
-    models_dir = REPO_ROOT / "components" / "decomposer" / "models"
+    models_dir = MODELS_DIR
     mistral = load_config(models_dir / "mistral_7b_instruct" / "config.json")
     guided_prompt = (models_dir / "mistral_7b_instruct" / mistral["prompt_file"]).read_text()
     unguided_prompt = (
@@ -231,8 +320,27 @@ def test_prompt_selection(cfg: dict) -> None:
     )
     check("guard accepts the unguided prompt", True)
 
+    # The guard is a hop-line check, not a placeholder check: a prompt that hardcodes a hop
+    # instruction with no {hop_count} in it is refused too.
+    for hardcoded in (
+        "Rules:\n- The number of steps MUST equal the hop count.\nQuestion: {question}\n",
+        "Task:\nHop count: 3\nQuestion: {question}\n",
+        "Task:\nhop_count = 3\nQuestion: {question}\n",
+    ):
+        try:
+            rd.assert_unguided_prompt_omits_hop_count(
+                hardcoded, prompt_path=Path("<test>"), model="m", config_src="<test>"
+            )
+        except SystemExit:
+            check(f"guard rejects a hardcoded hop line {hardcoded.splitlines()[1]!r}", True)
+        else:
+            check(f"guard rejects a hardcoded hop line {hardcoded.splitlines()[1]!r}", False)
+
     # Model folders that cannot run an unguided arm, stated so the smoke test and the
-    # experiment both pick a folder that can.
+    # experiment both pick a folder that can. Of the two that ship an unguided prompt,
+    # qwen3_5_9b is 9B - above the ceiling in configs/model_limits.json - so as configured
+    # exactly ONE folder can run these arms. Whether to add an unguided prompt to another
+    # <=8B folder is Jahid's call, not this test's.
     models_with_unguided = sorted(
         d.name
         for d in models_dir.iterdir()
@@ -242,6 +350,19 @@ def test_prompt_selection(cfg: dict) -> None:
         "mistral_7b_instruct and qwen3_5_9b are the folders that ship an unguided prompt",
         models_with_unguided == ["mistral_7b_instruct", "qwen3_5_9b"],
         str(models_with_unguided),
+    )
+    limits = load_config(require(cfg, "model_limits_config"))
+    ceiling = int(require(limits, "default_max_params"))
+    check("the parameter ceiling is 8e9", ceiling == 8_000_000_000, str(ceiling))
+    check(
+        "qwen3_5_9b's own config records that it is above the ceiling",
+        "above the ~8B ceiling"
+        in load_config(models_dir / "qwen3_5_9b" / "config.json").get("notes", ""),
+    )
+    check(
+        "the musique config records the single runnable folder",
+        "runnable on exactly ONE model folder: mistral_7b_instruct"
+        in require(cfg, "_runnable_models_note"),
     )
 
 
@@ -281,21 +402,58 @@ def test_guided_cli_cannot_override_a_condition(cfg: dict) -> None:
 # ------------------------------------------------------------ step-line stopping
 
 
-def test_count_step_lines() -> None:
-    print("[count_step_lines]")
+def test_shared_step_normalization() -> None:
+    """The decomposer's step counting is the evaluator's, not a private copy.
+
+    The step-line budget, the rows-at-cap counter and the evaluator's step metrics all read
+    ``src/step_lines.py::split_step_lines``. If they drifted apart, "a cap of 8" and "8
+    steps" in a metrics table would be different numbers.
+    """
+    print("[shared step normalization]")
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import musique_decompositions_evaluator as ev
+
+    check(
+        "the evaluator's splitter IS the shared one",
+        ev._split_decomposition_text is split_step_lines,
+    )
     cases = [
-        ("", 0),
-        ("1. who directed it?", 0),          # nothing terminated yet
-        ("1. a?\n", 1),
-        ("1. a?\n2. b?", 1),                 # the second line is still being written
-        ("1. a?\n2. b?\n", 2),
-        ("1. a?\n\n2. b?\n", 2),             # blank lines never count
-        ("\n\n", 0),
-        ("1. a?\n2. b?\n3. c?\n4. d?\n", 4),
+        ("1. a?\n2. b?", ["a?", "b?"]),
+        ("a?\n\n b? \n", ["a?", "b?"]),
+        ("", []),
+        ("10. a?", ["a?"]),
     ]
     for text, want in cases:
-        got = rd.count_step_lines(text)
-        check(f"count_step_lines({text!r}) == {want}", got == want, f"got {got}")
+        got = split_step_lines(text)
+        check(f"split_step_lines({text!r}) == {want}", got == want, str(got))
+
+
+def test_completed_step_line_count() -> None:
+    print("[completed_step_line_count]")
+    from step_lines import completed_step_line_count
+
+    # (text, strip_think, truncate_at, expected). Hand-computed: only lines already
+    # terminated by a newline count, blank lines never count, an open <think> block means
+    # the model has not started answering, and a tail marker is cut before counting.
+    cases = [
+        ("", False, [], 0),
+        ("1. who directed it?", False, [], 0),      # nothing terminated yet
+        ("1. a?\n", False, [], 1),
+        ("1. a?\n2. b?", False, [], 1),             # second line still being written
+        ("1. a?\n2. b?\n", False, [], 2),
+        ("1. a?\n\n2. b?\n", False, [], 2),         # blank lines never count
+        ("\n\n", False, [], 0),
+        ("1. a?\n2. b?\n3. c?\n4. d?\n", False, [], 4),
+        # A <think> preamble must not consume the budget: 0 while it is open, and its
+        # content does not count once it is closed.
+        ("<think>let me\nsee\n", True, [], 0),
+        ("<think>let me\nsee</think>\n1. a?\n2. b?\n", True, [], 2),
+        # A "Question:" echo after the steps is cut before counting.
+        ("1. a?\n2. b?\nQuestion: next one\nmore\n", False, ["Question:"], 2),
+    ]
+    for text, strip_think, truncate_at, want in cases:
+        got = completed_step_line_count(text, strip_think=strip_think, truncate_at=truncate_at)
+        check(f"completed_step_line_count({text!r}) == {want}", got == want, f"got {got}")
 
 
 def test_trim_to_step_lines() -> None:
@@ -311,6 +469,9 @@ def test_trim_to_step_lines() -> None:
         "trim skips blank lines",
         rd.trim_to_step_lines("1. a?\n\n2. b?\n", 2) == "1. a?\n2. b?",
     )
+    # The trim keeps the line as written (the enumerator is a comparison-time
+    # normalization, not an edit to the model's output).
+    check("trim does not rewrite the kept lines", rd.trim_to_step_lines("1. a?\n", 1) == "1. a?")
 
 
 def test_step_line_stopper() -> None:
@@ -342,6 +503,45 @@ def test_step_line_stopper() -> None:
     else:
         check("cap must be positive", False)
 
+    # A think preamble does not consume the budget: with strip_think the same stream, wrapped
+    # in an unterminated <think>, never fires; once closed, only the answer lines count.
+    think_vocab = {0: "<think>", 1: "reasoning\n", 2: "more\n", 3: "</think>\n", 4: "1. a?\n"}
+    think_decode = lambda ids: "".join(think_vocab[i] for i in ids)  # noqa: E731
+    open_stopper = rd.StepLineStopper(1, think_decode, strip_think=True)
+    check(
+        "an open <think> block never fires the cap",
+        not any(open_stopper.should_stop([0, 1, 2][:n]) for n in range(1, 4)),
+    )
+    closed_stopper = rd.StepLineStopper(1, think_decode, strip_think=True)
+    fired = [n for n in range(1, 6) if closed_stopper.should_stop([0, 1, 2, 3, 4][:n])]
+    check("the cap fires only on the answer line after </think>", fired == [5], str(fired))
+
+
+def test_incremental_decoder() -> None:
+    """Decoding only the new tail must give the same text as decoding from scratch."""
+    print("[IncrementalDecoder]")
+    vocab = {0: "1. a?", 1: "\n", 2: "2. b?", 3: "\n"}
+    calls: list[int] = []
+
+    def decode(ids: list[int]) -> str:
+        calls.append(len(ids))
+        return "".join(vocab[i] for i in ids)
+
+    dec = rd.IncrementalDecoder(decode)
+    stream = [0, 1, 2, 3]
+    for n in range(1, len(stream) + 1):
+        check(
+            f"incremental text after {n} tokens equals the full decode",
+            dec.text(stream[:n]) == "".join(vocab[i] for i in stream[:n]),
+        )
+    check(
+        "each step decoded only the new token (no quadratic re-decode)",
+        calls == [1, 1, 1, 1],
+        str(calls),
+    )
+    # A shorter list means a new sequence: state resets rather than mis-appending.
+    check("a shorter id list resets the decoder", dec.text([0]) == "1. a?")
+
 
 def test_stopping_criteria_adapter() -> None:
     """The transformers adapter: same rule, driven through a real StoppingCriteriaList."""
@@ -368,6 +568,99 @@ def test_stopping_criteria_adapter() -> None:
     check("adapter fires after the 2nd completed line (4 tokens)", fired_at == 4, str(fired_at))
 
 
+# ------------------------------------------------------------------ self-exclusion
+
+
+def test_self_exclusion() -> None:
+    """A retrieved exemplar that IS the query is dropped on every few-shot path."""
+    print("[self-exclusion]")
+    row = {
+        "query_id": "2hop__q1",
+        "query_question": "Who leads the union?",
+        "typed_top_k": [
+            {
+                "pool_id": "2hop__q1",
+                "pool_question": "Who leads the union?",
+                "pool_few_shot_decomposition_musique": ["a?", "b?"],
+            },
+            {
+                "pool_id": "2hop__other",
+                "pool_question": " who   LEADS the union? ",  # same text, different id
+                "pool_few_shot_decomposition_musique": ["c?", "d?"],
+            },
+            {
+                "pool_id": "2hop__p2",
+                "pool_question": "Who founded the press?",
+                "pool_few_shot_decomposition_musique": ["e?", "f?"],
+            },
+            {
+                "pool_id": "2hop__p3",
+                "pool_question": "Where was he born?",
+                "pool_few_shot_decomposition_musique": ["g?", "h?"],
+            },
+        ],
+    }
+    examples, dropped = rd.examples_from_reranked_row(
+        row, "typed", 2, exclude_query_id="2hop__q1", exclude_question="Who leads the union?"
+    )
+    check("two self-candidates dropped (by id and by text)", dropped == 2, str(dropped))
+    check("k=2 exemplars still assembled", len(examples) == 2, str(len(examples)))
+    check(
+        "the kept exemplars are the non-self ones",
+        [e["question"] for e in examples] == ["Who founded the press?", "Where was he born?"],
+        str(examples),
+    )
+    # Without the exclusion arguments the behaviour is the old one (nothing dropped).
+    plain, plain_dropped = rd.examples_from_reranked_row(row, "typed", 2)
+    check("no exclusion args means nothing is dropped", plain_dropped == 0)
+    check("... and the query itself is then the first exemplar", plain[0]["question"] == "Who leads the union?")
+    # Too few usable candidates after exclusion is an error, not a short prompt.
+    try:
+        rd.examples_from_reranked_row(
+            row, "typed", 4, exclude_query_id="2hop__q1", exclude_question="Who leads the union?"
+        )
+    except ValueError:
+        check("k larger than the usable candidates is refused", True)
+    else:
+        check("k larger than the usable candidates is refused", False)
+
+    # The bi-encoder path: same rule, driven with a fake encoder so no weights are needed.
+    import numpy as np
+
+    from pool_embeddings import top_k_similar_decomposer
+
+    items = [
+        {"id": "p0", "question": "Who leads the union?", "masked": "Who leads the [ORG]?"},
+        {"id": "p1", "question": "Who founded the press?", "masked": "Who founded the [ORG]?"},
+        {"id": "p2", "question": "Where was he born?", "masked": "Where was he born?"},
+    ]
+    embeddings = np.array([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]])
+
+    class FakeEncoder:
+        def encode(self, texts, normalize_embeddings=True):  # noqa: ARG002
+            return np.array([[1.0, 0.0]])
+
+    top = top_k_similar_decomposer(
+        "Who leads the [ORG]?", items, embeddings, FakeEncoder(),
+        model_id="fake/encoder", k=2,
+        exclude_question="Who leads the union?", exclude_ids=["p0"],
+    )
+    check("bi-encoder path returns k=2", len(top) == 2, str(len(top)))
+    check(
+        "bi-encoder path excluded the query itself",
+        [it["id"] for it, _ in top] == ["p1", "p2"],
+        str([it["id"] for it, _ in top]),
+    )
+    unfiltered = top_k_similar_decomposer(
+        "Who leads the [ORG]?", items, embeddings, FakeEncoder(), model_id="fake/encoder", k=2
+    )
+    check(
+        "without exclusion args the nearest item is still returned",
+        [it["id"] for it, _ in unfiltered] == ["p0", "p1"],
+        str([it["id"] for it, _ in unfiltered]),
+    )
+
+
 # --------------------------------------------------------------- end-to-end arms
 
 
@@ -378,23 +671,37 @@ def _prompt_body(log_text: str) -> str:
     return after.split("\n--- Response ---", 1)[0]
 
 
-def _run_condition(condition: str, out_root: Path) -> dict:
-    """Run the real runner in --dry-run for one condition; return its artifacts."""
+def _runner_env() -> dict:
     env = dict(os.environ)
     # Force the fabricated fixtures: this check is about prompt construction, and it must
     # behave identically inside the smoke test and standalone.
     env[PATHS_CONFIG_ENV] = "configs/smoke_paths.json"
     env.setdefault("PYTHONPYCACHEPREFIX", tempfile.gettempdir() + "/qav2-pycache")
+    return env
+
+
+def _run_runner(extra: list[str]) -> subprocess.CompletedProcess:
     cmd = [
         sys.executable,
         str(REPO_ROOT / "components" / "decomposer" / "run_decomposer.py"),
         "--model", E2E_MODEL,
         "--config", "decomposer_musique.json",
-        "--condition", condition,
-        "--dry-run", "--dry-run-limit", str(E2E_ROWS),
-        "--output-root", str(out_root / condition),
+        *extra,
     ]
-    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    return subprocess.run(cmd, env=_runner_env(), capture_output=True, text=True)
+
+
+def _run_condition(condition: str, out_root: Path) -> dict:
+    """Run the real runner in --dry-run for one condition; return its artifacts."""
+    proc = _run_runner(
+        [
+            "--condition", condition,
+            "--dry-run", "--dry-run-limit", str(E2E_ROWS),
+            "--retrieval-input", str(E2E_RETRIEVAL),
+            "--allow-unpinned-eval-set",
+            "--output-root", str(out_root / condition),
+        ]
+    )
     if proc.returncode != 0:
         raise AssertionError(
             f"condition {condition} exited {proc.returncode}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
@@ -462,11 +769,41 @@ def test_conditions_end_to_end() -> None:
                 arms[name]["snapshot"]["stop_after_step_lines"] is None,
             )
 
-        # 4. Everything else identical across the three arms.
+        # 3b. The strong form of "the arms differ in hop information only": strip the
+        #     hop-bearing lines out of the *rendered* guided prompt and it becomes the
+        #     unguided prompt, byte for byte. This covers the few-shot blocks too (guided
+        #     puts a "Hop count: n" line on each exemplar), not just the template.
+        for (gname, gbody), (uname, ubody) in zip(
+            sorted(arms["oracle_guided"]["prompts"].items()),
+            sorted(arms["unguided"]["prompts"].items()),
+        ):
+            check(f"{gname}: same prompt file index as unguided", gname == uname)
+            check(
+                f"{gname}: guided minus hop lines == unguided, byte for byte",
+                rd.derive_unguided_template(gbody) == ubody,
+            )
+
+        # 4. Everything else identical across the three arms - including the retrieval input
+        #    by content, not just by path: same bytes or the arms are not comparable.
         for key in ("model_id", "seed", "generation", "hops", "questions_template_key",
-                    "retrieval", "quantization", "prompt_style"):
+                    "retrieval", "quantization", "prompt_style", "few_shot",
+                    "post_process", "evaluation_set"):
             values = [json.dumps(arm["snapshot"][key], sort_keys=True) for arm in arms.values()]
             check(f"all three arms share {key}", len(set(values)) == 1, str(set(values)))
+        sha = arms["unguided"]["snapshot"]["retrieval"]["input_sha256"]
+        check("the retrieval input is content-addressed in the snapshot", bool(sha), str(sha))
+        check(
+            "the unguided prompt file differs from the guided one, by hash",
+            arms["unguided"]["snapshot"]["prompt_sha256"]
+            != arms["oracle_guided"]["snapshot"]["prompt_sha256"],
+        )
+        check(
+            "the unguided arms record the prompt invariant as checked",
+            all(
+                arms[name]["snapshot"]["unguided_prompt_invariant"]["checked"] is True
+                for name in ("unguided", "oracle_guided", "unguided_capped")
+            ),
+        )
         id_sets = [[r["query_id"] for r in arm["results"]] for arm in arms.values()]
         check("all three arms ran the same question ids in the same order", id_sets[0] == id_sets[1] == id_sets[2])
         check(
@@ -474,25 +811,119 @@ def test_conditions_end_to_end() -> None:
             len({json.dumps(a["metrics"]["rows_loaded_per_hop"], sort_keys=True) for a in arms.values()}) == 1,
             str(arms["unguided"]["metrics"]["rows_loaded_per_hop"]),
         )
-
-        # 5. The guard: a model folder with no unguided prompt cannot run an unguided arm.
-        env = dict(os.environ)
-        env[PATHS_CONFIG_ENV] = "configs/smoke_paths.json"
-        proc = subprocess.run(
-            [
-                sys.executable,
-                str(REPO_ROOT / "components" / "decomposer" / "run_decomposer.py"),
-                "--model", "qwen2_5_3b", "--config", "decomposer_musique.json",
-                "--condition", "unguided", "--dry-run", "--dry-run-limit", "1",
-                "--output-root", str(out_root / "guard"),
-            ],
-            env=env, capture_output=True, text=True,
+        check(
+            "the fixture run is recorded as NOT the pinned evaluation set",
+            arms["unguided"]["metrics"]["evaluation_set"]["pinned"] is False
+            and arms["unguided"]["metrics"]["evaluation_set"]["allow_unpinned_flag"] is True,
+            json.dumps(arms["unguided"]["metrics"]["evaluation_set"]),
         )
         check(
-            "a model folder without an unguided prompt is refused for an unguided arm",
-            proc.returncode != 0 and "{hop_count}" in (proc.stdout + proc.stderr),
+            "the self-exclusion path dropped the fixture's planted self-candidate",
+            arms["unguided"]["metrics"]["few_shot_self_exclusion"]["self_examples_dropped"] == 1,
+            json.dumps(arms["unguided"]["metrics"]["few_shot_self_exclusion"]),
+        )
+        for name, arm in arms.items():
+            check(
+                f"{name}: truncation counters are null in a dry run",
+                arm["metrics"]["rows_at_max_new_tokens"] is None
+                and arm["metrics"]["rows_at_step_line_cap"] is None,
+            )
+            check(
+                f"{name}: max_new_tokens is reported ({arm['metrics']['max_new_tokens']})",
+                arm["metrics"]["max_new_tokens"] == 256,
+            )
+            check(
+                f"{name}: every result row carries the same truncation fields",
+                all(
+                    set(r) == {
+                        "query_id", "question", "hop_count", "decomposition",
+                        "few_shot_source", "decomposition_raw", "step_lines",
+                        "generated_tokens", "hit_max_new_tokens", "stopped_at_step_line_cap",
+                    }
+                    for r in arm["results"]
+                ),
+                str(sorted(arm["results"][0])),
+            )
+
+        # 5. The refusals. Each is a non-zero exit with a message naming the reason.
+        refusals = [
+            (
+                "a model folder without an unguided prompt",
+                ["--model", "qwen2_5_3b"],
+                "hop-count information",
+            ),
+        ]
+        for label, extra, needle in refusals:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "components" / "decomposer" / "run_decomposer.py"),
+                    "--config", "decomposer_musique.json",
+                    "--condition", "unguided", "--dry-run", "--dry-run-limit", "1",
+                    "--retrieval-input", str(E2E_RETRIEVAL), "--allow-unpinned-eval-set",
+                    "--output-root", str(out_root / "guard"),
+                    *extra,
+                ],
+                env=_runner_env(), capture_output=True, text=True,
+            )
+            out = proc.stdout + proc.stderr
+            check(
+                f"refused: {label}",
+                proc.returncode != 0 and needle in out,
+                f"rc={proc.returncode} needle={needle!r}",
+            )
+
+        # No retrieval input at all: ADR 0006's fixed method is not rebuildable here, so the
+        # random-MetaQA-exemplar fallback is a refusal for this config.
+        proc = _run_runner(
+            [
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "1",
+                "--allow-unpinned-eval-set", "--output-root", str(out_root / "no_retrieval"),
+            ]
+        )
+        out = proc.stdout + proc.stderr
+        check(
+            "refused: no retrieval input (retrieval.require_input)",
+            proc.returncode != 0 and "require_input" in out and "ADR 0006" in out,
             f"rc={proc.returncode}",
         )
+
+        # Row counts that are not the pinned set: refused unless the flag is passed.
+        proc = _run_runner(
+            [
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "1",
+                "--retrieval-input", str(E2E_RETRIEVAL),
+                "--output-root", str(out_root / "unpinned"),
+            ]
+        )
+        out = proc.stdout + proc.stderr
+        check(
+            "refused: 3 rows per hop is not the pinned 200 (ADR 0007)",
+            proc.returncode != 0 and "not the pinned evaluation set" in out and "hop 2: loaded 3" in out,
+            f"rc={proc.returncode}",
+        )
+
+        # An id whose hop depth cannot be parsed: a refusal, never hop_fallback.
+        bad = out_root / "bad_ids.jsonl"
+        rows = [json.loads(l) for l in E2E_RETRIEVAL.read_text().splitlines() if l.strip()]
+        rows[0]["query_id"] = "no_hop_prefix__x1"
+        bad.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        for condition in ("unguided", "oracle_guided"):
+            proc = _run_runner(
+                [
+                    "--condition", condition, "--dry-run", "--dry-run-limit", "1",
+                    "--retrieval-input", str(bad), "--allow-unpinned-eval-set",
+                    "--output-root", str(out_root / f"badhop_{condition}"),
+                ]
+            )
+            out = proc.stdout + proc.stderr
+            check(
+                f"refused ({condition}): an id whose hop depth cannot be parsed",
+                proc.returncode != 0
+                and "hop depth cannot be parsed" in out
+                and "no_hop_prefix__x1" in out,
+                f"rc={proc.returncode}",
+            )
     finally:
         shutil.rmtree(out_root, ignore_errors=True)
 
@@ -540,12 +971,16 @@ def main() -> int:
     test_metaqa_defaults_unchanged()
     cfg = test_musique_config()
     test_conditions(cfg)
+    test_prompt_invariant(cfg)
     test_prompt_selection(cfg)
     test_guided_cli_cannot_override_a_condition(cfg)
-    test_count_step_lines()
+    test_shared_step_normalization()
+    test_completed_step_line_count()
     test_trim_to_step_lines()
     test_step_line_stopper()
+    test_incremental_decoder()
     test_stopping_criteria_adapter()
+    test_self_exclusion()
     test_conditions_end_to_end()
     if args.skip_data_checks:
         print("[evaluation set] skipped (--skip-data-checks)")
