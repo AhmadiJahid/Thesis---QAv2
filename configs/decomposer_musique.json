@@ -1,0 +1,64 @@
+{
+  "_note": "MuSiQue variant of configs/decomposer.json for issue #12 (guided vs unguided decomposition). Same runner, same model folder, same seed, same retrieval input for all three conditions - only 'conditions' differs, so the comparison isolates the hop-count signal. hops [2,3,4] and the MuSiQue question files replace MetaQA's [1,2,3]; the MetaQA defaults are untouched. The decomposer model is chosen with --model (its parameter count is asserted against configs/model_limits.json at load, as on every path), and the condition with --condition.",
+
+  "seed": 42,
+  "guided": false,
+  "condition": "unguided",
+  "sample_size": null,
+
+  "conditions": {
+    "_note": "The three arms of issue #12. 'guided' decides whether the gold hop count is injected into the prompt (and therefore whether the model's guided or unguided prompt file is used); 'step_cap' decides whether the step-line cap below applies. Selected with --condition; the runner refuses --guided against a guided=false condition, so an arm cannot be silently mislabelled. IMPORTANT: the two unguided arms need a model folder that HAS an unguided_prompt_file (mistral_7b_instruct, qwen3_5_9b as of 2026-08-18). Without one the runner falls back to the guided prompt with hop_count='Unknown', which still puts a hop-count line in front of the model; it warns and records unguided_prompt_missing when that happens.",
+    "unguided": {
+      "guided": false,
+      "step_cap": false
+    },
+    "oracle_guided": {
+      "guided": true,
+      "step_cap": false
+    },
+    "unguided_capped": {
+      "guided": false,
+      "step_cap": true
+    }
+  },
+
+  "step_cap": {
+    "_note": "Applies only to conditions with step_cap=true. max_step_lines stops generation once that many step lines are complete, and the decoded text is truncated to the same number (a step line is a non-blank line, the same rule the evaluator scores with - src/step_cap.py). max_new_tokens is the token half of the cap: null means keep the model config's own max_new_tokens, which holds decoding identical across the three conditions; an integer here tightens it for the capped arm only. Jahid's supervisor confirmed a length cap is not cheating.",
+    "max_step_lines": 8,
+    "max_new_tokens": null
+  },
+
+  "hops": [2, 3, 4],
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_format": "jsonl",
+  "questions_jsonl": {
+    "question_field": "question",
+    "id_field": "id"
+  },
+  "unguided_hop_placeholder": "Unknown",
+
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "embed_model": "e5-small",
+
+  "retrieval": {
+    "_note": "input_key names a configs/paths.json datasets key rather than a literal path, so the smoke paths config can redirect it to fixtures and no machine path is baked into a config. The artifact is the ADR 0007 evaluation set (600 questions, 200 per hop depth) put through bi-encoder top-20 then cross-encoder rerank to top-5; 'typed' selects the typed-masked neighbour list. hop_fallback never fires on this set: all 600 ids start with <n>hop, so the gold hop count comes from the id.",
+    "input": null,
+    "input_key": "musique_eval_retrieval_rerank_top5",
+    "mode": "typed",
+    "k": 5,
+    "modes": ["raw", "typed", "uniform"],
+    "hop_fallback": 2
+  },
+
+  "few_shot_pool_key": "few_shot_decompositions",
+  "embedding_cache_key": "embedding_cache_dir",
+  "masking_config": "masking.json",
+
+  "output_subdir": "decomposer_musique",
+  "progress_every": 25,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

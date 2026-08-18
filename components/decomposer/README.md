@@ -8,7 +8,11 @@ placeholders that refer to earlier answers. Ported from v1, with the four per-mo
 - `models/<model_name>/prompt.md` (and `prompt_unguided.md` where v1 had one) — **byte-identical to v1**.
 - `models/<model_name>/config.json` — model id, prompt style, generation, loader/quantization,
   few-shot and post-processing settings.
-- `configs/decomposer.json` — seed, guided flag, embedding-model registry, retrieval defaults.
+- `configs/decomposer.json` — seed, guided flag, embedding-model registry, retrieval defaults;
+  the MetaQA default (hops 1–3, question files one per line).
+- `configs/decomposer_musique.json` — the MuSiQue variant for issue #12: hops 2–4, the MuSiQue
+  question files (JSONL), the ADR 0007 evaluation set through bi-encoder top-20 + cross-encoder
+  rerank to top-5, and the three named conditions.
 
 ```bash
 # few-shot examples from a reranked/truncated retrieval file
@@ -18,7 +22,30 @@ python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
 
 # prompts only, no model load (works without a GPU)
 python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
+
+# issue #12: one arm of the MuSiQue comparison (unguided | oracle_guided | unguided_capped)
+python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
+    --config decomposer_musique.json --condition oracle_guided
 ```
+
+## Conditions (issue #12)
+
+`--condition` picks a named entry of the config's `conditions` block; everything else — model,
+decoding, seed, retrieval input — comes from the same config, so the arms differ only in the
+thing under test.
+
+| condition | hop count in the prompt | step-line cap |
+|---|---|---|
+| `unguided` | no | off |
+| `oracle_guided` | yes, the gold hop count parsed from the query id | off |
+| `unguided_capped` | no | on: `step_cap.max_step_lines` (8), plus the token budget |
+
+The cap stops generation once that many step lines are complete and truncates the decoded text
+to the same number, counting step lines the way the evaluator does (`src/step_cap.py`).
+`step_cap.max_new_tokens: null` keeps the model's own `max_new_tokens`, so decoding stays
+identical across the three arms. Passing `--guided` against a `guided: false` condition is
+refused rather than merged, so an arm cannot be mislabelled. Every run records its condition,
+cap and `rows_truncated_by_step_cap` in `metrics.json`.
 
 Two prompt styles, set per model by `prompt_style`:
 

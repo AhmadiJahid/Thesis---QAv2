@@ -1,12 +1,14 @@
 {
-  "_note": "Shared config for components/decomposer/run_decomposer.py. Per-model prompt style, generation, loader, few-shot and post-processing settings live in components/decomposer/models/<model>/config.json. v1 carried these as argparse defaults inside each copy of decomposer.py.",
+  "_note": "Shared config for components/decomposer/run_decomposer.py, and the MetaQA default (hops 1-3, the MetaQA question files, one question per line). Per-model prompt style, generation, loader, few-shot and post-processing settings live in components/decomposer/models/<model>/config.json. v1 carried these as argparse defaults inside each copy of decomposer.py. The MuSiQue experiment of issue #12 uses configs/decomposer_musique.json instead; 'condition' is null here, so the guided/unguided/capped condition machinery stays inert on this path and 'guided' alone decides.",
 
   "seed": 42,
   "guided": false,
+  "condition": null,
   "sample_size": null,
 
   "hops": [1, 2, 3],
   "questions_template_key": "metaqa_questions_template",
+  "questions_format": "lines",
   "unguided_hop_placeholder": "Unknown",
 
   "embed_models": {
@@ -17,6 +19,7 @@
 
   "retrieval": {
     "input": null,
+    "input_key": null,
     "mode": "typed",
     "k": 5,
     "modes": ["raw", "typed", "uniform"],

@@ -24,6 +24,12 @@ data_root/                     # stands in for the real data_root (configs/smoke
     dev_data/
       musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
       musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
+      musique_ans_v1.0_dev_sample_{2,3,4}_hop_200.jsonl  # stand-ins for the ADR 0007
+                                        # evaluation set: 2 rows each, not 200 - the name
+                                        # mirrors the real file the template resolves to
+    sample_extracts/
+      eval_rerank_top5.jsonl            # 2 queries (2hop, 4hop2) x 5 reranked neighbours
+                                        # per mode; the decomposer's MuSiQue retrieval input
     chunks_only_question_masked_fixed/roberta_large_ner_english/
       ..._questions_2_hop.jsonl, ..._questions_3_hop_1.jsonl   # chunks to combine
       ..._all_questions_all_expanded_enriched.jsonl            # the pool to sample from

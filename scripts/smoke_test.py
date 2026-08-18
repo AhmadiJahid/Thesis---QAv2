@@ -440,6 +440,35 @@ def _stages() -> list[Stage]:
             ],
             note="chat-template prompt split on <<<USER>>> (system/user halves)",
         ),
+        # Issue #12: the three MuSiQue conditions, driven by configs/decomposer_musique.json
+        # and its retrieval input_key (redirected to the fixture by smoke_paths.json). These
+        # are dry runs, so they check condition wiring - which prompt file, whether the hop
+        # count is injected, what lands in the metrics - not generation; the step-line cap
+        # itself is covered by tests/test_step_cap.py.
+        *[
+            Stage(
+                name=f"decomposer_musique_{condition}",
+                cmd=[
+                    sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                    "--model", "mistral_7b_instruct",
+                    "--config", "decomposer_musique.json",
+                    "--condition", condition,
+                    "--dry-run", "--dry-run-limit", "2",
+                    "--output-root", decomposer_dry / f"musique_{condition}",
+                ],
+                expect_dir_globs=[
+                    (decomposer_dry / f"musique_{condition}", "*/results.json"),
+                    (decomposer_dry / f"musique_{condition}", "*/metrics.json"),
+                    (decomposer_dry / f"musique_{condition}", "*/config.json"),
+                ],
+                note=note,
+            )
+            for condition, note in (
+                ("unguided", "MuSiQue condition: no hop count in the prompt"),
+                ("oracle_guided", "MuSiQue condition: gold hop count injected"),
+                ("unguided_capped", "MuSiQue condition: no hop count, step-line cap on"),
+            )
+        ],
         Stage(
             name="smoke_runner_subsample",
             cmd=[

@@ -1,5 +1,5 @@
 {
-  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ.",
+  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ (the two musique_eval_* fixtures are 2 rows each, not the 200-per-hop the real file names carry).",
 
   "data_root": "tests/fixtures/data_root",
   "runs_root": "runs/smoke",
@@ -15,6 +15,8 @@
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
     "musique_dev_dir": "musique/dev_data",
     "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "musique_eval_questions_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
+    "musique_eval_retrieval_rerank_top5": "musique/sample_extracts/eval_rerank_top5.jsonl",
     "musique_clean_dir": "musique/clean_data",
     "musique_chunks_questions_dir": "musique/chunks_only_question",
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",

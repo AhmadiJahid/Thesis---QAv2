@@ -14,6 +14,15 @@ Usage::
         --retrieval-input runs/pool_sweep/biencoder_top5/<cell>/top5_biencoder.jsonl
     python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
 
+    # issue #12: three conditions on the MuSiQue evaluation set, one config
+    python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
+        --config decomposer_musique.json --condition oracle_guided
+
+``--condition`` selects a named entry of the config's ``conditions`` block, which fixes
+whether the gold hop count enters the prompt and whether the step-line cap applies.
+Everything else (model, decoding, seed, retrieval input) comes from the same config, so
+the conditions differ only in the thing under test.
+
 Every run writes a config snapshot, a metrics JSON and a run note, and asserts the
 model's parameter count against the ceiling in ``configs/model_limits.json``.
 """
@@ -39,6 +48,12 @@ from run_config import (  # noqa: E402
     runs_path,
 )
 from seeding import new_rng, set_global_seed  # noqa: E402
+from step_cap import (  # noqa: E402
+    StepLineBudget,
+    build_stopping_criteria,
+    count_step_lines,
+    truncate_to_step_lines,
+)
 
 _THINK_RX = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
@@ -63,6 +78,42 @@ def load_jsonl(path: Path) -> list[dict]:
             if not line:
                 continue
             rows.append(json.loads(line))
+    return rows
+
+
+def load_question_rows(
+    file_path: Path, *, questions_format: str, question_field: str, id_field: str
+) -> list[dict]:
+    """Load a per-hop question file as ``{query_id, question}`` rows.
+
+    Two shapes exist in this pipeline, so the format is a config value rather than a
+    guess from the file extension:
+
+    - ``lines``: MetaQA's ``refined_{hop}hop.txt``, one question per line, no ids.
+    - ``jsonl``: MuSiQue's per-hop dev files, JSON objects carrying an id and a question
+      (``id``/``question`` in the ADR 0007 evaluation set files).
+    """
+    if questions_format == "lines":
+        return [{"query_id": None, "question": q} for q in load_questions(file_path)]
+    if questions_format != "jsonl":
+        raise SystemExit(
+            f"unknown questions_format {questions_format!r} (expected lines or jsonl)"
+        )
+    if not file_path.exists():
+        print(f"Warning: {file_path} not found.")
+        return []
+    rows: list[dict] = []
+    for obj in load_jsonl(file_path):
+        question = obj.get(question_field)
+        if not isinstance(question, str) or not question.strip():
+            continue
+        qid = obj.get(id_field)
+        rows.append(
+            {
+                "query_id": str(qid) if qid is not None else None,
+                "question": question.strip(),
+            }
+        )
     return rows
 
 
@@ -268,13 +319,25 @@ def load_model(model_id: str, loader: dict, device: str, quantization: str):
     return tokenizer, model
 
 
-def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) -> str:
+def generate(
+    prompt_text: str,
+    model,
+    tokenizer,
+    device: str,
+    generation: dict,
+    step_budget: StepLineBudget | None = None,
+) -> str:
     import torch
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     inputs = tokenizer(prompt_text, return_tensors="pt").to(device)
+    stopping_criteria = None
+    if step_budget is not None:
+        stopping_criteria = build_stopping_criteria(
+            step_budget, tokenizer, int(inputs["input_ids"].shape[1])
+        )
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -284,6 +347,7 @@ def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) 
             do_sample=bool(require(generation, "do_sample")),
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
+            stopping_criteria=stopping_criteria,
         )
     return tokenizer.decode(
         outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
@@ -299,6 +363,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--config", default="decomposer.json", help="Shared decomposer config")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--guided", action="store_true", default=None, help="Put the hop count in the prompt")
+    p.add_argument(
+        "--condition",
+        default=None,
+        help="Named entry of the config's 'conditions' block (e.g. unguided, "
+        "oracle_guided, unguided_capped). Fixes guidance and the step-line cap together.",
+    )
     p.add_argument("--sample-size", type=int, default=None)
     p.add_argument("--embed-model", default=None, help="Key in decomposer.json embed_models")
     p.add_argument("--retrieval-input", default=None, help="Reranked/truncated top-k JSONL")
@@ -329,11 +399,55 @@ def main() -> None:
     model_cfg = load_config(model_dir / "config.json")
 
     seed = args.seed if args.seed is not None else int(require(cfg, "seed"))
-    guided = args.guided if args.guided is not None else bool(require(cfg, "guided"))
+
+    # ---- condition (issue #12): guidance and the step-line cap, chosen together ----
+    condition_name = args.condition if args.condition is not None else require(cfg, "condition")
+    condition_spec: dict[str, Any] | None = None
+    if condition_name is not None:
+        conditions = require(cfg, "conditions")
+        if condition_name not in conditions:
+            raise SystemExit(
+                f"unknown condition {condition_name!r}; "
+                f"{cfg.get('_config_path')} defines {sorted(k for k in conditions if k != '_note')}"
+            )
+        condition_spec = require(conditions, condition_name)
+    if condition_spec is not None:
+        condition_guided = bool(require(condition_spec, "guided"))
+        step_cap_enabled = bool(require(condition_spec, "step_cap"))
+        if args.guided and not condition_guided:
+            # A run labelled unguided that injected hop counts anyway would be a silently
+            # corrupt comparison, so contradicting the condition is an error, not a merge.
+            raise SystemExit(
+                f"--guided contradicts condition {condition_name!r} (guided=false). "
+                "Pick a guided condition instead of overriding one."
+            )
+        guided = condition_guided
+    else:
+        step_cap_enabled = False
+        guided = args.guided if args.guided is not None else bool(require(cfg, "guided"))
+
+    max_step_lines: int | None = None
+    step_cap_max_new_tokens: int | None = None
+    if step_cap_enabled:
+        max_step_lines = int(require(cfg, "step_cap.max_step_lines"))
+        step_cap_max_new_tokens = require(cfg, "step_cap.max_new_tokens")
+        if step_cap_max_new_tokens is not None:
+            step_cap_max_new_tokens = int(step_cap_max_new_tokens)
+
     sample_size = args.sample_size if args.sample_size is not None else require(cfg, "sample_size")
     embed_key = args.embed_model or require(cfg, "embed_model")
     embed_model_id = require(cfg, f"embed_models.{embed_key}")
+    retrieval_input_key = require(cfg, "retrieval.input_key")
     retrieval_input = args.retrieval_input or require(cfg, "retrieval.input")
+    if not retrieval_input and retrieval_input_key:
+        # A dataset path belongs in configs/paths.json, so a config may name the key
+        # instead of a literal path; the smoke paths config then redirects it to fixtures.
+        retrieval_input = str(
+            resolve_path(
+                require(paths_cfg, f"datasets.{retrieval_input_key}"),
+                Path(paths_cfg["data_root_resolved"]),
+            )
+        )
     retrieval_mode = args.retrieval_mode or require(cfg, "retrieval.mode")
     retrieval_k = args.retrieval_k if args.retrieval_k is not None else int(require(cfg, "retrieval.k"))
     retrieval_modes = require(cfg, "retrieval.modes")
@@ -345,6 +459,10 @@ def main() -> None:
 
     prompt_style = require(model_cfg, "prompt_style")
     generation = dict(require(model_cfg, "generation"))
+    if step_cap_max_new_tokens is not None:
+        # The token half of the cap. Left null in config, the model's own budget stands,
+        # which keeps decoding identical across the conditions being compared.
+        generation["max_new_tokens"] = step_cap_max_new_tokens
     loader = dict(require(model_cfg, "loader"))
     few_shot_cfg = dict(require(model_cfg, "few_shot"))
     post_cfg = dict(require(model_cfg, "post_process"))
@@ -371,6 +489,17 @@ def main() -> None:
     prompt_file = require(model_cfg, "prompt_file")
     if not guided and unguided_prompt_file:
         prompt_file = unguided_prompt_file
+    # A model with no unguided prompt file falls back to the guided prompt, whose
+    # "{hop_count}" then renders as unguided_hop_placeholder ("Hop count: Unknown").
+    # That is v1 behaviour, but for a guided-vs-unguided comparison it means the unguided
+    # arm still carries a hop-count line, so say so loudly and record it.
+    unguided_prompt_missing = bool(not guided and not unguided_prompt_file)
+    if unguided_prompt_missing:
+        print(
+            f"WARNING: model {args.model!r} has no unguided_prompt_file, so this unguided "
+            f"run uses {prompt_file!r} with hop_count={unguided_hop_placeholder!r}. The "
+            "prompt still contains a hop-count line."
+        )
     prompt_path = model_dir / prompt_file
     if not prompt_path.exists():
         raise SystemExit(f"prompt file not found: {prompt_path}")
@@ -395,16 +524,26 @@ def main() -> None:
         "prompt_file": prompt_file,
         "prompt_path": str(prompt_path),
         "guided": guided,
+        "unguided_prompt_missing": unguided_prompt_missing,
+        "condition": condition_name,
+        "condition_spec": condition_spec,
+        "step_cap": {
+            "enabled": step_cap_enabled,
+            "max_step_lines": max_step_lines,
+            "max_new_tokens": step_cap_max_new_tokens,
+        },
         "seed": seed,
         "seeded": seeded,
         "sample_size": sample_size,
         "hops": hops,
+        "questions_format": require(cfg, "questions_format"),
         "device": device,
         "quantization": quantization,
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
             "input": str(retrieval_input) if retrieval_input else None,
+            "input_key": retrieval_input_key,
             "mode": retrieval_mode,
             "k": retrieval_k,
         },
@@ -417,7 +556,10 @@ def main() -> None:
         "output_root": str(output_root),
         "dry_run": args.dry_run,
     }
-    print(f"Starting decomposer run {current_run_id} (guided={guided}, dry_run={args.dry_run})")
+    print(
+        f"Starting decomposer run {current_run_id} (condition={condition_name}, "
+        f"guided={guided}, step_cap={step_cap_enabled}, dry_run={args.dry_run})"
+    )
     print(json.dumps(snapshot, indent=2, default=str))
 
     data_root = Path(paths_cfg["data_root_resolved"])
@@ -510,14 +652,31 @@ def main() -> None:
         )
     else:
         template = require(paths_cfg, "datasets." + require(cfg, "questions_template_key"))
+        questions_format = require(cfg, "questions_format")
         rng = new_rng(seed)
         for hop in hops:
-            questions = load_questions(resolve_path(template.format(hop=hop), data_root))
+            question_rows = load_question_rows(
+                resolve_path(template.format(hop=hop), data_root),
+                questions_format=questions_format,
+                question_field=(
+                    require(cfg, "questions_jsonl.question_field")
+                    if questions_format == "jsonl"
+                    else ""
+                ),
+                id_field=(
+                    require(cfg, "questions_jsonl.id_field") if questions_format == "jsonl" else ""
+                ),
+            )
             if sample_size:
-                questions = rng.sample(questions, min(len(questions), int(sample_size)))
-            for question in questions:
+                question_rows = rng.sample(question_rows, min(len(question_rows), int(sample_size)))
+            for qrow in question_rows:
                 inference_rows.append(
-                    {"query_id": None, "question": question, "hop_count": hop, "retrieval_examples": []}
+                    {
+                        "query_id": qrow["query_id"],
+                        "question": qrow["question"],
+                        "hop_count": hop,
+                        "retrieval_examples": [],
+                    }
                 )
         if not inference_rows:
             raise SystemExit(
@@ -549,6 +708,7 @@ def main() -> None:
     fallback_rng = new_rng(seed)
     print("Assembling prompts..." if args.dry_run else "Running inference...")
     progress_every = int(require(cfg, "progress_every"))
+    step_budget = StepLineBudget(max_step_lines) if step_cap_enabled else None
 
     for i, row in enumerate(inference_rows):
         question = row["question"]
@@ -606,7 +766,8 @@ def main() -> None:
                     enable_thinking=bool(require(model_cfg, "chat_template.enable_thinking")),
                 )
                 decomposition = post_process(
-                    generate(rendered, model, tokenizer, device, generation), post_cfg
+                    generate(rendered, model, tokenizer, device, generation, step_budget),
+                    post_cfg,
                 )
         else:
             rendered = fill_template(
@@ -619,7 +780,18 @@ def main() -> None:
             decomposition = (
                 ""
                 if args.dry_run
-                else post_process(generate(rendered, model, tokenizer, device, generation), post_cfg)
+                else post_process(
+                    generate(rendered, model, tokenizer, device, generation, step_budget),
+                    post_cfg,
+                )
+            )
+
+        # The cap is enforced again on the decoded text: the stopping criteria is only
+        # consulted at token boundaries, and post_process can rejoin lines behind it.
+        step_cap_truncated = False
+        if step_cap_enabled and decomposition:
+            decomposition, step_cap_truncated = truncate_to_step_lines(
+                decomposition, max_step_lines
             )
 
         if args.dry_run or (i + 1) % prompt_log_every == 0:
@@ -654,6 +826,8 @@ def main() -> None:
                 "hop_count": hop,
                 "decomposition": decomposition,
                 "few_shot_source": source,
+                "step_lines": count_step_lines(decomposition),
+                "step_cap_truncated": step_cap_truncated,
             }
         )
 
@@ -673,11 +847,32 @@ def main() -> None:
             for src in sorted({r["few_shot_source"] for r in results})
         },
         "guided": guided,
+        "condition": condition_name,
+        "unguided_prompt_missing": unguided_prompt_missing,
+        "step_cap": {
+            "enabled": step_cap_enabled,
+            "max_step_lines": max_step_lines,
+            "max_new_tokens": step_cap_max_new_tokens,
+            "effective_max_new_tokens": int(require(generation, "max_new_tokens")),
+        },
+        "rows_truncated_by_step_cap": sum(1 for r in results if r["step_cap_truncated"]),
+        "step_lines_total": sum(r["step_lines"] for r in results),
         "seed": seed,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
         "results_path": str(output_dir / "results.json"),
     }
+    if unguided_prompt_missing:
+        metrics["unguided_prompt_missing_note"] = (
+            f"model folder {args.model!r} has no unguided_prompt_file, so this unguided run "
+            f"used {prompt_file!r} and its prompt still carries a hop-count line "
+            f"({unguided_hop_placeholder!r}). Not a clean unguided arm."
+        )
+    if step_cap_enabled and args.dry_run:
+        metrics["step_cap_note"] = (
+            "unmeasured: --dry-run generates nothing, so the step-line cap could not fire "
+            "and rows_truncated_by_step_cap is 0 by construction"
+        )
     if embed_size_record is None:
         metrics["embedding_model_size_note"] = (
             "no bi-encoder was loaded in this run (retrieval input supplied, few-shot "
@@ -699,7 +894,13 @@ def main() -> None:
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
-            f"- Guided: {guided}; seed: {seed}",
+            f"- Condition: {condition_name}; guided: {guided}; seed: {seed}",
+            (
+                f"- Step cap: {max_step_lines} step lines, "
+                f"max_new_tokens={int(require(generation, 'max_new_tokens'))}"
+                if step_cap_enabled
+                else "- Step cap: off"
+            ),
             f"- Rows: {len(results)}"
             + (f"; retrieval input: `{retrieval_input}`" if retrieval_input else ""),
             f"- Few-shot: enabled={few_shot_enabled} k={few_shot_k} mode={few_shot_source_mode}",
