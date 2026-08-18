@@ -14,15 +14,29 @@ Usage::
         --retrieval-input runs/pool_sweep/biencoder_top5/<cell>/top5_biencoder.jsonl
     python components/decomposer/run_decomposer.py --model qwen2_5_3b --dry-run
 
+    # the fine-tuned arm (issue #13): a LoRA adapter on the same base model, zero-shot
+    python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
+        --adapter runs/finetune_decomposer/pool_2000/mistral_7b_instruct/<run>/adapter \\
+        --no-few-shot --retrieval-input <the evaluation-set query file>
+
 Every run writes a config snapshot, a metrics JSON and a run note, and asserts the
-model's parameter count against the ceiling in ``configs/model_limits.json``.
+model's parameter count against the ceiling in ``configs/model_limits.json`` (with a LoRA
+adapter attached, the count asserted is the base plus the adapter).
+
+Every run also reports **cost next to quality**: per row, the prompt tokens, the completion
+tokens and the generation latency; in the metrics JSON, the per-query means and medians.
+That is what makes a prompting-versus-fine-tuning comparison a cost/quality comparison
+instead of a quality-only one. On a ``--dry-run`` nothing is generated, so those numbers are
+recorded as unmeasured rather than as zero.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import statistics
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -268,13 +282,43 @@ def load_model(model_id: str, loader: dict, device: str, quantization: str):
     return tokenizer, model
 
 
-def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) -> str:
+def attach_adapter(model, adapter_path: str | Path):
+    """Attach a trained LoRA adapter (the fine-tuned arm of issue #13).
+
+    Loaded on top of the same base model the prompting arm uses, so the two arms differ in
+    the adapter and nothing else.
+    """
+    path = Path(adapter_path)
+    if not path.exists():
+        raise SystemExit(f"[decomposer] adapter not found: {path}")
+    try:
+        from peft import PeftModel
+    except ImportError as exc:
+        raise SystemExit(
+            "[decomposer] --adapter needs peft (in requirements.txt: peft==0.20.0). "
+            f"Import failed: {exc}"
+        ) from exc
+    model = PeftModel.from_pretrained(model, str(path))
+    model.eval()
+    return model
+
+
+def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) -> dict[str, Any]:
+    """Generate one decomposition, returning the text with its token and latency cost.
+
+    The cost fields are measured here rather than estimated later: ``prompt_tokens`` and
+    ``completion_tokens`` are the tokenizer's own counts for this call, and
+    ``latency_seconds`` is wall clock around ``model.generate`` only (tokenization and
+    decoding excluded, so the number is comparable across arms).
+    """
     import torch
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     inputs = tokenizer(prompt_text, return_tensors="pt").to(device)
+    prompt_tokens = int(inputs["input_ids"].shape[1])
+    started = time.perf_counter()
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -285,9 +329,70 @@ def generate(prompt_text: str, model, tokenizer, device: str, generation: dict) 
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
-    return tokenizer.decode(
-        outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-    ).strip()
+    if device == "cuda":
+        # generate() is synchronous on the returned tensor, but sync explicitly so the
+        # timing is the kernel time and not the launch time.
+        torch.cuda.synchronize()
+    latency_seconds = time.perf_counter() - started
+    new_tokens = outputs[0][prompt_tokens:]
+    return {
+        "text": tokenizer.decode(new_tokens, skip_special_tokens=True).strip(),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": int(new_tokens.shape[0]),
+        "latency_seconds": latency_seconds,
+    }
+
+
+def cost_summary(results: list[dict]) -> dict[str, Any]:
+    """Per-query token and latency cost over the rows that actually generated.
+
+    Nothing is imputed: rows with no measurement (a dry run) are excluded, and when there
+    are none every field is ``None`` with a note, because 0 tokens per query would be a
+    false claim rather than a missing one.
+    """
+    measured = [r for r in results if r.get("latency_seconds") is not None]
+
+    def mean(key: str) -> float | None:
+        return statistics.fmean(float(r[key]) for r in measured) if measured else None
+
+    def median(key: str) -> float | None:
+        return statistics.median(float(r[key]) for r in measured) if measured else None
+
+    summary: dict[str, Any] = {
+        "rows_measured": len(measured),
+        "rows_total": len(results),
+        "mean_prompt_tokens_per_query": mean("prompt_tokens"),
+        "median_prompt_tokens_per_query": median("prompt_tokens"),
+        "mean_completion_tokens_per_query": mean("completion_tokens"),
+        "median_completion_tokens_per_query": median("completion_tokens"),
+        "mean_total_tokens_per_query": (
+            statistics.fmean(
+                float(r["prompt_tokens"]) + float(r["completion_tokens"]) for r in measured
+            )
+            if measured
+            else None
+        ),
+        "mean_latency_seconds_per_query": mean("latency_seconds"),
+        "median_latency_seconds_per_query": median("latency_seconds"),
+        "total_generation_seconds": (
+            sum(float(r["latency_seconds"]) for r in measured) if measured else None
+        ),
+        "definitions": {
+            "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+            "completion_tokens": "number of newly generated tokens for that row",
+            "latency_seconds": (
+                "wall clock around model.generate for that row (CUDA synchronized), "
+                "excluding tokenization and decoding"
+            ),
+            "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded",
+        },
+    }
+    if not measured:
+        summary["note"] = (
+            "unmeasured: no row generated in this run (--dry-run), so tokens per query and "
+            "latency per query are unknown, not zero"
+        )
+    return summary
 
 
 # ------------------------------------------------------------------------ main
@@ -305,6 +410,18 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--retrieval-mode", default=None, help="Which <mode>_top_k list to use")
     p.add_argument("--retrieval-k", type=int, default=None)
     p.add_argument("--quantization", default=None, choices=["none", "4bit", "8bit"])
+    p.add_argument(
+        "--adapter",
+        default=None,
+        help="Trained LoRA adapter directory (the fine-tuned arm; see train_lora.py).",
+    )
+    p.add_argument(
+        "--no-few-shot",
+        action="store_true",
+        help="Leave the prompt's few-shot block empty. Required for a fine-tuned adapter, "
+        "which was trained on the zero-shot prompt: injecting examples at inference would "
+        "feed it a prompt shape it never saw.",
+    )
     p.add_argument("--output-root", default=None)
     p.add_argument(
         "--dry-run",
@@ -401,6 +518,8 @@ def main() -> None:
         "hops": hops,
         "device": device,
         "quantization": quantization,
+        "adapter": str(args.adapter) if args.adapter else None,
+        "no_few_shot": bool(args.no_few_shot),
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
@@ -417,13 +536,21 @@ def main() -> None:
         "output_root": str(output_root),
         "dry_run": args.dry_run,
     }
-    print(f"Starting decomposer run {current_run_id} (guided={guided}, dry_run={args.dry_run})")
+    print(
+        f"Starting decomposer run {current_run_id} (guided={guided}, "
+        f"adapter={args.adapter}, no_few_shot={bool(args.no_few_shot)}, "
+        f"dry_run={args.dry_run})"
+    )
     print(json.dumps(snapshot, indent=2, default=str))
 
     data_root = Path(paths_cfg["data_root_resolved"])
 
     # ---- few-shot machinery (only when the prompt actually takes examples) ----
-    few_shot_enabled = bool(require(few_shot_cfg, "enabled")) and "{few_shot_examples}" in prompt_template
+    few_shot_enabled = (
+        bool(require(few_shot_cfg, "enabled"))
+        and "{few_shot_examples}" in prompt_template
+        and not args.no_few_shot
+    )
     few_shot_k = int(require(few_shot_cfg, "k"))
     few_shot_data: dict = {}
     decomposer_items: list[dict] = []
@@ -431,7 +558,19 @@ def main() -> None:
     embed_model = None
     embed_size_record: dict[str, Any] | None = None
     mask_fn: Callable[[str], str] | None = None
-    few_shot_source_mode = "disabled"
+    few_shot_source_mode = "disabled_by_no_few_shot" if args.no_few_shot else "disabled"
+    # A model whose prompt carries its examples inline (few_shot.enabled false, no
+    # "{few_shot_examples}" placeholder) cannot have them removed by a flag. Say so rather
+    # than let a run be labelled zero-shot when its prompt is not.
+    no_few_shot_ineffective = bool(
+        args.no_few_shot and "{few_shot_examples}" not in prompt_template
+    )
+    if no_few_shot_ineffective:
+        print(
+            f"WARNING: --no-few-shot has no effect for model {args.model!r}: its prompt "
+            f"({prompt_file}) has no '{{few_shot_examples}}' placeholder, so any examples "
+            "it shows are written into the prompt text itself."
+        )
 
     if few_shot_enabled:
         pool_path = resolve_path(require(paths_cfg, "repo." + require(cfg, "few_shot_pool_key")), _REPO_ROOT)
@@ -536,6 +675,12 @@ def main() -> None:
         model_id = require(model_cfg, "model_id")
         print(f"Loading model: {model_id} on {device} (quantization={quantization}) ...")
         tokenizer, model = load_model(model_id, loader, device, quantization)
+        if args.adapter:
+            print(f"Attaching LoRA adapter: {args.adapter}")
+            model = attach_adapter(model, args.adapter)
+            model_id = f"{model_id}+adapter"
+        # With an adapter attached this counts base + adapter parameters, which is the
+        # thing the ~8B ceiling is about.
         size_record = assert_within_ceiling(
             model, component="decomposer", model_id=model_id, limits=limits
         )
@@ -585,6 +730,11 @@ def main() -> None:
                 source = "random"
 
         few_shot_str = format_few_shot_examples(sampled, hop_input) if sampled else ""
+        cost: dict[str, Any] = {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "latency_seconds": None,
+        }
 
         if prompt_style == "chat_template":
             messages = build_chat_messages(
@@ -605,9 +755,9 @@ def main() -> None:
                     add_generation_prompt=True,
                     enable_thinking=bool(require(model_cfg, "chat_template.enable_thinking")),
                 )
-                decomposition = post_process(
-                    generate(rendered, model, tokenizer, device, generation), post_cfg
-                )
+                generated = generate(rendered, model, tokenizer, device, generation)
+                cost = {k: generated[k] for k in cost}
+                decomposition = post_process(generated["text"], post_cfg)
         else:
             rendered = fill_template(
                 prompt_template,
@@ -616,11 +766,12 @@ def main() -> None:
                 few_shot_examples=few_shot_str,
                 unguided_hop_placeholder=unguided_hop_placeholder,
             )
-            decomposition = (
-                ""
-                if args.dry_run
-                else post_process(generate(rendered, model, tokenizer, device, generation), post_cfg)
-            )
+            if args.dry_run:
+                decomposition = ""
+            else:
+                generated = generate(rendered, model, tokenizer, device, generation)
+                cost = {k: generated[k] for k in cost}
+                decomposition = post_process(generated["text"], post_cfg)
 
         if args.dry_run or (i + 1) % prompt_log_every == 0:
             log_path = prompts_dir / f"prompt_idx{i + 1:04d}_hop{hop}.txt"
@@ -654,6 +805,7 @@ def main() -> None:
                 "hop_count": hop,
                 "decomposition": decomposition,
                 "few_shot_source": source,
+                **cost,
             }
         )
 
@@ -674,10 +826,23 @@ def main() -> None:
         },
         "guided": guided,
         "seed": seed,
+        "adapter": str(args.adapter) if args.adapter else None,
+        "no_few_shot": bool(args.no_few_shot),
+        "no_few_shot_ineffective": no_few_shot_ineffective,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
+        # Cost sits in the same metrics file as quality on purpose: a fine-tuned arm that
+        # wins on step F1 while costing three times the tokens is a different conclusion
+        # from one that wins for free, and that can only be argued if both are recorded.
+        "cost": cost_summary(results),
         "results_path": str(output_dir / "results.json"),
     }
+    if no_few_shot_ineffective:
+        metrics["no_few_shot_note"] = (
+            f"--no-few-shot was passed but the prompt ({prompt_file}) has no "
+            "'{few_shot_examples}' placeholder, so this run is not necessarily zero-shot: "
+            "any examples the prompt shows are part of its text."
+        )
     if embed_size_record is None:
         metrics["embedding_model_size_note"] = (
             "no bi-encoder was loaded in this run (retrieval input supplied, few-shot "
@@ -698,6 +863,7 @@ def main() -> None:
         note_lines=[
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
+            "- Adapter: " + (f"`{args.adapter}`" if args.adapter else "none (prompting arm)"),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
             f"- Guided: {guided}; seed: {seed}",
             f"- Rows: {len(results)}"
@@ -708,6 +874,14 @@ def main() -> None:
                 f"(ceiling {size_record['parameter_ceiling']:,})"
                 if size_record["ceiling_asserted"]
                 else "- Parameter ceiling: not asserted (no model was loaded)."
+            ),
+            (
+                f"- Cost per query: {metrics['cost']['mean_prompt_tokens_per_query']:.1f} prompt "
+                f"+ {metrics['cost']['mean_completion_tokens_per_query']:.1f} completion tokens, "
+                f"{metrics['cost']['mean_latency_seconds_per_query']:.3f}s "
+                f"(means over {metrics['cost']['rows_measured']} rows)"
+                if metrics["cost"]["rows_measured"]
+                else "- Cost per query: unmeasured (nothing was generated in this run)."
             ),
             f"- Predictions: `{output_dir / 'results.json'}`",
         ],

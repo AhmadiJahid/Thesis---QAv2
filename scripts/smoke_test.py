@@ -17,6 +17,9 @@ What is NOT covered, and why:
 - The router and decomposer runners are exercised with ``--dry-run``: prompts are
   assembled and artifacts written, but no weights are loaded, so the parameter-count
   assertion in ``src/model_size.py`` is *not* exercised by this test.
+- LoRA fine-tuning (``components/decomposer/train_lora.py``) is exercised with ``--dry-run``
+  for the same reason: the arm selection, the train/eval overlap assertion and the
+  prompt/completion formatting run, but no adapter is trained and no cost is measured.
 
 Two stages also carry golden metric values (``expect_metrics``). The fixture never
 changes, so those numbers are fixed: if one moves, a metric's normalization or matching
@@ -99,6 +102,9 @@ def _stages() -> list[Stage]:
     analysis_dir = WORK / "router_analysis"
     router_dry = WORK / "router_dry"
     decomposer_dry = WORK / "decomposer_dry"
+    finetune_dry = WORK / "finetune_dry"
+    arms_dir = WORK / "decomposer_arms"
+    arms_out = WORK / "arms_comparison"
     smoke_runner_out = WORK / "qwen_smoke"
     refine_run = WORK / "pool_refine"
     extract_run = WORK / "sample_extract"
@@ -441,6 +447,84 @@ def _stages() -> list[Stage]:
             note="chat-template prompt split on <<<USER>>> (system/user halves)",
         ),
         Stage(
+            name="decomposer_dry_run_adapter",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--dry-run", "--dry-run-limit", "2",
+                "--retrieval-input", FIXTURES / "retrieval" / "top20.jsonl",
+                "--retrieval-mode", "uniform", "--retrieval-k", "5",
+                "--adapter", FIXTURES / "decomposer_arms" / "finetuned",
+                "--no-few-shot",
+                "--output-root", decomposer_dry / "adapter",
+            ],
+            expect_dir_globs=[
+                (decomposer_dry / "adapter", "*/results.json"),
+                (decomposer_dry / "adapter", "*/metrics.json"),
+            ],
+            note="fine-tuned arm plumbing: --adapter recorded, --no-few-shot empties the "
+            "few-shot block, cost block written (no weights, so cost is unmeasured)",
+        ),
+        Stage(
+            name="finetune_dry_run_pool_2000",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "train_lora.py",
+                "--arm", "pool_2000", "--dry-run",
+                "--output-root", finetune_dry / "pool_2000",
+            ],
+            expect_dir_globs=[
+                (finetune_dry / "pool_2000", "*/metrics.json"),
+                (finetune_dry / "pool_2000", "*/config.json"),
+                (finetune_dry / "pool_2000", "*/notes.md"),
+                (finetune_dry / "pool_2000", "*/formatted_examples.txt"),
+            ],
+            note="LoRA data path: pool arm selection, train/eval id overlap assertion, "
+            "prompt/completion formatting (no weights loaded)",
+        ),
+        Stage(
+            name="finetune_dry_run_generalisation",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "train_lora.py",
+                "--arm", "generalisation_2_3hop", "--dry-run",
+                "--output-root", finetune_dry / "generalisation",
+            ],
+            expect_dir_globs=[
+                (finetune_dry / "generalisation", "*/metrics.json"),
+                (finetune_dry / "generalisation", "*/formatted_examples.txt"),
+            ],
+            note="generalisation arm: 2-hop and 3-hop training rows only, 4-hop evaluation",
+        ),
+        Stage(
+            name="decomposer_arm_comparison",
+            cmd=[
+                sys.executable, SCRIPTS / "compare_decomposer_arms.py",
+                "--arm", f"prompting={arms_dir / 'prompting'}",
+                "--arm", f"finetuned={arms_dir / 'finetuned'}",
+                "--baseline", "prompting",
+                "--out-dir", arms_out,
+            ],
+            expect_files=[
+                arms_out / "arms_metrics.json",
+                arms_out / "arms_config.json",
+                arms_out / "arms_notes.md",
+                arms_out / "prompting" / "eval_per_item.json",
+                arms_out / "finetuned" / "eval_per_item.json",
+                arms_out / "compare_finetuned_vs_prompting" / "compare_metrics.json",
+            ],
+            expect_metrics=[
+                # Both fixture arms hold the same predictions, so the comparison is exactly
+                # zero by construction: this pins the wiring, not a result.
+                (arms_out / "arms_metrics.json", "comparisons.finetuned_vs_prompting.num_aligned_items", 3),
+                (
+                    arms_out / "arms_metrics.json",
+                    "comparisons.finetuned_vs_prompting.bootstrap.composite_score.difference",
+                    0.0,
+                ),
+                (arms_out / "arms_metrics.json", "arms.prompting.cost.mean_total_tokens_per_query", 560.0),
+            ],
+            note="score two arms with one evaluator config, compare them paired, and put "
+            "cost next to quality in one table",
+        ),
+        Stage(
             name="smoke_runner_subsample",
             cmd=[
                 sys.executable, SCRIPTS / "run_qwen_smoke.py",
@@ -481,11 +565,20 @@ def _prepare(keep_output: bool) -> None:
             WORK / "combine_input",
         ),
         (DATA_ROOT / "metaqa" / "pool", WORK / "metaqa_pool"),
+        # Two fabricated "arms" for the comparison stage. Their predictions are a copy of
+        # the same fixture file (added below), so every comparison difference is exactly 0.
+        (FIXTURES / "decomposer_arms", WORK / "decomposer_arms"),
     ):
         if dst.exists():
             shutil.rmtree(dst)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(src, dst)
+
+    for arm in ("prompting", "finetuned"):
+        shutil.copyfile(
+            FIXTURES / "predictions" / "decomposer_results_musique.json",
+            WORK / "decomposer_arms" / arm / "results.json",
+        )
 
 
 def _run_stage(stage: Stage, env: dict[str, str]) -> tuple[bool, str, float]:
@@ -609,6 +702,8 @@ def main() -> int:
             "probes (need model downloads)",
             "the parameter-count assertion in src/model_size.py (no weights are loaded; "
             "the runners use --dry-run)",
+            "LoRA training steps and adapter inference (train_lora.py runs with --dry-run; "
+            "tokens-per-query and latency-per-query are therefore unmeasured here)",
         ],
     }
     RUNS_ROOT.mkdir(parents=True, exist_ok=True)

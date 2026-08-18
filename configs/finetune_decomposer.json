@@ -1,0 +1,169 @@
+{
+  "_note": "Config for components/decomposer/train_lora.py (LoRA / QLoRA fine-tuning of the decomposer on MuSiQue, issue #13) and for scripts/compare_decomposer_arms.py. Every hyperparameter of a training run lives here, so a run reproduces from a commit + this file + the seed. Nothing in this file is a measured result: the numbers are settings, not findings.",
+
+  "seed": 42,
+
+  "model_folder": "mistral_7b_instruct",
+  "quantization": "4bit",
+
+  "default_arm": "pool_2000",
+
+  "arms": {
+    "_note": "Training-data arms. --arm selects one by key; each arm names its source (a datasets key in configs/paths.json, or an explicit path), an optional hop filter, and an optional cap. eval_hops says which hop depths of the ADR 0007 evaluation set that arm is evaluated on; the train/eval id-overlap assertion always runs against ALL of eval_set.hops regardless, so a hop-restricted arm cannot dodge it.",
+
+    "pool_2000": {
+      "_note": "The 2000-example pool arm. WHICH 2000-example pool is 'the best pool' is not settled by any measured v2 result - the pool sweep has not been run in v2 - so this arm draws 2000 rows with the fixed seed from the enriched MuSiQue training pool named below, spread across hop buckets. To pin a specific pool artifact instead, set train_source_path to it (it overrides train_source_key); max_examples still applies.",
+      "train_source_key": "musique_pool_enriched",
+      "train_source_path": null,
+      "train_hops": null,
+      "max_examples": 2000,
+      "stratify_cap_by_hop": true,
+      "eval_hops": [2, 3, 4]
+    },
+
+    "full_train": {
+      "_note": "The full MuSiQue training split, no cap and no hop filter.",
+      "train_source_key": "musique_train",
+      "train_source_path": null,
+      "train_hops": null,
+      "max_examples": null,
+      "stratify_cap_by_hop": false,
+      "eval_hops": [2, 3, 4]
+    },
+
+    "generalisation_2_3hop": {
+      "_note": "Generalisation check: train on 2-hop and 3-hop only, evaluate on 4-hop only. A model that learned the task should still decompose 4-hop questions; a model that memorised hop patterns should not.",
+      "train_source_key": "musique_train",
+      "train_source_path": null,
+      "train_hops": [2, 3],
+      "max_examples": null,
+      "stratify_cap_by_hop": false,
+      "eval_hops": [4]
+    }
+  },
+
+  "data": {
+    "_note": "Step text is read from the first field present, in this order: raw MuSiQue rows carry 'question_decomposition' (a list of step objects), the enriched pool carries 'few_shot_decomposition_musique' (a list of step strings written from the same source by MusiQue/scripts/enrich_pool_decompositions.py). hop_count_field is consulted when the row has one; otherwise the hop count comes from the id prefix ('2hop__', '3hop1__', '4hop2__'), falling back to the number of steps. Measured on 2026-08-18 over the 19938 rows of musique_ans_v1.0_train.jsonl: the id prefix and the step count agree on every row.",
+    "id_field": "id",
+    "question_field": "question",
+    "hop_count_field": "hop_count",
+    "step_fields": ["question_decomposition", "few_shot_decomposition_musique"]
+  },
+
+  "eval_set": {
+    "_note": "The ADR 0007 MuSiQue evaluation set: 600 dev questions, 200 per hop depth, read through configs/paths.json so no path is hard-coded. These ids are what training data is asserted disjoint from.",
+    "questions_template_key": "musique_eval_questions_template",
+    "hops": [2, 3, 4],
+    "id_field": "id",
+    "question_field": "question"
+  },
+
+  "overlap_check": {
+    "_note": "Train/eval overlap is a hard failure, not a warning: a fine-tuned arm that saw evaluation questions is not a comparison arm. max_reported_ids caps how many offending ids the error message prints.",
+    "max_reported_ids": 20
+  },
+
+  "prompt": {
+    "_note": "The training prompt is built from the SAME per-model prompt file the prompting arm uses (components/decomposer/models/<model>/), with the few-shot block empty: the fine-tuned arm is meant to answer zero-shot, and inference must see the string shape training saw (run_decomposer.py --adapter ... --no-few-shot). target_reference_style 'as_is' trains on the gold step text verbatim; 'bracketed' rewrites '#1' to '[#1]' to match the convention the prompt file states. The choice is not neutral and is Jahid's to make: the evaluator strips brackets before matching steps (so exact-match and step-F1 are unaffected), but reference_validity_micro is vacuously 1.0 for predictions with no [#k] references, and ROUGE-L tokenises before punctuation stripping, so '#1' and '[#1]' are different tokens there.",
+    "_unguided_hop_placeholder_note": "Not duplicated here: it is read from decomposer_config below, so the training prompt and the inference prompt cannot drift apart on it.",
+    "guided": false,
+    "few_shot_examples": "",
+    "target_reference_style": "as_is",
+    "number_target_lines": false
+  },
+
+  "loader": {
+    "_note": "Base-model loading for training. QLoRA is the 4bit path (bitsandbytes NF4 + double quantization); 'none' loads in dtype. device_map 'auto' needs accelerate.",
+    "trust_remote_code": false,
+    "device_map": "auto",
+    "dtype": "bfloat16",
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": "bfloat16",
+    "bnb_4bit_use_double_quant": true,
+    "attn_implementation": null
+  },
+
+  "lora": {
+    "_note": "target_modules are the attention/MLP projection names of Llama/Mistral-family models. A different base architecture uses different names, so this list is a config value, not a default buried in code; peft raises if a name is absent.",
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "bias": "none",
+    "task_type": "CAUSAL_LM",
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ]
+  },
+
+  "training": {
+    "_note": "trl SFTConfig fields. The dataset is prompt/completion typed and completion_only_loss masks the prompt out of the loss, so the model is trained on the decomposition text only. Batch 1 x grad-accum 16 with gradient checkpointing and max_length 1024 is what keeps a 4-bit 7B base inside 24 GiB on the RTX 3090 of docs/compute.md - an estimate until a run measures peak_gpu_memory_bytes, which the metrics JSON records. bf16 is supported on Ampere.",
+    "num_train_epochs": 2,
+    "max_steps": -1,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "learning_rate": 0.0002,
+    "lr_scheduler_type": "cosine",
+    "_warmup_note": "warmup_steps, not warmup_ratio: transformers 5.5.4 warns that warmup_ratio is deprecated and slated for removal, so the run would emit a deprecation warning and eventually break.",
+    "warmup_steps": 10,
+    "weight_decay": 0.0,
+    "max_grad_norm": 1.0,
+    "optim": "paged_adamw_8bit",
+    "max_length": 1024,
+    "packing": false,
+    "completion_only_loss": true,
+    "gradient_checkpointing": true,
+    "bf16": true,
+    "fp16": false,
+    "logging_steps": 10,
+    "save_strategy": "epoch",
+    "save_total_limit": 2,
+    "report_to": "none",
+    "dataloader_num_workers": 0
+  },
+
+  "decomposer_config": "decomposer.json",
+
+  "output_subdir": "finetune_decomposer",
+  "adapter_dirname": "adapter",
+  "formatted_examples_logged": 5,
+
+  "evaluation": {
+    "_note": "scripts/compare_decomposer_arms.py. Quality comes only from scripts/musique_decompositions_evaluator.py - string-level metrics, no model in the loop and never a commercial API rating decompositions (CLAUDE.md standing constraint). Cost comes from the 'cost' block each decomposer run writes into its own metrics.json. quality_keys and cost_keys are the columns of the summary table.",
+    "evaluator_script": "scripts/musique_decompositions_evaluator.py",
+    "evaluator_config": "musique_eval.json",
+    "out_subdir": "decomposer_arm_comparison",
+    "quality_keys": [
+      "total_evaluated",
+      "exact_match_rate",
+      "step_f1_macro",
+      "ordered_step_accuracy_macro",
+      "rouge_l_f1_macro",
+      "reference_validity_micro",
+      "step_count_mae",
+      "mean_signed_step_count_error",
+      "over_decomposition_rate",
+      "under_decomposition_rate",
+      "step_count_exact_rate",
+      "hop_count_exact_match_rate",
+      "composite_score"
+    ],
+    "cost_keys": [
+      "rows_measured",
+      "mean_prompt_tokens_per_query",
+      "mean_completion_tokens_per_query",
+      "mean_total_tokens_per_query",
+      "mean_latency_seconds_per_query",
+      "median_latency_seconds_per_query",
+      "total_generation_seconds"
+    ]
+  },
+
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}
