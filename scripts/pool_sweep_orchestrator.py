@@ -491,7 +491,13 @@ SUMMARY_FIELDS = [
     "ordered_step_accuracy_macro",
     "rouge_l_precision_macro", "rouge_l_recall_macro", "rouge_l_f1_macro",
     "reference_validity_macro", "reference_validity_micro",
-    "step_count_abs_error_mae", "hop_count_exact_match_rate", "hop_count_abs_error_mae",
+    "step_count_abs_error_mae",
+    # The directional step-count family. all_runs.csv is where the under-decomposition
+    # question gets asked, so these have to reach it and not stop at the per-run metrics
+    # JSON. step_count_mae repeats step_count_abs_error_mae by design (see METRIC_DEFINITIONS).
+    "step_count_mae", "mean_signed_step_count_error",
+    "over_decomposition_rate", "under_decomposition_rate", "step_count_exact_rate",
+    "hop_count_exact_match_rate", "hop_count_abs_error_mae",
     "composite_score",
     "eval_metrics_path", "predictions_path",
 ]
@@ -532,9 +538,32 @@ def _existing_dev_identity(summary_csv: Path) -> dict[str, str] | None:
     return None
 
 
+def _existing_header(summary_csv: Path) -> list[str] | None:
+    """The header already written to the table, or None when there is no file yet."""
+    if not summary_csv.exists():
+        return None
+    try:
+        with summary_csv.open(encoding="utf-8", newline="") as f:
+            return next(csv.reader(f), None)
+    except Exception as exc:
+        print(f"[orchestrator] failed to read {summary_csv} for a header check: {exc}")
+        return None
+
+
 def _append_summary(summary_csv: Path, row: dict[str, Any]) -> None:
-    """Append one row, refusing to mix dev sets inside a single summary table."""
+    """Append one row, refusing to mix dev sets or column sets inside one summary table."""
     _ensure_dir(summary_csv.parent)
+
+    header = _existing_header(summary_csv)
+    if header is not None and header != SUMMARY_FIELDS:
+        raise SystemExit(
+            f"[orchestrator] REFUSING to append to {summary_csv}: its header does not match "
+            f"SUMMARY_FIELDS (this file was written by a different version of this script).\n"
+            f"  missing from file: {[f for f in SUMMARY_FIELDS if f not in header]}\n"
+            f"  only in file:      {[f for f in header if f not in SUMMARY_FIELDS]}\n"
+            f"Appending would write values under the wrong columns. Point runs_subdir at a "
+            f"fresh sweep root, or re-run the eval stage with --overwrite into a new table."
+        )
 
     existing = _existing_dev_identity(summary_csv)
     incoming = {k: str(row.get(k, "")) for k in DEV_IDENTITY_FIELDS}
