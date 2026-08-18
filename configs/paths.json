@@ -1,5 +1,5 @@
 {
-  "_note": "Every dataset path in the pipeline resolves from here. data_root is OUTSIDE the working tree because data never enters git (CLAUDE.md). data_root is a symlink layer over the v1 repo (/cta/users/fyilmaz/Thesis---QA) - nothing is copied; see docs/compute.md 'Dataset location'. All datasets.* paths verified resolving 2026-08-17 except musique_chunks_masked_dir: the pre-fix masked chunks were superseded by the _fixed variant in v1 and no longer exist anywhere; the key is kept for provenance only. musique_dev_sample_template is the pinned v1 MuSiQue evaluation set of ADR 0007 (hop in 2/3/4); the three files were verified resolving with 200 rows each on 2026-08-17. Do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
+  "_note": "Every dataset path in the pipeline resolves from here. data_root is OUTSIDE the working tree because data never enters git (CLAUDE.md). data_root is a symlink layer over the v1 repo (/cta/users/fyilmaz/Thesis---QA) - nothing is copied; see docs/compute.md 'Dataset location'. All datasets.* paths verified resolving 2026-08-17 except musique_chunks_masked_dir: the pre-fix masked chunks were superseded by the _fixed variant in v1 and no longer exist anywhere; the key is kept for provenance only. musique_eval_questions_template is the pinned v1 MuSiQue evaluation set of ADR 0007 (hop in 2/3/4); it was added 2026-08-18 for issue #13 and verified resolving then, and the same three files were verified resolving with 200 rows each (600 distinct ids) on 2026-08-17 for issue #12 - one key, both users. Do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
 
   "data_root": "/cta/users/fyilmaz/thesis-qav2-data",
   "runs_root": "runs",
@@ -15,7 +15,7 @@
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
     "musique_dev_dir": "musique/dev_data",
     "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
-    "musique_dev_sample_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
+    "musique_eval_questions_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
     "musique_clean_dir": "musique/clean_data",
     "musique_chunks_questions_dir": "musique/chunks_only_question",
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",

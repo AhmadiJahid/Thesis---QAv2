@@ -8,7 +8,7 @@ template with ``enable_thinking=False`` plus ``<think>`` stripping. Those
 differences are now fields in ``components/decomposer/models/<model>/config.json``.
 Guided prompts stay per-model and byte-identical to v1; the two ``prompt_unguided.md``
 files are **not** v1's any more - they are derived from their guided sibling by removing the
-hop-bearing lines, which is what makes the conditions comparable (see ADR 0012).
+hop-bearing lines, which is what makes the conditions comparable (see ADR 0013).
 
 Usage::
 
@@ -29,8 +29,21 @@ must be the guided prompt with its hop-bearing lines removed and nothing else ch
 second way. The unguided arms therefore need a model folder that ships an
 ``unguided_prompt_file``; ``qwen2_5_3b`` and ``phi_4_mini_instruct`` cannot run them.
 
+    # the fine-tuned arm (issue #13): a LoRA adapter on the same base model, zero-shot.
+    # --no-few-shot is not optional here - see check_adapter_few_shot_combination.
+    python components/decomposer/run_decomposer.py --model mistral_7b_instruct \\
+        --adapter runs/finetune_decomposer/pool_2000/mistral_7b_instruct/<run>/adapter \\
+        --no-few-shot --retrieval-input <the evaluation-set query file>
+
 Every run writes a config snapshot, a metrics JSON and a run note, and asserts the
-model's parameter count against the ceiling in ``configs/model_limits.json``.
+model's parameter count against the ceiling in ``configs/model_limits.json`` (with a LoRA
+adapter attached, the count asserted is the base plus the adapter).
+
+Every run also reports **cost next to quality**: per row, the prompt tokens, the completion
+tokens and the generation latency; in the metrics JSON, the per-query means and medians.
+That is what makes a prompting-versus-fine-tuning comparison a cost/quality comparison
+instead of a quality-only one. On a ``--dry-run`` nothing is generated, so those numbers are
+recorded as unmeasured rather than as zero.
 """
 from __future__ import annotations
 
@@ -39,7 +52,9 @@ import difflib
 import hashlib
 import json
 import re
+import statistics
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -73,6 +88,13 @@ _WS_RX = re.compile(r"\s+")
 #: unguided prompt (Jahid's plan, prompt 4: three conditions, "everything else held
 #: identical", unguided = "no hop count in the prompt").
 _HOP_LINE_RX = re.compile(r"\{hop_count\}|hop[\s_-]*count", re.IGNORECASE)
+
+#: Clause boundaries inside one prompt line, used to catch a line that mixes a hop
+#: instruction with an unrelated one (see :func:`mixed_hop_lines`).
+_CLAUSE_SPLIT_RX = re.compile(r"[.;:,]|\band\b|\bbut\b", re.IGNORECASE)
+#: A "real word": two or more letters. A clause of digits or punctuation only (the
+#: value half of "Hop count: 3") carries no instruction, so it is not a second one.
+_WORD_RX = re.compile(r"[A-Za-z]{2,}")
 
 #: Keys a ``conditions.<name>`` block may carry. Deliberately short: the conditions of an
 #: experiment arm differ only in what the prompt says about the hop count and in the
@@ -214,6 +236,35 @@ def hop_bearing_lines(template: str) -> list[str]:
     return [ln for ln in template.splitlines() if _HOP_LINE_RX.search(ln)]
 
 
+def mixed_hop_lines(template: str) -> list[str]:
+    """Hop-bearing lines that ALSO carry instruction text unrelated to the hop count.
+
+    Why this is a refusal rather than a heuristic: :func:`derive_unguided_template` removes
+    whole lines, so a compound line like ``"- The number of steps MUST equal the hop count.
+    Output ONLY the steps."`` would silently take "Output ONLY the steps." out of the
+    unguided prompt - a second difference between the arms that the byte-equality guard
+    cannot see, because it compares against the same faulty derivation.
+
+    The rule: split a hop-bearing line into clauses on ``. ; : ,`` and on " and "/" but ",
+    and require every clause that contains a real word (two or more letters) to mention the
+    hop count. Both prompts in the repo pass: "- The number of steps MUST equal the hop
+    count." is one clause, and "Hop count: {hop_count}" splits into a hop-bearing key and a
+    value with no word in it. It is a line-shape check, not language understanding: an editor
+    who needs a compound rule splits it across two lines.
+    """
+    offenders: list[str] = []
+    for line in hop_bearing_lines(template):
+        clauses = _CLAUSE_SPLIT_RX.split(line)
+        for clause in clauses:
+            words = _WORD_RX.findall(clause)
+            if not words:
+                continue
+            if not _HOP_LINE_RX.search(clause):
+                offenders.append(line)
+                break
+    return offenders
+
+
 def derive_unguided_template(guided_template: str) -> str:
     """The unguided prompt, by construction: the guided prompt minus its hop-bearing lines.
 
@@ -222,6 +273,10 @@ def derive_unguided_template(guided_template: str) -> str:
     unguided arm sees (v1's "Decompose into the minimal number of atomic steps.") would be
     a second difference between the arms, and then a quality gap could not be attributed to
     the hop count.
+
+    Whole lines go, so a line that mixes a hop reference with another instruction cannot be
+    derived from safely; :func:`assert_unguided_is_guided_minus_hop_lines` refuses such a
+    guided prompt (see :func:`mixed_hop_lines`).
     """
     return "".join(
         ln for ln in guided_template.splitlines(keepends=True) if not _HOP_LINE_RX.search(ln)
@@ -268,7 +323,22 @@ def assert_unguided_is_guided_minus_hop_lines(
     The experiment's whole claim is that the arms differ in hop information only, so any
     other line-level delta - a rule dropped, a rule added, a sentence reworded - has to be
     a loud failure rather than a footnote. Returns the removed lines for the run's snapshot.
+
+    A guided line that mixes a hop reference with an unrelated instruction is refused first:
+    the derivation removes whole lines, so such a line would take a non-hop instruction out
+    of the unguided prompt and the byte-equality check below could not notice.
     """
+    mixed = mixed_hop_lines(guided_template)
+    if mixed:
+        raise SystemExit(
+            f"the guided prompt {guided_path} has {len(mixed)} line(s) that mix a hop-count "
+            "reference with other instruction text:\n"
+            + "\n".join(f"  {ln!r}" for ln in mixed)
+            + "\nThe unguided prompt is derived by removing whole hop-bearing lines, so such "
+            "a line would silently drop its non-hop instruction from the unguided arm - a "
+            "second difference between the arms. Split the line: put the hop-count sentence "
+            "on its own line and the other instruction on another."
+        )
     expected = derive_unguided_template(guided_template)
     if unguided_template == expected:
         return {
@@ -588,14 +658,28 @@ class StepLineStopper:
         return self.step_lines(generated_ids) >= self.max_step_lines
 
 
+class StepLineCapState:
+    """Whether the step-line ``StoppingCriteria`` actually fired during one generation.
+
+    Read instead of inferred: "the decomposition has 8 steps" and "the cap cut the
+    generation off at 8" are different claims, and a model that ends on exactly the cap by
+    itself is not a capped generation. Only this flag can tell them apart.
+    """
+
+    def __init__(self) -> None:
+        self.fired = False
+        self.fired_at_step_lines: int | None = None
+
+
 def make_step_line_stopping_criteria(
     tokenizer, *, prompt_len: int, max_step_lines: int, post_cfg: dict | None = None
 ):
-    """Wrap :class:`StepLineStopper` as a transformers ``StoppingCriteriaList``."""
+    """Wrap :class:`StepLineStopper` as a ``(StoppingCriteriaList, StepLineCapState)`` pair."""
     import torch
     from transformers import StoppingCriteria, StoppingCriteriaList
 
     post_cfg = post_cfg or {}
+    state = StepLineCapState()
     stoppers: dict[int, StepLineStopper] = {}
 
     def stopper_for(row: int) -> StepLineStopper:
@@ -610,13 +694,18 @@ def make_step_line_stopping_criteria(
 
     class _StepLineCriteria(StoppingCriteria):
         def __call__(self, input_ids, scores, **kwargs):
-            done = [
-                stopper_for(row).should_stop(seq[prompt_len:].tolist())
-                for row, seq in enumerate(input_ids)
-            ]
+            done = []
+            for row, seq in enumerate(input_ids):
+                stopper = stopper_for(row)
+                ids = seq[prompt_len:].tolist()
+                stop = stopper.should_stop(ids)
+                if stop and not state.fired:
+                    state.fired = True
+                    state.fired_at_step_lines = stopper.step_lines(ids)
+                done.append(stop)
             return torch.tensor(done, dtype=torch.bool, device=input_ids.device)
 
-    return StoppingCriteriaList([_StepLineCriteria()])
+    return StoppingCriteriaList([_StepLineCriteria()]), state
 
 
 def post_process(response: str, post_cfg: dict) -> str:
@@ -679,6 +768,78 @@ def load_model(model_id: str, loader: dict, device: str, quantization: str):
     return tokenizer, model
 
 
+def attach_adapter(model, adapter_path: str | Path):
+    """Attach a trained LoRA adapter (the fine-tuned arm of issue #13).
+
+    Loaded on top of the same base model the prompting arm uses, so the two arms differ in
+    the adapter and nothing else.
+    """
+    path = Path(adapter_path)
+    if not path.exists():
+        raise SystemExit(f"[decomposer] adapter not found: {path}")
+    try:
+        from peft import PeftModel
+    except ImportError as exc:
+        raise SystemExit(
+            "[decomposer] --adapter needs peft (in requirements.txt: peft==0.20.0). "
+            f"Import failed: {exc}"
+        ) from exc
+    model = PeftModel.from_pretrained(model, str(path))
+    model.eval()
+    return model
+
+
+#: The loud opt-out for running an adapter with few-shot examples anyway. Named so that it
+#: cannot appear in a command line by accident, and so that it is visible in the run's
+#: config snapshot.
+ADAPTER_FEW_SHOT_OVERRIDE_FLAG = "--adapter-with-few-shot-i-know"
+
+
+def check_adapter_few_shot_combination(
+    *, adapter: str | None, no_few_shot: bool, override: bool
+) -> dict[str, Any]:
+    """Refuse ``--adapter`` without ``--no-few-shot`` (issue #13), unless overridden.
+
+    Two things go wrong when few-shot examples are injected into an adapter's prompt. The
+    adapter was fine-tuned on the zero-shot prompt (``train_lora.py`` renders the same
+    template with the few-shot block empty), so it meets a prompt shape it never saw. And the
+    examples come from the MuSiQue training pool the adapter was trained on - with
+    ``--retrieval-input`` the candidates carry ``pool_few_shot_decomposition_musique`` from
+    that pool - so the model can be shown its own training rows at inference.
+
+    Returns a record for the run's config snapshot; raises ``SystemExit`` on the refused
+    combination.
+    """
+    record = {
+        "adapter": str(adapter) if adapter else None,
+        "no_few_shot": bool(no_few_shot),
+        "adapter_few_shot_override": bool(override),
+    }
+    if not adapter:
+        return record
+    if not no_few_shot and not override:
+        raise SystemExit(
+            "[decomposer] REFUSING TO RUN: --adapter without --no-few-shot.\n"
+            "The adapter was fine-tuned on the zero-shot prompt (components/decomposer/"
+            "train_lora.py builds it from this same template with the few-shot block empty), "
+            "and the examples that would be injected come from the MuSiQue training pool the "
+            "adapter trained on - so the run would both feed the model a prompt shape it "
+            "never saw and risk showing it its own training rows.\n"
+            "Pass --no-few-shot (this is the fine-tuned arm as specified), or "
+            f"{ADAPTER_FEW_SHOT_OVERRIDE_FLAG} if you deliberately want few-shot on top of "
+            "the adapter and will report the run as that, not as the fine-tuned arm."
+        )
+    if override and not no_few_shot:
+        print(
+            "WARNING: running --adapter WITH few-shot examples "
+            f"({ADAPTER_FEW_SHOT_OVERRIDE_FLAG}). The prompt shape differs from the one the "
+            "adapter was trained on, and the examples come from its own training pool: this "
+            "run is not the fine-tuned arm of the comparison. It is recorded as "
+            "adapter_few_shot_override: true in the config snapshot and the metrics."
+        )
+    return record
+
+
 def generate(
     prompt_text: str,
     model,
@@ -689,18 +850,24 @@ def generate(
     post_cfg: dict,
     max_step_lines: int | None = None,
 ) -> dict[str, Any]:
-    """Generate one continuation and report how it ended.
+    """Generate one decomposition, with its cost and with how it ended.
 
-    Returns the raw text, the post-processed text, the final (cap-trimmed) decomposition and
-    the two ways a generation can be cut short:
+    Cost (issue #13) is measured here rather than estimated later: ``prompt_tokens`` and
+    ``completion_tokens`` are the tokenizer's own counts for this call, and
+    ``latency_seconds`` is wall clock around ``model.generate`` only (tokenization and
+    decoding excluded, so the number is comparable across arms).
 
-    - ``hit_max_new_tokens`` - the token budget ran out. In the uncapped arms this is the
-      only thing that bounds a runaway decomposition, so a truncated unguided output has to
-      be distinguishable from a genuinely long one (otherwise the "unguided over-decomposes"
-      reading and the "the token cap cut it off" reading are the same number).
-    - ``stopped_at_step_line_cap`` - the ``unguided_capped`` arm's step-line budget bound it.
+    How it ended (issue #12) matters because a decomposition can be cut short two ways:
 
-    Post-processing happens **before** the cap is applied, so a ``<think>`` preamble or a
+    - ``hit_max_new_tokens`` - the token budget ran out. In the arms with no step-line cap
+      this is the only thing that bounds a runaway decomposition, so a truncated unguided
+      output has to be distinguishable from a genuinely long one (otherwise the "unguided
+      over-decomposes" reading and the "the token cap cut it off" reading are one number).
+    - ``stopped_at_step_line_cap`` - the ``unguided_capped`` arm's ``StoppingCriteria``
+      actually fired. It is read from the criterion's own state, not inferred from the step
+      count: a model that ends on exactly the cap by itself is not a capped generation.
+
+    Post-processing happens **before** the cap is trimmed, so a ``<think>`` preamble or a
     ``Question:`` echo cannot consume part of the step-line budget.
     """
     import torch
@@ -710,17 +877,16 @@ def generate(
 
     max_new_tokens = int(require(generation, "max_new_tokens"))
     inputs = tokenizer(prompt_text, return_tensors="pt").to(device)
-    prompt_len = inputs["input_ids"].shape[1]
-    stopping_criteria = (
-        make_step_line_stopping_criteria(
+    prompt_tokens = int(inputs["input_ids"].shape[1])
+    stopping_criteria = cap_state = None
+    if max_step_lines:
+        stopping_criteria, cap_state = make_step_line_stopping_criteria(
             tokenizer,
-            prompt_len=prompt_len,
+            prompt_len=prompt_tokens,
             max_step_lines=max_step_lines,
             post_cfg=post_cfg,
         )
-        if max_step_lines
-        else None
-    )
+    started = time.perf_counter()
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -732,25 +898,80 @@ def generate(
             eos_token_id=tokenizer.eos_token_id,
             stopping_criteria=stopping_criteria,
         )
-    generated_ids = outputs[0][prompt_len:]
-    generated_tokens = int(generated_ids.shape[-1])
-    raw = tokenizer.decode(generated_ids, skip_special_tokens=True)
+    if device == "cuda":
+        # generate() is synchronous on the returned tensor, but sync explicitly so the
+        # timing is the kernel time and not the launch time.
+        torch.cuda.synchronize()
+    latency_seconds = time.perf_counter() - started
+    new_tokens = outputs[0][prompt_tokens:]
+    completion_tokens = int(new_tokens.shape[0])
+    raw = tokenizer.decode(new_tokens, skip_special_tokens=True)
     processed = post_process(raw, post_cfg)
-    decomposition = processed
-    if max_step_lines:
-        decomposition = trim_to_step_lines(processed, max_step_lines)
+    decomposition = trim_to_step_lines(processed, max_step_lines) if max_step_lines else processed
     return {
-        "raw": raw.strip(),
-        "post_processed": processed,
+        # `text` is the raw generation, as the fine-tuning arm's caller expects.
+        "text": raw.strip(),
         "decomposition": decomposition.strip(),
-        "generated_tokens": generated_tokens,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "latency_seconds": latency_seconds,
         "max_new_tokens": max_new_tokens,
-        "hit_max_new_tokens": generated_tokens >= max_new_tokens,
+        "hit_max_new_tokens": completion_tokens >= max_new_tokens,
         "step_lines": step_line_count(decomposition),
-        "stopped_at_step_line_cap": bool(
-            max_step_lines and step_line_count(processed) >= max_step_lines
-        ),
+        "stopped_at_step_line_cap": bool(cap_state.fired) if cap_state else False,
     }
+
+
+def cost_summary(results: list[dict]) -> dict[str, Any]:
+    """Per-query token and latency cost over the rows that actually generated.
+
+    Nothing is imputed: rows with no measurement (a dry run) are excluded, and when there
+    are none every field is ``None`` with a note, because 0 tokens per query would be a
+    false claim rather than a missing one.
+    """
+    measured = [r for r in results if r.get("latency_seconds") is not None]
+
+    def mean(key: str) -> float | None:
+        return statistics.fmean(float(r[key]) for r in measured) if measured else None
+
+    def median(key: str) -> float | None:
+        return statistics.median(float(r[key]) for r in measured) if measured else None
+
+    summary: dict[str, Any] = {
+        "rows_measured": len(measured),
+        "rows_total": len(results),
+        "mean_prompt_tokens_per_query": mean("prompt_tokens"),
+        "median_prompt_tokens_per_query": median("prompt_tokens"),
+        "mean_completion_tokens_per_query": mean("completion_tokens"),
+        "median_completion_tokens_per_query": median("completion_tokens"),
+        "mean_total_tokens_per_query": (
+            statistics.fmean(
+                float(r["prompt_tokens"]) + float(r["completion_tokens"]) for r in measured
+            )
+            if measured
+            else None
+        ),
+        "mean_latency_seconds_per_query": mean("latency_seconds"),
+        "median_latency_seconds_per_query": median("latency_seconds"),
+        "total_generation_seconds": (
+            sum(float(r["latency_seconds"]) for r in measured) if measured else None
+        ),
+        "definitions": {
+            "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+            "completion_tokens": "number of newly generated tokens for that row",
+            "latency_seconds": (
+                "wall clock around model.generate for that row (CUDA synchronized), "
+                "excluding tokenization and decoding"
+            ),
+            "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded",
+        },
+    }
+    if not measured:
+        summary["note"] = (
+            "unmeasured: no row generated in this run (--dry-run), so tokens per query and "
+            "latency per query are unknown, not zero"
+        )
+    return summary
 
 
 # ------------------------------------------------------------------------ main
@@ -774,6 +995,25 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--retrieval-mode", default=None, help="Which <mode>_top_k list to use")
     p.add_argument("--retrieval-k", type=int, default=None)
     p.add_argument("--quantization", default=None, choices=["none", "4bit", "8bit"])
+    p.add_argument(
+        "--adapter",
+        default=None,
+        help="Trained LoRA adapter directory (the fine-tuned arm; see train_lora.py).",
+    )
+    p.add_argument(
+        "--no-few-shot",
+        action="store_true",
+        help="Leave the prompt's few-shot block empty. Required with --adapter, which was "
+        "trained on the zero-shot prompt: injecting examples at inference would feed it a "
+        "prompt shape it never saw, from the pool it trained on.",
+    )
+    p.add_argument(
+        ADAPTER_FEW_SHOT_OVERRIDE_FLAG,
+        action="store_true",
+        help="Deliberately run --adapter WITH few-shot examples. Refused by default (see "
+        "check_adapter_few_shot_combination); such a run is not the fine-tuned arm of the "
+        "comparison and is recorded as an override.",
+    )
     p.add_argument("--output-root", default=None)
     p.add_argument(
         "--dry-run",
@@ -830,6 +1070,45 @@ def resolve_retrieval_input(
     )
 
 
+def _sample(ids: list[str], limit: int = 10) -> str:
+    shown = ", ".join(ids[:limit])
+    return shown + (f" ... (+{len(ids) - limit} more)" if len(ids) > limit else "")
+
+
+def load_pinned_eval_ids(
+    paths_cfg: dict, cfg: dict, hops: list[int], data_root: Path
+) -> tuple[set[str], list[str], list[str]]:
+    """The id set of the pinned ADR 0007 evaluation files: ``(ids, files, problems)``.
+
+    Read from ``datasets.<questions_template_key>``, i.e. exactly the three files ADR 0007
+    names. Problems (a missing file, a duplicate id) are returned rather than raised, so
+    ``--allow-unpinned-eval-set`` can downgrade them to a warning for a fixture run.
+    """
+    template = require(paths_cfg, "datasets." + require(cfg, "questions_template_key"))
+    question_field = require(cfg, "questions_jsonl.question_field")
+    id_field = require(cfg, "questions_jsonl.id_field")
+    ids: set[str] = set()
+    files: list[str] = []
+    problems: list[str] = []
+    for hop in hops:
+        path = resolve_path(template.format(hop=hop), data_root)
+        files.append(str(path))
+        if not path.exists():
+            problems.append(f"pinned evaluation file for hop {hop} not found: {path}")
+            continue
+        for item in load_question_items(
+            path,
+            questions_format=require(cfg, "questions_format"),
+            question_field=question_field,
+            id_field=id_field,
+        ):
+            qid = str(item["query_id"])
+            if qid in ids:
+                problems.append(f"duplicate id across the pinned files: {qid}")
+            ids.add(qid)
+    return ids, files, problems
+
+
 def assert_pinned_eval_set(
     rows_per_hop: dict[str, int],
     total: int,
@@ -838,15 +1117,23 @@ def assert_pinned_eval_set(
     hops: list[int],
     allow_unpinned: bool,
     source: str,
+    loaded_ids: set[str] | None = None,
+    pinned_ids: set[str] | None = None,
+    pinned_files: list[str] | None = None,
+    pinned_id_problems: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Assert the run loaded the pinned evaluation set: ``eval_rows_per_hop`` per hop depth.
+    """Assert the run loaded the pinned evaluation set - by **id**, not only by count.
 
     ADR 0007 pins the MuSiQue evaluation set to 600 questions, 200 per hop depth, and ADR
-    0011's house stance is that a comparison across different sets is not a comparison. The
-    count was previously only checked by a test, so a retrieval input built over some other
-    subset would have run happily and produced three arms that were not on the pinned set.
-    Now the run refuses. ``--allow-unpinned-eval-set`` is the explicit, recorded opt-out for
-    fixture runs.
+    0011's house stance is that a comparison across different sets is not a comparison. Two
+    things are checked, and both refuse:
+
+    - the per-hop row counts match ``eval_rows_per_hop``;
+    - the loaded question ids are **exactly** the ids in the three files ADR 0007 names.
+      Counts alone let a different 600 questions through, and 600 rows of the wrong questions
+      is not the pinned set - so the ids are compared, and a mismatch names the offenders.
+
+    ``--allow-unpinned-eval-set`` is the explicit, recorded opt-out for fixture runs.
     """
     expected_per_hop = optional(cfg, "eval_rows_per_hop")
     record: dict[str, Any] = {
@@ -855,6 +1142,9 @@ def assert_pinned_eval_set(
         "rows_source": source,
         "pinned": None,
         "allow_unpinned_flag": allow_unpinned,
+        "id_identity_checked": False,
+        "pinned_id_files": pinned_files,
+        "pinned_id_count": len(pinned_ids) if pinned_ids is not None else None,
     }
     if expected_per_hop is None:
         record["note"] = (
@@ -864,7 +1154,7 @@ def assert_pinned_eval_set(
 
     expected_per_hop = int(expected_per_hop)
     expected_total = expected_per_hop * len(hops)
-    problems: list[str] = []
+    problems: list[str] = list(pinned_id_problems or [])
     for hop in hops:
         got = int(rows_per_hop.get(str(hop), 0))
         if got != expected_per_hop:
@@ -878,6 +1168,26 @@ def assert_pinned_eval_set(
     if total != expected_total:
         problems.append(f"total: loaded {total}, expected {expected_total}")
 
+    # Identity, not just arithmetic: a decoy 600 has the right counts and the wrong questions.
+    if pinned_ids and loaded_ids is not None:
+        record["id_identity_checked"] = True
+        missing = sorted(pinned_ids - loaded_ids)
+        extra = sorted(loaded_ids - pinned_ids)
+        record["ids_missing_count"] = len(missing)
+        record["ids_unexpected_count"] = len(extra)
+        if missing:
+            problems.append(
+                f"{len(missing)} pinned id(s) were not loaded: {_sample(missing)}"
+            )
+        if extra:
+            problems.append(
+                f"{len(extra)} loaded id(s) are not in the pinned files: {_sample(extra)}"
+            )
+    elif not pinned_ids:
+        problems.append(
+            "the pinned evaluation files yielded no ids, so identity could not be checked"
+        )
+
     record["pinned"] = not problems
     if not problems:
         return record
@@ -885,8 +1195,9 @@ def assert_pinned_eval_set(
     detail = "\n".join(f"  - {p}" for p in problems)
     if allow_unpinned:
         record["note"] = (
-            "row counts do not match the config's pinned evaluation set; permitted by "
-            "--allow-unpinned-eval-set. This run is not an experiment arm.\n" + detail
+            "the rows loaded are not the config's pinned evaluation set (counts and/or ids); "
+            "permitted by --allow-unpinned-eval-set. This run is not an experiment arm.\n"
+            + detail
         )
         print(
             "[decomposer] WARNING: not the pinned evaluation set (allowed by "
@@ -896,9 +1207,11 @@ def assert_pinned_eval_set(
     src = cfg.get("_config_path", "<config>")
     raise SystemExit(
         f"the rows loaded are not the pinned evaluation set declared in {src} "
-        f"(eval_rows_per_hop={expected_per_hop} for hops {hops}, {expected_total} total).\n"
+        f"(eval_rows_per_hop={expected_per_hop} for hops {hops}, {expected_total} total, and "
+        "the question ids of the three ADR 0007 files).\n"
         f"{detail}\n"
         f"Loaded per hop: {rows_per_hop} (total {total}), source: {source}.\n"
+        f"Pinned id files: {pinned_files}\n"
         "ADR 0007 pins that set and ADR 0011's stance is that a comparison across different "
         "evaluation sets is not a comparison, so this is a refusal. Point --retrieval-input "
         "at a file built over exactly those questions, or pass --allow-unpinned-eval-set for "
@@ -908,6 +1221,14 @@ def assert_pinned_eval_set(
 
 def main() -> None:
     args = _parse_args()
+
+    # Before anything is loaded: an adapter run with few-shot examples is refused here, so a
+    # multi-hour evaluation cannot produce a run that is not the arm it claims to be.
+    adapter_record = check_adapter_few_shot_combination(
+        adapter=args.adapter,
+        no_few_shot=bool(args.no_few_shot),
+        override=bool(args.adapter_with_few_shot_i_know),
+    )
 
     cfg = load_config(args.config)
     paths_cfg = load_paths(require(cfg, "paths_config"))
@@ -1063,6 +1384,7 @@ def main() -> None:
         "questions_format": require(cfg, "questions_format"),
         "device": device,
         "quantization": quantization,
+        **adapter_record,
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
@@ -1072,14 +1394,6 @@ def main() -> None:
             "mode": retrieval_mode,
             "k": retrieval_k,
             "require_input": bool(optional(cfg, "retrieval.require_input")),
-        },
-        "few_shot_self_exclusion": {
-            "enabled": True,
-            "by": ["pool_id == query_id", "normalized pool_question == normalized query"],
-            "note": (
-                "an exemplar that is the query itself is dropped from the ranked list before "
-                "the top-k is taken, on both the reranked and the bi-encoder path"
-            ),
         },
         "generation": generation,
         "generation_overrides": generation_overrides,
@@ -1094,6 +1408,7 @@ def main() -> None:
     print(
         f"Starting decomposer run {current_run_id} (condition={condition_name}, "
         f"guided={guided}, stop_after_step_lines={stop_after_step_lines}, "
+        f"adapter={args.adapter}, no_few_shot={bool(args.no_few_shot)}, "
         f"dry_run={args.dry_run})"
     )
     print(json.dumps(snapshot, indent=2, default=str))
@@ -1101,7 +1416,11 @@ def main() -> None:
     data_root = Path(paths_cfg["data_root_resolved"])
 
     # ---- few-shot machinery (only when the prompt actually takes examples) ----
-    few_shot_enabled = bool(require(few_shot_cfg, "enabled")) and "{few_shot_examples}" in prompt_template
+    few_shot_enabled = (
+        bool(require(few_shot_cfg, "enabled"))
+        and "{few_shot_examples}" in prompt_template
+        and not args.no_few_shot
+    )
     few_shot_k = int(require(few_shot_cfg, "k"))
     few_shot_data: dict = {}
     decomposer_items: list[dict] = []
@@ -1109,7 +1428,19 @@ def main() -> None:
     embed_model = None
     embed_size_record: dict[str, Any] | None = None
     mask_fn: Callable[[str], str] | None = None
-    few_shot_source_mode = "disabled"
+    few_shot_source_mode = "disabled_by_no_few_shot" if args.no_few_shot else "disabled"
+    # A model whose prompt carries its examples inline (few_shot.enabled false, no
+    # "{few_shot_examples}" placeholder) cannot have them removed by a flag. Say so rather
+    # than let a run be labelled zero-shot when its prompt is not.
+    no_few_shot_ineffective = bool(
+        args.no_few_shot and "{few_shot_examples}" not in prompt_template
+    )
+    if no_few_shot_ineffective:
+        print(
+            f"WARNING: --no-few-shot has no effect for model {args.model!r}: its prompt "
+            f"({prompt_file}) has no '{{few_shot_examples}}' placeholder, so any examples "
+            "it shows are written into the prompt text itself."
+        )
 
     if few_shot_enabled:
         pool_path = resolve_path(require(paths_cfg, "repo." + require(cfg, "few_shot_pool_key")), _REPO_ROOT)
@@ -1249,15 +1580,25 @@ def main() -> None:
             )
         print(f"Loaded {len(inference_rows)} total questions.")
 
-    # Measured before any dry-run truncation: this is what the arm was actually asked to
-    # decompose. Three conditions are only comparable if these numbers match across them
-    # (for the pinned MuSiQue set of ADR 0007: 200 per hop for hops 2/3/4, 600 total).
+    # The evaluation set this arm was actually asked to decompose: after any `sample_size`
+    # restriction (which a run on the pinned set leaves null), before the `--dry-run` limit,
+    # which only shortens the prompt-assembly pass. Three conditions are comparable only if
+    # these are the same across them - for the pinned MuSiQue set of ADR 0007, 200 rows per
+    # hop for hops 2/3/4, 600 ids in total, and *those* 600 ids.
     rows_loaded_total = len(inference_rows)
     rows_loaded_per_hop = {
         str(hop): sum(1 for r in inference_rows if r["hop_count"] == hop)
         for hop in sorted({r["hop_count"] for r in inference_rows})
     }
-    distinct_query_ids = len({r["query_id"] for r in inference_rows if r["query_id"] is not None})
+    loaded_ids = {str(r["query_id"]) for r in inference_rows if r["query_id"] is not None}
+    distinct_query_ids = len(loaded_ids)
+    pinned_ids: set[str] = set()
+    pinned_files: list[str] = []
+    pinned_id_problems: list[str] = []
+    if optional(cfg, "eval_rows_per_hop") is not None:
+        pinned_ids, pinned_files, pinned_id_problems = load_pinned_eval_ids(
+            paths_cfg, cfg, hops, data_root
+        )
     eval_set_record = assert_pinned_eval_set(
         rows_loaded_per_hop,
         rows_loaded_total,
@@ -1265,11 +1606,28 @@ def main() -> None:
         hops=hops,
         allow_unpinned=args.allow_unpinned_eval_set,
         source=str(retrieval_path) if retrieval_input else "questions_template_key",
+        loaded_ids=loaded_ids,
+        pinned_ids=pinned_ids,
+        pinned_files=pinned_files,
+        pinned_id_problems=pinned_id_problems,
     )
     eval_set_record["rows_loaded_total"] = rows_loaded_total
     eval_set_record["rows_loaded_per_hop"] = rows_loaded_per_hop
     eval_set_record["distinct_query_ids"] = distinct_query_ids
     snapshot["evaluation_set"] = eval_set_record
+    # Stated, not assumed: with no few-shot block in the prompt (or --no-few-shot) there is
+    # nothing to self-exclude, and claiming the guard was "enabled" would overstate it.
+    snapshot["few_shot_self_exclusion"] = {
+        "enabled": bool(few_shot_enabled),
+        "by": ["pool_id == query_id", "normalized pool_question == normalized query"],
+        "note": (
+            "an exemplar that is the query itself is dropped from the ranked list before the "
+            "top-k is taken, on the reranked, bi-encoder and random paths"
+            if few_shot_enabled
+            else "no few-shot examples were selected in this run, so there was nothing to "
+            "self-exclude"
+        ),
+    }
     print(f"Evaluation set: {json.dumps(eval_set_record, default=str)}")
 
     if args.dry_run:
@@ -1282,6 +1640,12 @@ def main() -> None:
         model_id = require(model_cfg, "model_id")
         print(f"Loading model: {model_id} on {device} (quantization={quantization}) ...")
         tokenizer, model = load_model(model_id, loader, device, quantization)
+        if args.adapter:
+            print(f"Attaching LoRA adapter: {args.adapter}")
+            model = attach_adapter(model, args.adapter)
+            model_id = f"{model_id}+adapter"
+        # With an adapter attached this counts base + adapter parameters, which is the
+        # thing the ~8B ceiling is about.
         size_record = assert_within_ceiling(
             model, component="decomposer", model_id=model_id, limits=limits
         )
@@ -1338,6 +1702,11 @@ def main() -> None:
                 source = "random"
 
         few_shot_str = format_few_shot_examples(sampled, hop_input) if sampled else ""
+        cost: dict[str, Any] = {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "latency_seconds": None,
+        }
 
         if prompt_style == "chat_template":
             messages = build_chat_messages(
@@ -1389,6 +1758,8 @@ def main() -> None:
                 )
             )
         decomposition = gen["decomposition"] if gen else ""
+        if gen:
+            cost = {k: gen[k] for k in cost}
 
         if args.dry_run or (i + 1) % prompt_log_every == 0:
             log_path = prompts_dir / f"prompt_idx{i + 1:04d}_hop{hop}.txt"
@@ -1428,12 +1799,13 @@ def main() -> None:
                 "hop_count": hop,
                 "decomposition": decomposition,
                 "few_shot_source": source,
-                # Same fields in all three arms, whether or not a cap applies.
-                "decomposition_raw": gen["raw"] if gen else "",
+                # Same fields in all three arms, whether or not a cap applies. The raw
+                # generation is kept because `decomposition` may have been trimmed.
+                "decomposition_raw": gen["text"] if gen else "",
                 "step_lines": gen["step_lines"] if gen else 0,
-                "generated_tokens": gen["generated_tokens"] if gen else None,
                 "hit_max_new_tokens": gen["hit_max_new_tokens"] if gen else None,
                 "stopped_at_step_line_cap": gen["stopped_at_step_line_cap"] if gen else None,
+                **cost,
             }
         )
 
@@ -1458,6 +1830,7 @@ def main() -> None:
             for src in sorted({r["few_shot_source"] for r in results})
         },
         "few_shot_self_exclusion": {
+            "enabled": bool(few_shot_enabled),
             "rows_with_a_self_example_dropped": self_excluded_rows,
             "self_examples_dropped": self_excluded_examples,
             "note": (
@@ -1468,11 +1841,20 @@ def main() -> None:
         "condition": condition_name,
         "guided": guided,
         "stop_after_step_lines": stop_after_step_lines,
-        # How many decompositions came out at the cap (the stopping rule bound them),
-        # counted with the evaluator's step normalization (src/step_lines.py) so this is
-        # the same "number of steps" the metrics will report.
+        # Two different questions, deliberately reported separately:
+        #   rows_at_step_line_cap        - how many decompositions HAVE cap-many steps, by the
+        #                                  evaluator's step normalization (src/step_lines.py).
+        #                                  A model that emits exactly 8 steps by itself counts.
+        #   rows_stopped_at_step_line_cap - how many generations the StoppingCriteria actually
+        #                                  cut off, read from the criterion's own state. This
+        #                                  is the causal number; the one above is not.
         "rows_at_step_line_cap": (
             sum(1 for n in step_line_counts if n >= stop_after_step_lines)
+            if stop_after_step_lines and not args.dry_run
+            else None
+        ),
+        "rows_stopped_at_step_line_cap": (
+            sum(1 for r in results if r["stopped_at_step_line_cap"])
             if stop_after_step_lines and not args.dry_run
             else None
         ),
@@ -1483,21 +1865,43 @@ def main() -> None:
         "rows_at_max_new_tokens": (
             sum(1 for r in results if r["hit_max_new_tokens"]) if not args.dry_run else None
         ),
-        "rows_stopped_at_step_line_cap": (
-            sum(1 for r in results if r["stopped_at_step_line_cap"])
-            if stop_after_step_lines and not args.dry_run
-            else None
-        ),
         "step_lines_per_row_total": sum(step_line_counts) if not args.dry_run else None,
+        "truncation_definitions": {
+            "rows_at_step_line_cap": (
+                "rows whose recorded decomposition has at least stop_after_step_lines steps "
+                "under src/step_lines.py::split_step_lines - a property of the output, not "
+                "evidence that the cap intervened"
+            ),
+            "rows_stopped_at_step_line_cap": (
+                "rows where the step-line StoppingCriteria fired during decoding (read from "
+                "the criterion's state): the generation was cut off by the cap"
+            ),
+            "rows_at_max_new_tokens": (
+                "rows whose completion reached generation.max_new_tokens, i.e. the token "
+                "budget ended the generation"
+            ),
+        },
         "seed": seed,
+        **adapter_record,
+        "no_few_shot_ineffective": no_few_shot_ineffective,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
+        # Cost sits in the same metrics file as quality on purpose: a fine-tuned arm that
+        # wins on step F1 while costing three times the tokens is a different conclusion
+        # from one that wins for free, and that can only be argued if both are recorded.
+        "cost": cost_summary(results),
         "results_path": str(output_dir / "results.json"),
     }
     if args.dry_run:
         metrics["generation_truncation_note"] = (
             "unmeasured: --dry-run generates nothing, so rows_at_max_new_tokens, "
             "rows_at_step_line_cap and the step-line counts are null"
+        )
+    if no_few_shot_ineffective:
+        metrics["no_few_shot_note"] = (
+            f"--no-few-shot was passed but the prompt ({prompt_file}) has no "
+            "'{few_shot_examples}' placeholder, so this run is not necessarily zero-shot: "
+            "any examples the prompt shows are part of its text."
         )
     if embed_size_record is None:
         metrics["embedding_model_size_note"] = (
@@ -1519,6 +1923,14 @@ def main() -> None:
         note_lines=[
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
+            "- Adapter: "
+            + (f"`{args.adapter}`" if args.adapter else "none (prompting arm)")
+            + (
+                f" - run WITH few-shot examples via {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}: this is "
+                "not the fine-tuned arm of the comparison."
+                if args.adapter and not args.no_few_shot
+                else ""
+            ),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
             f"- Condition: {condition_name or 'none (no conditions block)'}; guided: {guided}; "
             f"step-line cap: {stop_after_step_lines or 'none'}; seed: {seed}",
@@ -1526,7 +1938,9 @@ def main() -> None:
             f"(per hop: {rows_loaded_per_hop}; distinct ids: {distinct_query_ids})",
             f"- Evaluation set pinned: {eval_set_record['pinned']} "
             f"(expected {eval_set_record['expected_rows_per_hop']} rows per hop for "
-            f"hops {hops}; source: {eval_set_record['rows_source']})",
+            f"hops {hops}; ids checked against the pinned files: "
+            f"{eval_set_record['id_identity_checked']}; "
+            f"source: {eval_set_record['rows_source']})",
             (
                 f"- Retrieval input: `{retrieval_path}` (sha256 `{retrieval_sha256}`)"
                 if retrieval_input
@@ -1535,9 +1949,11 @@ def main() -> None:
             f"- Few-shot: enabled={few_shot_enabled} k={few_shot_k} mode={few_shot_source_mode}; "
             f"self-examples dropped: {self_excluded_examples}",
             (
-                f"- Truncation: {metrics['rows_at_max_new_tokens']} row(s) at "
-                f"max_new_tokens={metrics['max_new_tokens']}, "
-                f"{metrics['rows_at_step_line_cap']} at the step-line cap"
+                f"- Truncation: {metrics['rows_at_max_new_tokens']} row(s) reached "
+                f"max_new_tokens={metrics['max_new_tokens']}; "
+                f"{metrics['rows_stopped_at_step_line_cap']} row(s) were cut off by the "
+                f"step-line cap, {metrics['rows_at_step_line_cap']} row(s) have cap-many "
+                "steps (see truncation_definitions in metrics.json)"
                 if not args.dry_run
                 else "- Truncation: unmeasured (dry run generates nothing)"
             ),
@@ -1546,6 +1962,14 @@ def main() -> None:
                 f"(ceiling {size_record['parameter_ceiling']:,})"
                 if size_record["ceiling_asserted"]
                 else "- Parameter ceiling: not asserted (no model was loaded)."
+            ),
+            (
+                f"- Cost per query: {metrics['cost']['mean_prompt_tokens_per_query']:.1f} prompt "
+                f"+ {metrics['cost']['mean_completion_tokens_per_query']:.1f} completion tokens, "
+                f"{metrics['cost']['mean_latency_seconds_per_query']:.3f}s "
+                f"(means over {metrics['cost']['rows_measured']} rows)"
+                if metrics["cost"]["rows_measured"]
+                else "- Cost per query: unmeasured (nothing was generated in this run)."
             ),
             f"- Predictions: `{output_dir / 'results.json'}`",
         ],

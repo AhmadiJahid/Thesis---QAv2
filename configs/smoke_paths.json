@@ -1,8 +1,14 @@
 {
-  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ. The fixture files behind musique_dev_sample_template keep the real file names (which end in _200) but hold 3 fabricated rows each, not 200 - they exist so the MuSiQue decomposer path can be exercised, not to stand in for the evaluation set.",
+  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ. The fixture files behind musique_eval_questions_template keep the real file names (which end in _200) but hold 3 fabricated rows each, not 200 - they exist so the MuSiQue decomposer path and the train/eval overlap assertion can be exercised, not to stand in for the evaluation set.",
 
   "data_root": "tests/fixtures/data_root",
   "runs_root": "runs/smoke",
+
+  "eval_set_expected": {
+    "_note": "Overrides eval_set.expected in configs/finetune_decomposer.json for the fixture tree. The fabricated per-hop files carry 3 rows each, not the 200 of ADR 0007, so the counts src/finetune_data.py asserts have to be declared here rather than relaxed in code: the assertion is what stops a mis-resolved id field from leaving the train/eval overlap check with nothing to check. configs/paths.json carries no such block, so real runs assert 200 per hop / 600 total. (Was 1 per hop until issue #12 needed more than one row per hop depth in the same files; the ids of the 1-per-hop set are still present.)",
+    "ids_per_hop": 3,
+    "total_ids": 9
+  },
 
   "datasets": {
     "metaqa_dir": "metaqa",
@@ -15,7 +21,7 @@
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
     "musique_dev_dir": "musique/dev_data",
     "musique_dev_gold_clean": "musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
-    "musique_dev_sample_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
+    "musique_eval_questions_template": "musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl",
     "musique_clean_dir": "musique/clean_data",
     "musique_chunks_questions_dir": "musique/chunks_only_question",
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",

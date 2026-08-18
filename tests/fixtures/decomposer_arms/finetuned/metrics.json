@@ -1,0 +1,7 @@
+{
+  "_note": "FABRICATED fixture, not a run. Deliberately has NO 'cost' block: that exercises the branch of scripts/compare_decomposer_arms.py which reports cost as unmeasured instead of imputing zeros. The smoke test copies tests/fixtures/predictions/decomposer_results_musique.json in beside this file as results.json, so this arm's predictions are identical to the prompting arm's and every comparison difference is exactly 0 by construction - the stage pins the plumbing, not a result.",
+  "dry_run": false,
+  "total_rows": 4,
+  "adapter": "tests/fixtures/not-a-real-adapter",
+  "no_few_shot": true
+}

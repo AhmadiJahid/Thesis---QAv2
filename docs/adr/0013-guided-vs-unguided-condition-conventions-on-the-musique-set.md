@@ -1,7 +1,7 @@
-# 0012. Guided-vs-Unguided Condition Conventions on the MuSiQue Set
+# 0013. Guided-vs-Unguided Condition Conventions on the MuSiQue Set
 
-- **Status**: Accepted (two items are open questions for Jahid, marked below)
-- **Date**: 2026-08-19
+- **Status**: Accepted (three items are open questions for Jahid, marked below)
+- **Date**: 2026-08-19 (amended the same day after the PR #21 delta re-review)
 
 Records the conventions established by PR #21 (issue #12) for the guided-versus-unguided
 comparison. Everything here is sourced either to **Jahid's plan, prompt 4** (his statement of
@@ -50,6 +50,13 @@ instruction, no dropped rule. `unguided_prompt_must_equal_guided_minus_hop_lines
 config makes a residual line-level delta a loud failure with a diff, and the two existing
 `prompt_unguided.md` files were **regenerated** by that rule.
 
+Because the derivation removes *whole lines*, a guided line that mixes a hop reference with an
+unrelated instruction is **refused** rather than derived from: it would silently take that
+instruction out of the unguided prompt, and the byte-equality check could not see it (it
+compares against the same faulty derivation). The rule is a line-shape check — split a
+hop-bearing line into clauses on `. ; : ,` and on "and"/"but", and require every clause with a
+real word in it to mention the hop count — and the error tells the editor to split the line.
+
 The consequence is deliberate and worth stating plainly: those two files are **no longer
 byte-identical to v1**, which ADR [0001](./0001-v1-to-v2-migration-scope-and-method.md)'s
 porting convention otherwise requires for prompts. v1's `mistral_7b_instruct` unguided prompt
@@ -75,6 +82,13 @@ tail post-processing. Before this, the budget was counted on the raw generation,
 the post-processed text, and the evaluator with its own private splitter — three numbers named
 "steps" that were not the same number.
 
+Two counters are reported, and they answer different questions: `rows_at_step_line_cap` is how
+many outputs *have* cap-many steps (a property of the text), while
+`rows_stopped_at_step_line_cap` is how many generations the `StoppingCriteria` actually cut off,
+read from the criterion's own state. A model that ends on exactly the cap by itself is not a
+capped generation, so only the second is causal. Both definitions travel in the metrics JSON
+under `truncation_definitions`.
+
 **6. `max_new_tokens: 256` is an unconfirmed plumbing default.** It is the largest value across
 the per-model configs (`qwen3_5_9b`), applied identically to all three arms via
 `generation_overrides`. It was not measured and is **an open question for Jahid** (below).
@@ -90,14 +104,18 @@ decision it protects:
   method (bi-encoder top-20 → cross-encoder top-5, typed masking, pool 2000) and it lives in an
   upstream artifact. Without it the run would fall back to random exemplars from the committed
   MetaQA pool — a different method under the label of the fixed one.
-- **Row counts that are not the pinned set** (`eval_rows_per_hop: 200`, hops 2/3/4) — ADR
-  [0007](./0007-musique-evaluation-set-reuses-v1-600-questions-200-per-hop.md) pins 600
-  questions, 200 per hop, and ADR
-  [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md)'s stance is
-  that a comparison across different evaluation sets is not a comparison. Asserted on the rows
-  actually loaded, from either source. `--allow-unpinned-eval-set` is the explicit opt-out for
-  fixture and smoke runs; it records `evaluation_set.pinned: false`, and such a run is not an
-  experiment arm.
+- **Rows that are not the pinned set** — checked two ways, both refusals: the per-hop row
+  counts must be `eval_rows_per_hop: 200` for hops 2/3/4, **and** the loaded question ids must
+  be exactly the ids of the three files ADR
+  [0007](./0007-musique-evaluation-set-reuses-v1-600-questions-200-per-hop.md) names (read
+  through `datasets.musique_eval_questions_template`). Counts alone are not identity: a decoy
+  600 with 200 per hop and different questions passes an arithmetic check and is not the pinned
+  set. ADR [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md)'s
+  stance is that a comparison across different evaluation sets is not a comparison, so a
+  mismatch is refused, naming the offending hop depths and up to ten offending ids. Asserted on
+  the rows actually loaded, from either source. `--allow-unpinned-eval-set` is the explicit
+  opt-out for fixture and smoke runs; it records `evaluation_set.pinned: false` with the
+  mismatch counts, and such a run is not an experiment arm.
 - **A query id whose hop depth cannot be parsed** — `retrieval.hop_fallback` is `null` for this
   config. In the `oracle_guided` arm a guessed depth would be injected as if it were the gold
   hop count; and every id in the pinned set parses, so one that does not is a sign the input is
@@ -126,11 +144,15 @@ comparability has to be checkable from the committed artifacts alone.
   regenerating its unguided sibling by the same rule, or the invariant fails.
 - The hop-bearing-line rule is a regex over prompt lines (`{hop_count}`, or prose matching
   `hop[\s_-]*count`). A future prompt that expresses the hop count some other way ("split into
-  three steps") would not be caught by it, and would need the rule extended.
+  three steps") would not be caught by it, and would need the rule extended. The
+  compound-line refusal is likewise shape-based: it catches a second clause, not a second idea
+  inside one clause.
 - The smoke test and the fixture-based conditions test must pass `--retrieval-input` and
   `--allow-unpinned-eval-set`; a real arm passes neither of those opt-outs.
-- Per-row results now carry `decomposition_raw`, `step_lines`, `generated_tokens`,
-  `hit_max_new_tokens` and `stopped_at_step_line_cap` in every arm, so the dumps are shaped
+- Per-row results now carry `decomposition_raw`, `step_lines`, `hit_max_new_tokens` and
+  `stopped_at_step_line_cap` in every arm, alongside the `prompt_tokens` /
+  `completion_tokens` / `latency_seconds` cost fields of ADR
+  [0012](./0012-fine-tuning-arm-conventions-for-the-decomposer.md), so the dumps are shaped
   identically whether or not a cap applies. `results.json` is bigger for it.
 - Two things this ADR deliberately does **not** contain: any threshold or success criterion for
   the comparison, and any statement about whether the router should be kept (recorded as open by
@@ -148,6 +170,18 @@ comparability has to be checkable from the committed artifacts alone.
 2. **Is `max_new_tokens: 256` the intended token cap?** It is a plumbing default carried from
    the largest per-model value, unmeasured. It bounds the uncapped arms, so it is part of the
    experiment's definition rather than an implementation detail.
+3. **The few-shot exemplar hop lines contradict the exemplars, and that is a confound in the
+   `oracle_guided` arm.** `format_few_shot_examples` (ported from v1) writes a
+   `Hop count: <n>` line above each exemplar using the **query's** hop count, not the
+   exemplar's own step count. Measured on the 600 `oracle_guided` prompts of the 2026-08-19
+   dry run (5 exemplars per prompt, 3000 exemplar hop lines): **1740 of 3000 (58.0%)** carry a
+   hop count that disagrees with the number of steps in the exemplar shown beneath it. So the
+   guided arm's prompt contains majority-incorrect hop labels, which is a different treatment
+   from "the gold hop count is stated". Three options, none chosen here: label each exemplar
+   with its **own** step count; drop the exemplar hop lines in **both** arms (keeping the query
+   hop line as the only difference); or keep v1's behaviour and state the confound in the
+   thesis. This is Jahid's design call — the behaviour was deliberately left untouched by this
+   PR, and no agent should change it.
 
 ## Alternatives considered
 

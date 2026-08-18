@@ -108,7 +108,7 @@ def test_musique_config() -> dict:
     check("musique hops are [2, 3, 4]", cfg["hops"] == [2, 3, 4], repr(cfg["hops"]))
     check(
         "musique questions template key",
-        cfg["questions_template_key"] == "musique_dev_sample_template",
+        cfg["questions_template_key"] == "musique_eval_questions_template",
         cfg["questions_template_key"],
     )
     check("musique questions format is jsonl", cfg["questions_format"] == "jsonl")
@@ -269,6 +269,61 @@ def test_prompt_invariant(cfg: dict) -> None:
                 check(f"{folder}: guard rejects {why}", True)
             else:
                 check(f"{folder}: guard rejects {why}", False)
+        check(f"{folder}: no guided line mixes hop prose with another instruction",
+              not rd.mixed_hop_lines(guided), str(rd.mixed_hop_lines(guided)))
+
+
+def test_compound_hop_lines_are_refused() -> None:
+    """A guided line mixing a hop rule with another instruction cannot be derived from.
+
+    The derivation drops WHOLE lines, so such a line would quietly take its non-hop
+    instruction out of the unguided prompt - and the byte-equality guard could not see it,
+    because it compares against that same faulty derivation.
+    """
+    print("[compound hop lines]")
+    ok_lines = [
+        "- The number of steps MUST equal the hop count.",
+        "Hop count: {hop_count}",
+        "Hop count: 3",
+    ]
+    for line in ok_lines:
+        check(f"accepted, hop-only line {line!r}", not rd.mixed_hop_lines(line))
+    bad_lines = [
+        "- The number of steps MUST equal the hop count. Output ONLY the steps.",
+        "- Use the hop count and output ONLY the steps.",
+        "Hop count: {hop_count}, and do NOT explain",
+    ]
+    for line in bad_lines:
+        check(f"flagged, compound line {line!r}", rd.mixed_hop_lines(line) == [line])
+
+    # The full guard refuses such a guided prompt, telling the editor to split the line.
+    guided = (
+        "You decompose questions into atomic steps.\n"
+        "Rules:\n"
+        "- The number of steps MUST equal the hop count. Output ONLY the steps.\n"
+        "Question: {question}\n"
+    )
+    try:
+        rd.assert_unguided_is_guided_minus_hop_lines(
+            guided_template=guided,
+            unguided_template=rd.derive_unguided_template(guided),
+            guided_path=Path("<guided>"),
+            unguided_path=Path("<unguided>"),
+            model="m",
+            config_src="<test>",
+        )
+    except SystemExit as exc:
+        check(
+            "the invariant guard refuses a compound guided line",
+            "mix a hop-count reference" in str(exc) and "Split the line" in str(exc),
+        )
+    else:
+        check("the invariant guard refuses a compound guided line", False)
+    # ... and note what the old rule would have done: the instruction just disappears.
+    check(
+        "the derivation would otherwise have dropped 'Output ONLY the steps.'",
+        "Output ONLY the steps." not in rd.derive_unguided_template(guided),
+    )
 
 
 def test_prompt_selection(cfg: dict) -> None:
@@ -555,9 +610,10 @@ def test_stopping_criteria_adapter() -> None:
             return "".join(vocab[int(i)] for i in ids)
 
     prompt = [0, 0]  # two prompt tokens the criterion must ignore
-    criteria = rd.make_step_line_stopping_criteria(
+    criteria, state = rd.make_step_line_stopping_criteria(
         FakeTokenizer(), prompt_len=len(prompt), max_step_lines=2
     )
+    check("the cap state starts un-fired", state.fired is False)
     fired_at = None
     generated = [1, 2, 3, 4]
     for n in range(1, len(generated) + 1):
@@ -566,6 +622,23 @@ def test_stopping_criteria_adapter() -> None:
             fired_at = n
             break
     check("adapter fires after the 2nd completed line (4 tokens)", fired_at == 4, str(fired_at))
+    # The recorded flag is what distinguishes "the cap cut this off" from "the model happened
+    # to emit cap-many steps": it comes from the criterion, not from counting the output.
+    check("the cap state records that it fired", state.fired is True)
+    check(
+        "the cap state records the step count it fired at",
+        state.fired_at_step_lines == 2,
+        str(state.fired_at_step_lines),
+    )
+    unfired_criteria, unfired_state = rd.make_step_line_stopping_criteria(
+        FakeTokenizer(), prompt_len=len(prompt), max_step_lines=8
+    )
+    for n in range(1, len(generated) + 1):
+        unfired_criteria(torch.tensor([prompt + generated[:n]]), None)
+    check(
+        "a generation that never reaches the cap leaves the state un-fired",
+        unfired_state.fired is False and unfired_state.fired_at_step_lines is None,
+    )
 
 
 # ------------------------------------------------------------------ self-exclusion
@@ -817,10 +890,20 @@ def test_conditions_end_to_end() -> None:
             and arms["unguided"]["metrics"]["evaluation_set"]["allow_unpinned_flag"] is True,
             json.dumps(arms["unguided"]["metrics"]["evaluation_set"]),
         )
+        # Two exclusions, one per mechanism: row 1's planted candidate carries the query's
+        # own id, and 4hop1__d003_c's pool candidate 4hop1__t010_j repeats the query's
+        # question text under a different id. Both are the query as an exemplar.
         check(
-            "the self-exclusion path dropped the fixture's planted self-candidate",
-            arms["unguided"]["metrics"]["few_shot_self_exclusion"]["self_examples_dropped"] == 1,
+            "the self-exclusion path dropped both self-candidates (by id and by text)",
+            arms["unguided"]["metrics"]["few_shot_self_exclusion"]["self_examples_dropped"] == 2
+            and arms["unguided"]["metrics"]["few_shot_self_exclusion"][
+                "rows_with_a_self_example_dropped"
+            ] == 2,
             json.dumps(arms["unguided"]["metrics"]["few_shot_self_exclusion"]),
+        )
+        check(
+            "self-exclusion is reported as enabled when few-shot ran",
+            arms["unguided"]["snapshot"]["few_shot_self_exclusion"]["enabled"] is True,
         )
         for name, arm in arms.items():
             check(
@@ -833,16 +916,34 @@ def test_conditions_end_to_end() -> None:
                 arm["metrics"]["max_new_tokens"] == 256,
             )
             check(
-                f"{name}: every result row carries the same truncation fields",
+                f"{name}: every result row carries the same truncation and cost fields",
                 all(
                     set(r) == {
                         "query_id", "question", "hop_count", "decomposition",
                         "few_shot_source", "decomposition_raw", "step_lines",
-                        "generated_tokens", "hit_max_new_tokens", "stopped_at_step_line_cap",
+                        "hit_max_new_tokens", "stopped_at_step_line_cap",
+                        # the cost fields of issue #13 (PR #24), same shape in every arm
+                        "prompt_tokens", "completion_tokens", "latency_seconds",
                     }
                     for r in arm["results"]
                 ),
                 str(sorted(arm["results"][0])),
+            )
+            check(
+                f"{name}: the two step-line-cap counters are defined separately",
+                set(arm["metrics"]["truncation_definitions"])
+                == {
+                    "rows_at_step_line_cap",
+                    "rows_stopped_at_step_line_cap",
+                    "rows_at_max_new_tokens",
+                },
+                str(sorted(arm["metrics"]["truncation_definitions"])),
+            )
+            check(
+                f"{name}: cost is recorded as unmeasured in a dry run",
+                arm["metrics"]["cost"]["rows_measured"] == 0
+                and arm["metrics"]["cost"]["mean_total_tokens_per_query"] is None,
+                json.dumps(arm["metrics"]["cost"])[:160],
             )
 
         # 5. The refusals. Each is a non-zero exit with a message naming the reason.
@@ -924,6 +1025,51 @@ def test_conditions_end_to_end() -> None:
                 and "no_hop_prefix__x1" in out,
                 f"rc={proc.returncode}",
             )
+
+        # 6. The decoy: right per-hop counts, wrong questions. Counts alone would pass this,
+        #    which is why the ids are compared against the pinned files (ADR 0007/0011).
+        decoy = out_root / "decoy_ids.jsonl"
+        rows = [json.loads(l) for l in E2E_RETRIEVAL.read_text().splitlines() if l.strip()]
+        for row in rows:
+            hop_prefix = str(row["query_id"]).split("__", 1)[0]
+            row["query_id"] = f"{hop_prefix}__decoy_{row['query_index']}"
+        decoy.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        proc = _run_runner(
+            [
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", str(decoy),
+                "--output-root", str(out_root / "decoy"),
+            ]
+        )
+        out = proc.stdout + proc.stderr
+        check(
+            "refused: a decoy set with the same per-hop counts but different ids",
+            proc.returncode != 0
+            and "not in the pinned files" in out
+            and "decoy_0" in out
+            and "pinned id(s) were not loaded" in out,
+            f"rc={proc.returncode}",
+        )
+        # The same decoy is permitted only with the explicit opt-out, and is then recorded
+        # as not the pinned set rather than passing silently.
+        proc = _run_runner(
+            [
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", str(decoy), "--allow-unpinned-eval-set",
+                "--output-root", str(out_root / "decoy_allowed"),
+            ]
+        )
+        check("the decoy runs only under --allow-unpinned-eval-set", proc.returncode == 0,
+              f"rc={proc.returncode}")
+        run_dir = sorted((out_root / "decoy_allowed").iterdir())[0]
+        decoy_metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
+        check(
+            "... and it is recorded as unpinned with the id mismatch counted",
+            decoy_metrics["evaluation_set"]["pinned"] is False
+            and decoy_metrics["evaluation_set"]["id_identity_checked"] is True
+            and decoy_metrics["evaluation_set"]["ids_unexpected_count"] == 9,
+            json.dumps(decoy_metrics["evaluation_set"])[:200],
+        )
     finally:
         shutil.rmtree(out_root, ignore_errors=True)
 
@@ -972,6 +1118,7 @@ def main() -> int:
     cfg = test_musique_config()
     test_conditions(cfg)
     test_prompt_invariant(cfg)
+    test_compound_hop_lines_are_refused()
     test_prompt_selection(cfg)
     test_guided_cli_cannot_override_a_condition(cfg)
     test_shared_step_normalization()
