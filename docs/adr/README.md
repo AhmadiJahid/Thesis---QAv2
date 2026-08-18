@@ -36,6 +36,7 @@ When **not** to write one:
 | [0008](./0008-lift-the-600m-router-cap-to-the-overall-8b-ceiling.md) | Lift the 600M Router Cap to the Overall 8B Ceiling | Accepted |
 | [0009](./0009-paired-bootstrap-and-mcnemar-as-the-significance-protocol.md) | Paired Bootstrap + Exact McNemar as the Significance Protocol | Accepted (pending supervisor confirmation) |
 | [0010](./0010-keep-the-router-as-a-hop-count-regressor-prioritize-fine-tuning.md) | Keep the Router, as a Hop-Count Regressor; Prioritize Fine-Tuning | Accepted |
+| [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md) | Comparison-Artifact Conventions and the Significance-Claim Floor | Accepted (provisional items pending Jahid/supervisor) |
 
 ---
 
