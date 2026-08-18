@@ -19,6 +19,7 @@ Run::
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -28,6 +29,8 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 GOLD_PATH = FIXTURES / "data_root" / "musique" / "dev_data" / "musique_ans_v1.0_dev_clean.jsonl"
@@ -36,6 +39,21 @@ EVALUATOR = REPO_ROOT / "scripts" / "musique_decompositions_evaluator.py"
 SMOKE_PATHS_CONFIG = REPO_ROOT / "configs" / "smoke_paths.json"
 
 PLACES = 9
+
+
+def _import_evaluator() -> Any:
+    """Import the evaluator as a module, for the checks that call its functions directly."""
+    name = "musique_decompositions_evaluator"
+    spec = importlib.util.spec_from_file_location(name, EVALUATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    # Registered before exec: @dataclass resolves annotations through sys.modules.
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+EVAL = _import_evaluator()
 
 
 def _load_gold() -> dict[str, dict[str, Any]]:
@@ -96,12 +114,17 @@ class EvaluatorTestBase(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, f"evaluator failed:\n{proc.stdout}\n{proc.stderr}")
         return proc
 
-    def evaluate(self, name: str, predictions: list[dict[str, Any]]) -> tuple[dict[str, Any], Path]:
+    def evaluate(
+        self, name: str, predictions: list[dict[str, Any]], gold: Path | None = None
+    ) -> tuple[dict[str, Any], Path]:
         """Score ``predictions`` against the fixture gold; return (metrics, per_item path)."""
         preds_path = self.tmp / f"{name}_predictions.json"
         preds_path.write_text(json.dumps(predictions, ensure_ascii=False, indent=2), encoding="utf-8")
         run_dir = self.tmp / name
-        self._run(["--predictions", str(preds_path), "--run-dir", str(run_dir)])
+        argv = ["--predictions", str(preds_path), "--run-dir", str(run_dir)]
+        if gold is not None:
+            argv += ["--gold", str(gold)]
+        self._run(argv)
         metrics = json.loads((run_dir / "eval_metrics.json").read_text(encoding="utf-8"))
         return metrics, run_dir / "eval_per_item.json"
 
@@ -124,6 +147,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                      -> P 10/20 = 0.5, R 10/10 = 1.0, F1 = 2/3
           refs       [#1] in step 2 and [#3] in step 4 are both backward -> 2/2 = 1.0
           hops       gold hop_count 2 vs 4 predicted -> exact 0, |error| 2
+          exact rate 1 - over(1.0) - under(0.0) = 0.0
           composite  0.4*(2/3) + 0.3*0.5 + 0.2*1.0 + 0.1*max(0, 1 - 2/3) = 0.65
         """
         steps = gold_steps("2hop__d001_a") + [
@@ -151,6 +175,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                 "mean_signed_step_count_error": 2.0,
                 "over_decomposition_rate": 1.0,
                 "under_decomposition_rate": 0.0,
+                "step_count_exact_rate": 0.0,
                 "hop_count_exact_match_rate": 0.0,
                 "hop_count_abs_error_mae": 2.0,
                 "composite_score": 0.65,
@@ -163,6 +188,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                 "mean_signed_step_count_error": 2.0,
                 "over_decomposition_rate": 1.0,
                 "under_decomposition_rate": 0.0,
+                "step_count_exact_rate": 0.0,
             },
         )
 
@@ -199,6 +225,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                 "mean_signed_step_count_error": -2.0,
                 "over_decomposition_rate": 0.0,
                 "under_decomposition_rate": 1.0,
+                "step_count_exact_rate": 0.0,
                 "hop_count_exact_match_rate": 0.0,
                 "hop_count_abs_error_mae": 2.0,
                 "composite_score": 0.65,
@@ -211,6 +238,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                 "mean_signed_step_count_error": -2.0,
                 "over_decomposition_rate": 0.0,
                 "under_decomposition_rate": 1.0,
+                "step_count_exact_rate": 0.0,
             },
         )
 
@@ -248,6 +276,7 @@ class TestDirectionalStepCount(EvaluatorTestBase):
                 "mean_signed_step_count_error": -2.0,
                 "over_decomposition_rate": 0.0,
                 "under_decomposition_rate": 1.0,
+                "step_count_exact_rate": 0.0,
                 "hop_count_exact_match_rate": 0.0,
                 "composite_score": 7 / 30,
             },
@@ -286,6 +315,7 @@ class TestReferenceValidity(EvaluatorTestBase):
                 "mean_signed_step_count_error": 0.0,
                 "over_decomposition_rate": 0.0,
                 "under_decomposition_rate": 0.0,
+                "step_count_exact_rate": 1.0,
                 "hop_count_exact_match_rate": 1.0,
                 "composite_score": 2 / 3,
             },
@@ -319,10 +349,206 @@ class TestReferenceValidity(EvaluatorTestBase):
                 "reference_validity_micro": 0.0,
                 "step_count_mae": 0.0,
                 "mean_signed_step_count_error": 0.0,
+                "step_count_exact_rate": 1.0,
                 "hop_count_exact_match_rate": 1.0,
                 "composite_score": 0.45,
             },
         )
+
+
+class TestStepNormalization(EvaluatorTestBase):
+    def test_punctuation_only_difference_is_a_perfect_step_match(self) -> None:
+        """2hop__d004_p predicted with punctuation-only changes: '?' -> '.' and '?' dropped.
+
+        This pins the documented normalization rule (lowercase, punctuation stripped except
+        '#', whitespace collapsed): with it, the two steps normalize to identical strings.
+        Deleting the punctuation-strip line in ``_normalize_step`` turns every step-level
+        number below red (exact match 0.0, step F1 0.0, ordered 0.0, composite 0.6).
+
+        Hand computation (1 evaluated row):
+          gold       "Which board approved the Rill Valley permit?" / "Who chairs [#1]?"
+          pred       "Which board approved the Rill Valley permit." / "Who chairs [#1]"
+          normalized both sides -> "which board approved the rill valley permit" and
+                     "who chairs #1" -> identical, so EM 1.0, P/R/F1 1.0, ordered 1.0
+          ROUGE-L    _tokenize does NOT strip punctuation: 10 tokens each side, differing
+                     at "permit?"/"permit." and "[#1]?"/"[#1]" -> LCS 8
+                     -> P 8/10 = 0.8, R 0.8, F1 0.8
+          refs       [#1] in step 2 is backward -> 1/1 = 1.0
+          steps      pred 2, gold 2 -> signed 0, MAE 0, exact rate 1.0, hop exact 1.0
+          composite  0.4*1.0 + 0.3*1.0 + 0.2*1.0 + 0.1*max(0, 1 - 0/3) = 1.0
+        """
+        steps = [
+            "Which board approved the Rill Valley permit.",
+            "Who chairs [#1]",
+        ]
+        metrics, _ = self.evaluate("punct_only", [prediction("2hop__d004_p", steps)])
+
+        self.assertEqual(metrics["total_evaluated"], 1)
+        self.assertMetrics(
+            metrics,
+            {
+                "exact_match_rate": 1.0,
+                "step_precision_macro": 1.0,
+                "step_recall_macro": 1.0,
+                "step_f1_macro": 1.0,
+                "ordered_step_accuracy_macro": 1.0,
+                "rouge_l_precision_macro": 0.8,
+                "rouge_l_recall_macro": 0.8,
+                "rouge_l_f1_macro": 0.8,
+                "reference_validity_macro": 1.0,
+                "reference_validity_micro": 1.0,
+                "step_count_mae": 0.0,
+                "mean_signed_step_count_error": 0.0,
+                "step_count_exact_rate": 1.0,
+                "hop_count_exact_match_rate": 1.0,
+                "composite_score": 1.0,
+            },
+        )
+
+
+class TestGoldDenominators(EvaluatorTestBase):
+    def test_hop_count_disagreeing_with_step_count_is_refused(self) -> None:
+        """Gold whose 'hop_count' field contradicts len(question_decomposition) must abort.
+
+        The directional step-count metrics divide by len(gold steps) and the hop-count
+        metrics by the 'hop_count' field; a row where those differ would silently make the
+        two families measure different things, so the loader refuses and names the row.
+        """
+        tampered = self.tmp / "gold_hop_mismatch.jsonl"
+        rows = [
+            json.loads(line)
+            for line in GOLD_PATH.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        rows[0]["hop_count"] = len(rows[0]["question_decomposition"]) + 1
+        tampered.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8"
+        )
+
+        preds_path = self.tmp / "gold_mismatch_predictions.json"
+        preds_path.write_text(
+            json.dumps([prediction("2hop__d001_a", gold_steps("2hop__d001_a"))], ensure_ascii=False),
+            encoding="utf-8",
+        )
+        proc = self._run(
+            [
+                "--predictions", str(preds_path),
+                "--gold", str(tampered),
+                "--run-dir", str(self.tmp / "gold_mismatch"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        message = proc.stdout + proc.stderr
+        self.assertIn("2hop__d001_a", message)
+        self.assertIn("hop_count=3, steps=2", message)
+
+    def test_matching_gold_loads(self) -> None:
+        """The committed fixture gold agrees on both denominators, so it must load."""
+        metrics, _ = self.evaluate(
+            "gold_ok", [prediction("2hop__d001_a", gold_steps("2hop__d001_a"))]
+        )
+        self.assertEqual(metrics["total_evaluated"], 1)
+
+
+class TestMcNemarPower(unittest.TestCase):
+    def test_min_attainable_p_value(self) -> None:
+        """b=3, c=1 discordant pairs: p and the smallest p those 4 pairs could give.
+
+        Hand computation (exact two-sided McNemar, m = b + c = 4):
+          p     = min(1, 2 * (C(4,0) + C(4,1)) / 2^4) = 2 * 5/16 = 0.625
+          min p = the most one-sided outcome, min(b, c) = 0
+                = min(1, 2 * C(4,0) / 2^4) = 2/16 = 0.125
+          0.125 >= alpha 0.05, so this test cannot reject at 0.05 however the 4 pairs fall:
+          "significant: false" here is a statement about n, and 'underpowered' says so.
+        """
+        def row(exact: float) -> dict[str, Any]:
+            return {"exact_match": exact, "hop_count_exact_match": 1.0}
+
+        rows_a = [row(1.0), row(1.0), row(1.0), row(0.0), row(0.0)]
+        rows_b = [row(0.0), row(0.0), row(0.0), row(1.0), row(0.0)]
+        out = EVAL._mcnemar(rows_a, rows_b, alpha=0.05, underpowered=False)["exact_match"]
+
+        self.assertEqual(out["correct_only_in_a"], 3)
+        self.assertEqual(out["correct_only_in_b"], 1)
+        self.assertEqual(out["discordant_pairs"], 4)
+        self.assertAlmostEqual(out["p_value"], 0.625, places=PLACES)
+        self.assertAlmostEqual(out["min_attainable_p_value"], 0.125, places=PLACES)
+        self.assertFalse(out["min_attainable_p_reaches_alpha"])
+        self.assertFalse(out["significant"])
+        self.assertTrue(out["underpowered"])
+        self.assertEqual(out["n"], 5)
+
+    def test_six_discordant_pairs_can_reach_alpha(self) -> None:
+        """m = 6 is the smallest discordant count whose min p clears 0.05: 2/2^6 = 0.03125."""
+        self.assertAlmostEqual(EVAL._mcnemar_exact_p(5, 0), 2 / 32, places=PLACES)  # 0.0625
+        self.assertAlmostEqual(EVAL._mcnemar_exact_p(6, 0), 2 / 64, places=PLACES)  # 0.03125
+
+
+class TestBootstrapChunking(unittest.TestCase):
+    """The chunked bootstrap must be bit-identical to the single-block draw it replaced."""
+
+    WEIGHTS = {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1,
+    }
+    SCALE = 3.0
+    ITERATIONS = 200
+    SEED = 42
+
+    def _arrays(self, offset: float) -> dict[str, np.ndarray]:
+        n = 6
+        base = np.array([0.1, 0.4, 0.5, 0.8, 0.9, 1.0], dtype=float)
+        return {
+            "step_f1": np.clip(base + offset, 0.0, 1.0),
+            "ordered_step_accuracy": np.clip(base * 0.9 + offset, 0.0, 1.0),
+            "rouge_l_f1": np.clip(base * 0.8 + offset, 0.0, 1.0),
+            "reference_valid_count": np.array([1, 2, 0, 3, 1, 2], dtype=float),
+            "reference_total_count": np.array([2, 2, 0, 3, 2, 2], dtype=float),
+            "step_count_abs_error": np.array([0, 1, 2, 0, 1, 3], dtype=float),
+        }
+
+    def _run(self, chunk_size: int) -> dict[str, dict[str, float]]:
+        return EVAL._paired_bootstrap(
+            self._arrays(0.0),
+            self._arrays(-0.05),
+            n=6,
+            iterations=self.ITERATIONS,
+            alpha=0.05,
+            seed=self.SEED,
+            weights=self.WEIGHTS,
+            scale=self.SCALE,
+            chunk_size=chunk_size,
+            underpowered=False,
+        )
+
+    def test_chunk_size_does_not_change_the_intervals(self) -> None:
+        """Chunk sizes 1, 7, 199 and iterations all give identical CIs for one seed.
+
+        chunk_size == iterations is exactly the pre-chunking code path (one
+        ``rng.integers((iterations, n))`` draw), so equality with it is the "identical
+        before/after chunking" check, not merely internal consistency.
+        """
+        reference = self._run(self.ITERATIONS)
+        # Non-degenerate: system_a is better by construction, so the CI is not [0, 0].
+        self.assertGreater(reference["step_f1"]["difference"], 0.0)
+        self.assertNotEqual(reference["step_f1"]["ci_low"], reference["step_f1"]["ci_high"])
+        for chunk_size in (1, 7, 199, 10_000):
+            with self.subTest(chunk_size=chunk_size):
+                self.assertEqual(self._run(chunk_size), reference)
+
+    def test_index_stream_is_order_preserving(self) -> None:
+        """The mechanism: chunked int64 draws concatenate to the single-block draw."""
+        one = np.random.default_rng(self.SEED).integers(0, 6, size=(10, 6))
+        rng = np.random.default_rng(self.SEED)
+        chunked = np.concatenate([rng.integers(0, 6, size=(k, 6)) for k in (3, 1, 6)])
+        self.assertTrue(np.array_equal(one, chunked))
+
+    def test_non_positive_chunk_size_is_refused(self) -> None:
+        with self.assertRaises(SystemExit):
+            self._run(0)
 
 
 class TestPairedComparison(EvaluatorTestBase):
@@ -348,8 +574,8 @@ class TestPairedComparison(EvaluatorTestBase):
         self._run(["--compare", str(per_item), str(per_item), "--run-dir", str(run_dir)])
         metrics = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
 
-        # 4 fixture predictions, 1 without a gold row -> 3 evaluated, so 3 aligned items.
-        self.assertEqual(metrics["num_aligned_items"], 3)
+        # 5 fixture predictions, 1 without a gold row -> 4 evaluated, so 4 aligned items.
+        self.assertEqual(metrics["num_aligned_items"], 4)
         self.assertEqual(sorted(metrics["bootstrap"]), sorted(
             ["rouge_l_f1", "step_f1", "ordered_step_accuracy", "composite_score"]
         ))
@@ -359,19 +585,82 @@ class TestPairedComparison(EvaluatorTestBase):
                 self.assertAlmostEqual(result["ci_low"], 0.0, places=PLACES)
                 self.assertAlmostEqual(result["ci_high"], 0.0, places=PLACES)
                 self.assertFalse(result["significant"])
+                self.assertEqual(result["n"], 4)
         self.assertEqual(sorted(metrics["mcnemar"]), ["exact_match", "hop_count_exact_match"])
         for name, result in metrics["mcnemar"].items():
             with self.subTest(statistic=name):
                 self.assertEqual(result["discordant_pairs"], 0)
                 self.assertAlmostEqual(result["p_value"], 1.0, places=PLACES)
                 self.assertFalse(result["significant"])
+                # 0 discordant pairs: the smallest p attainable is 1.0, so this test could
+                # not have rejected at any alpha — recorded rather than left implicit.
+                self.assertAlmostEqual(result["min_attainable_p_value"], 1.0, places=PLACES)
+                self.assertFalse(result["min_attainable_p_reaches_alpha"])
+                self.assertTrue(result["underpowered"])
 
         # The comparison's point estimates must reproduce the scoring run's aggregates:
-        # step F1 8/9 and composite 0.9222... over the 3 fixture rows.
-        self.assertAlmostEqual(metrics["bootstrap"]["step_f1"]["system_a"], 8 / 9, places=PLACES)
+        # step F1 11/12 and composite 113/120 over the 4 fixture rows.
+        self.assertAlmostEqual(metrics["bootstrap"]["step_f1"]["system_a"], 11 / 12, places=PLACES)
         self.assertAlmostEqual(
-            metrics["bootstrap"]["composite_score"]["system_a"], 0.9222222222222222, places=PLACES
+            metrics["bootstrap"]["composite_score"]["system_a"], 113 / 120, places=PLACES
         )
+
+    def test_n_below_the_floor_is_flagged(self) -> None:
+        """n = 4 is below min_items_for_significance_claim (30), so every row is flagged."""
+        per_item = self._per_item_of_fixture()
+        run_dir = self.tmp / "compare_floor"
+        proc = self._run(["--compare", str(per_item), str(per_item), "--run-dir", str(run_dir)])
+        metrics = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+
+        floor = metrics["significance_floor"]
+        self.assertEqual(floor["num_items"], 4)
+        self.assertEqual(floor["min_items_for_significance_claim"], 30)
+        self.assertTrue(floor["below_min_items"])
+        self.assertIn("underpowered", floor["warning"])
+        for result in metrics["bootstrap"].values():
+            self.assertTrue(result["underpowered"])
+        self.assertIn("WARNING", (run_dir / "compare_notes.md").read_text(encoding="utf-8"))
+        self.assertIn("CI or p", proc.stdout)
+
+    def test_weight_mismatch_between_files_is_refused(self) -> None:
+        """Two files scored under different composite weights are not comparable."""
+        per_item = self._per_item_of_fixture()
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        self.assertEqual(payload["composite_score_weights"]["step_f1_macro"], 0.4)
+        payload["composite_score_weights"]["step_f1_macro"] = 0.5
+        other = self.tmp / "compare_other_weights_per_item.json"
+        other.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        proc = self._run(
+            [
+                "--compare", str(per_item), str(other),
+                "--run-dir", str(self.tmp / "compare_weights"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        message = proc.stdout + proc.stderr
+        self.assertIn("SAME composite-score weights", message)
+        self.assertIn("composite_score_weights", message)
+
+    def test_legacy_bare_list_per_item_file_is_refused(self) -> None:
+        """A per-item file with no stamped weights cannot be recomputed against."""
+        per_item = self._per_item_of_fixture()
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        legacy = self.tmp / "compare_legacy_per_item.json"
+        legacy.write_text(
+            json.dumps(payload["items"], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        proc = self._run(
+            [
+                "--compare", str(legacy), str(legacy),
+                "--run-dir", str(self.tmp / "compare_legacy"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("legacy bare-list per-item format", proc.stdout + proc.stderr)
 
     def test_identical_inputs_are_reproducible(self) -> None:
         """Same seed, same inputs -> byte-identical bootstrap results."""
@@ -388,10 +677,11 @@ class TestPairedComparison(EvaluatorTestBase):
     def test_different_evaluation_sets_are_refused(self) -> None:
         """Dropping one item from one side must abort and name the offending id."""
         per_item = self._per_item_of_fixture()
-        rows = json.loads(per_item.read_text(encoding="utf-8"))
-        dropped = rows[0]["item_id"]
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        dropped = payload["items"][0]["item_id"]
+        payload["items"] = payload["items"][1:]
         short_path = self.tmp / "compare_short_per_item.json"
-        short_path.write_text(json.dumps(rows[1:], ensure_ascii=False, indent=2), encoding="utf-8")
+        short_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
         proc = self._run(
             [

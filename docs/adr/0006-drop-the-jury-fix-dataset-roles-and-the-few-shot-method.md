@@ -24,7 +24,7 @@ Jahid met his supervisor on 2026-08-12. The v1 architecture recorded in ADR [000
 
 **5. Contribution framing:** the contribution is **a strategy for constructing the few-shot pool and retrieving examples for hop-aware decomposition, validated empirically** — not "we decompose multi-hop questions".
 
-**6. OPEN — whether the pipeline keeps the router.** To be decided by a guided-versus-unguided experiment. This ADR records it as open and does not resolve it.
+**6. OPEN — whether the pipeline keeps the router.** To be decided by a guided-versus-unguided experiment. This ADR records it as open and does not resolve it. *(Resolved 2026-08-18 by [0010](./0010-keep-the-router-as-a-hop-count-regressor-prioritize-fine-tuning.md): the router stays, reframed as a hop-count regressor.)*
 
 ## Consequences
 

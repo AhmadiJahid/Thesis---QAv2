@@ -24,7 +24,7 @@
 - **Env recreation command:** `cd /cta/users/fyilmaz/Thesis---QAv2 && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 - **Repo location on the box:** v2 `/cta/users/fyilmaz/Thesis---QAv2`; v1 (data + prior results, read-only for v2) `/cta/users/fyilmaz/Thesis---QA`
 - **Dataset location:** `/cta/users/fyilmaz/thesis-qav2-data` — **never inside the working tree.** This directory is a **symlink layer over the v1 repo's data** (`metaqa/` → v1 `Data/` files + `Pool/`; `musique` → v1 `MusiQue/Data`; `cache/emb_cache` → v1 embedding cache). Nothing is copied; v1 remains the single storage location. All `datasets.*` keys in `configs/paths.json` verified resolving on 2026-08-17 except `musique_chunks_masked_dir` (pre-fix masked chunks; superseded by `_fixed` in v1, no longer exist).
-- **Disk:** home filesystem `/cta/users` **122 GB free (95% full)** — repos, data, venv and run artifacts all live here. `/` has 835 GB free but home does not reside there; `/ctb` (14 TB) is **not writable** for this user. Watch free space before any run that writes checkpoints.
+- **Disk:** home filesystem `/cta/users` **191 GB free (88% full)** as of 2026-08-18, after the 2026-08-17 full-pool incident (issue #18) was resolved by the admin — snapshot rotation is running again, but ~2.9 TB is still snapshot-held, so the pool can refill; check `df -h /cta/users` before any run that writes checkpoints. `/` has 835 GB free but home does not reside there; `/ctb` (14 TB) is **not writable** for this user.
 
 ## Run lock convention
 
