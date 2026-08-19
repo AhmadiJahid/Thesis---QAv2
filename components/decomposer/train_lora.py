@@ -62,6 +62,7 @@ from finetune_data import (  # noqa: E402
     build_training_rows,
     load_eval_ids,
     load_jsonl,
+    prompt_file_sha256,
     resolve_arm,
     select_arm_examples,
     select_prompt_file,
@@ -418,6 +419,11 @@ def main() -> None:
             **prompt_cfg,
             "prompt_file": prompt_file,
             "prompt_path": str(prompt_path),
+            # Content, not just name: the evaluation-side parity guard compares this against
+            # the prompt file it renders, so an edited prompt that kept its file name is
+            # caught. Absent from records written before 2026-08-19 (exp-001), where the
+            # guard reports it as not compared rather than refusing.
+            "prompt_sha256": prompt_file_sha256(prompt_path),
             "prompt_style": prompt_style,
             "unguided_hop_placeholder": unguided_hop_placeholder,
         },

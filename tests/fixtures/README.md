@@ -46,11 +46,18 @@ decomposer_arms/               # two fabricated "arms" (metrics.json only) for
                                # deliberately has none, to exercise the cost-unmeasured
                                # branch.
 adapter/                       # a fabricated LoRA adapter directory with NO weights:
-                               # adapter_config.json (base_model_name_or_path) and
-                               # training_provenance.json (the prompt it was "trained" on),
-                               # which is what the smoke test's --adapter dry run is checked
-                               # against by run_decomposer's base-model and prompt-parity
-                               # guards
+                               # training_provenance.json (the prompt it was "trained" on)
+                               # and adapter_config.json (base_model_name_or_path).
+                               # The smoke test's --adapter dry run exercises the PROMPT-
+                               # PARITY guard only: it is a dry run, so no model is loaded,
+                               # attach_adapter is never called and the base-model assertion
+                               # does not execute — that guard's coverage is
+                               # tests/test_finetune_lora.py::TestAdapterBaseModelAssertion.
+                               # adapter_config.json is still needed here, because the parity
+                               # guard cross-checks the provenance model_id against it.
+                               # It deliberately carries NO prompt_sha256, which is the
+                               # exp-001 case: an optional field absent from the record is
+                               # reported as not compared, not refused.
 retrieval/
   top20.jsonl                  # a similarity top-k file (also used as decomposer input)
   top5_musique_conditions.jsonl # retrieval input for the three MuSiQue conditions: one row

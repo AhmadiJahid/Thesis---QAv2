@@ -20,6 +20,8 @@ Run::
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -27,6 +29,9 @@ import unittest
 import unittest.mock
 from pathlib import Path
 from typing import Any
+
+#: Sentinel for "leave this key out of the fabricated record entirely".
+_ABSENT = object()
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -816,13 +821,21 @@ class TestCostReporting(unittest.TestCase):
 
 
 #: The prompt an unguided zero-shot adapter was trained on. Every expectation in the
-#: prompt-parity tests is computed against this by hand.
+#: prompt-parity tests is computed against this by hand. ``prompt_sha256`` is deliberately
+#: absent: these four fields are the ones every record must carry.
 TRAINED_ON = {
     "guided": False,
     "prompt_file": "prompt_unguided.md",
     "prompt_style": "plain",
     "few_shot_examples_in_prompt": False,
 }
+
+#: The base model both the fabricated adapter_config.json and the fabricated training records
+#: name, so the record-vs-adapter cross-check passes unless a test changes one of them.
+FIXTURE_MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+
+#: A fabricated prompt-file hash. Not a real sha256 of anything - the guard compares strings.
+FIXTURE_PROMPT_SHA = "a" * 64
 
 
 class TestAdapterPromptParity(unittest.TestCase):
@@ -840,24 +853,41 @@ class TestAdapterPromptParity(unittest.TestCase):
         self.run_dir = Path(self._tmp.name) / "20260818_222259"
         self.adapter_dir = self.run_dir / "adapter"
         self.adapter_dir.mkdir(parents=True)
+        # Every adapter directory carries one; the record-vs-adapter cross-check reads it.
+        self._write_adapter_config()
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
-    def _write_provenance(self, **prompt_overrides: Any) -> Path:
+    def _write_adapter_config(self, base_model: str = FIXTURE_MODEL_ID) -> Path:
+        path = self.adapter_dir / self.rd.ADAPTER_CONFIG_FILE
+        path.write_text(
+            json.dumps({self.rd.ADAPTER_BASE_MODEL_FIELD: base_model}), encoding="utf-8"
+        )
+        return path
+
+    def _write_provenance(
+        self, *, payload_overrides: dict[str, Any] | None = None, **prompt_overrides: Any
+    ) -> Path:
         """The file train_lora.py writes into the adapter directory."""
         prompt = {**TRAINED_ON, **prompt_overrides}
+        payload = {
+            "script": "train_lora.py",
+            "run_id": "r1",
+            "arm": "full_train",
+            "model_id": FIXTURE_MODEL_ID,
+            "prompt": prompt,
+        }
+        payload.update(payload_overrides or {})
+        payload = {k: v for k, v in payload.items() if v is not _ABSENT}
         path = self.adapter_dir / self.rd.ADAPTER_PROVENANCE_FILE
-        path.write_text(
-            json.dumps({"script": "train_lora.py", "run_id": "r1", "arm": "full_train",
-                        "prompt": prompt}),
-            encoding="utf-8",
-        )
+        path.write_text(json.dumps(payload), encoding="utf-8")
         return path
 
     def _write_training_snapshot(self, *, script: str = "train_lora.py", **prompt_overrides: Any) -> Path:
         """The training run's config snapshot, next to the adapter dir (the exp-001 shape:
-        ``prompt.few_shot_examples`` as an empty string rather than a boolean)."""
+        ``prompt.few_shot_examples`` as an empty string rather than a boolean, and no
+        ``prompt_sha256``)."""
         prompt = {
             "guided": TRAINED_ON["guided"],
             "few_shot_examples": "",
@@ -868,7 +898,7 @@ class TestAdapterPromptParity(unittest.TestCase):
         path = self.run_dir / self.rd.TRAINING_SNAPSHOT_FILE
         path.write_text(
             json.dumps({"script": script, "run_id": "20260818_222259", "arm": "full_train",
-                        "prompt": prompt}),
+                        "model_id": FIXTURE_MODEL_ID, "prompt": prompt}),
             encoding="utf-8",
         )
         return path
@@ -877,6 +907,12 @@ class TestAdapterPromptParity(unittest.TestCase):
         return self.rd.check_adapter_prompt_parity(
             adapter=str(self.adapter_dir), run_selection=run_selection, override=override
         )
+
+    def _check_capturing_stdout(self, **kwargs: Any) -> tuple[dict[str, Any], str]:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            record = self._check(**kwargs)
+        return record, buffer.getvalue()
 
     # ---- the record is found ----
 
@@ -953,7 +989,9 @@ class TestAdapterPromptParity(unittest.TestCase):
         self._write_training_snapshot(script="run_decomposer.py")
         with self.assertRaises(SystemExit) as ctx:
             self._check(run_selection=dict(TRAINED_ON))
-        self.assertIn("not a training run's snapshot", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("'script' is 'run_decomposer.py'", message)
+        self.assertIn("not a record written by train_lora.py", message)
 
     def test_a_record_missing_a_prompt_field_is_not_usable(self) -> None:
         path = self.adapter_dir / self.rd.ADAPTER_PROVENANCE_FILE
@@ -966,6 +1004,132 @@ class TestAdapterPromptParity(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("no 'prompt.prompt_file'", message)
         self.assertIn("no 'prompt.prompt_style'", message)
+
+    # ---- the provenance file is validated, not trusted for sitting there ----
+
+    def test_a_provenance_file_with_no_script_field_is_not_a_training_record(self) -> None:
+        """The provenance file is a plain JSON file in a directory anyone can copy into."""
+        self._write_provenance(payload_overrides={"script": _ABSENT})
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        message = str(ctx.exception)
+        self.assertIn("'script' is None", message)
+        self.assertIn("not a record written by train_lora.py", message)
+
+    def test_a_provenance_file_claiming_another_script_is_refused(self) -> None:
+        self._write_provenance(payload_overrides={"script": "run_decomposer.py"})
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        self.assertIn("'script' is 'run_decomposer.py'", str(ctx.exception))
+
+    def test_a_provenance_file_for_a_different_base_model_is_refused(self) -> None:
+        """A stale or copied provenance file must not pass because it sits beside weights."""
+        self._write_provenance(payload_overrides={"model_id": "some/other-base"})
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        message = str(ctx.exception)
+        self.assertIn("'model_id' is 'some/other-base'", message)
+        self.assertIn(FIXTURE_MODEL_ID, message)
+        self.assertIn("does not describe this adapter", message)
+
+    def test_the_model_id_cross_check_is_recorded_when_it_passes(self) -> None:
+        self._write_provenance()
+        record = self._check(run_selection=dict(TRAINED_ON))
+        cross = record["training_record"]["model_id_cross_check"]
+        self.assertTrue(cross["checked"])
+        self.assertEqual(cross["record_model_id"], FIXTURE_MODEL_ID)
+        self.assertEqual(cross["adapter_base_model"], FIXTURE_MODEL_ID)
+
+    def test_the_cross_check_says_so_when_it_cannot_be_done(self) -> None:
+        """No adapter_config.json: the record is still usable, and the record says why."""
+        (self.adapter_dir / self.rd.ADAPTER_CONFIG_FILE).unlink()
+        self._write_provenance()
+        record = self._check(run_selection=dict(TRAINED_ON))
+        cross = record["training_record"]["model_id_cross_check"]
+        self.assertTrue(record["checked"])
+        self.assertFalse(cross["checked"])
+        self.assertIsNone(cross["adapter_base_model"])
+        self.assertIn("unchecked", cross["note"])
+
+    def test_a_record_with_no_model_id_is_usable_and_says_it_was_not_cross_checked(self) -> None:
+        self._write_provenance(payload_overrides={"model_id": _ABSENT})
+        record = self._check(run_selection=dict(TRAINED_ON))
+        self.assertTrue(record["checked"])
+        cross = record["training_record"]["model_id_cross_check"]
+        self.assertFalse(cross["checked"])
+        self.assertIn("no 'model_id'", cross["note"])
+
+    # ---- strict types: no coercion of a malformed record ----
+
+    def test_a_string_guided_value_is_malformed_not_true(self) -> None:
+        """bool("false") is True, which would invert the condition being claimed."""
+        self._write_provenance(guided="false")
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        message = str(ctx.exception)
+        self.assertIn("'prompt.guided' is 'false' (str), not a boolean", message)
+        self.assertIn("cannot tell what adapter", message)
+
+    def test_a_null_prompt_file_is_malformed_rather_than_the_string_none(self) -> None:
+        self._write_provenance(prompt_file=None)
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        self.assertIn(
+            "'prompt.prompt_file' is None (NoneType), not a non-empty string",
+            str(ctx.exception),
+        )
+
+    def test_a_non_boolean_few_shot_flag_is_malformed(self) -> None:
+        self._write_provenance(few_shot_examples_in_prompt="no")
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        self.assertIn(
+            "'prompt.few_shot_examples_in_prompt' is 'no' (str), not a boolean",
+            str(ctx.exception),
+        )
+
+    def test_an_absent_field_renders_as_null_not_as_the_string_none(self) -> None:
+        self.assertEqual(self.rd._parity_value(None), "null (absent)")
+        self.assertEqual(self.rd._parity_value("prompt.md"), "'prompt.md'")
+
+    # ---- content-level parity: prompt_sha256, compared only when recorded ----
+
+    def test_a_matching_prompt_sha256_is_compared_and_passes(self) -> None:
+        self._write_provenance(prompt_sha256=FIXTURE_PROMPT_SHA)
+        record = self._check(
+            run_selection={**TRAINED_ON, "prompt_sha256": FIXTURE_PROMPT_SHA}
+        )
+        self.assertTrue(record["checked"])
+        self.assertIn("prompt_sha256", record["fields_compared"])
+        self.assertEqual(record["fields_compared"], list(TRAINED_ON) + ["prompt_sha256"])
+        self.assertEqual(record["fields_not_in_training_record"], [])
+
+    def test_an_edited_prompt_file_with_the_same_name_is_refused(self) -> None:
+        """The point of the content check: same prompt_file, different bytes."""
+        self._write_provenance(prompt_sha256=FIXTURE_PROMPT_SHA)
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection={**TRAINED_ON, "prompt_sha256": "b" * 64})
+        message = str(ctx.exception)
+        self.assertIn("prompt_sha256: trained on", message)
+        self.assertIn("adapter prompt mismatch", message)
+
+    def test_a_record_without_a_prompt_sha256_is_not_refused_but_recorded(self) -> None:
+        """The exp-001 case: retraining for a field added later is not acceptable."""
+        self._write_training_snapshot()  # no prompt_sha256, like exp-001's snapshot
+        record = self._check(
+            run_selection={**TRAINED_ON, "prompt_sha256": FIXTURE_PROMPT_SHA}
+        )
+        self.assertTrue(record["checked"])
+        self.assertEqual(record["mismatches"], [])
+        self.assertEqual(record["fields_compared"], list(TRAINED_ON))
+        self.assertEqual(record["fields_not_in_training_record"], ["prompt_sha256"])
+        self.assertIn("not a refusal", record["note"])
+
+    def test_a_malformed_prompt_sha256_is_refused_rather_than_skipped(self) -> None:
+        self._write_provenance(prompt_sha256="")
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection={**TRAINED_ON, "prompt_sha256": FIXTURE_PROMPT_SHA})
+        self.assertIn("'prompt.prompt_sha256' is ''", str(ctx.exception))
 
     # ---- the override, and the prompting arm ----
 
@@ -1008,6 +1172,129 @@ class TestAdapterPromptParity(unittest.TestCase):
             self.rd.ADAPTER_PROMPT_PARITY_FIELDS,
             ("guided", "prompt_file", "prompt_style", "few_shot_examples_in_prompt"),
         )
+        self.assertEqual(self.rd.ADAPTER_PROMPT_PARITY_OPTIONAL_FIELDS, ("prompt_sha256",))
+
+    # ---- a run that proceeds must not print a refusal ----
+
+    def test_an_overridden_mismatch_warns_without_claiming_a_refusal(self) -> None:
+        self._write_provenance()
+        record, printed = self._check_capturing_stdout(
+            run_selection={**TRAINED_ON, "guided": True}, override=True
+        )
+        self.assertNotIn("REFUSING TO RUN", printed)
+        self.assertIn("WARNING:", printed)
+        self.assertIn("MISMATCHED", printed)
+        self.assertIn("The run proceeds", printed)
+        self.assertEqual([m["field"] for m in record["mismatches"]], ["guided"])
+
+    def test_an_overridden_missing_record_warns_without_claiming_a_refusal(self) -> None:
+        _record, printed = self._check_capturing_stdout(
+            run_selection=dict(TRAINED_ON), override=True
+        )
+        self.assertNotIn("REFUSING TO RUN", printed)
+        self.assertIn("UNCHECKED", printed)
+        self.assertIn("The run proceeds", printed)
+
+    def test_the_refusals_still_say_refusing_to_run(self) -> None:
+        """The string is reserved for runs that actually stop."""
+        self._write_provenance()
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection={**TRAINED_ON, "guided": True})
+        self.assertIn("REFUSING TO RUN", str(ctx.exception))
+
+
+class TestAdapterRunNoteStatesWhatWasChecked(unittest.TestCase):
+    """notes.md says whether the two adapter guards passed, were overridden, or did not run."""
+
+    def setUp(self) -> None:
+        import run_decomposer
+
+        self.rd = run_decomposer
+
+    def _lines(self, **kwargs: Any) -> list[str]:
+        defaults: dict[str, Any] = {
+            "adapter": "runs/exp-001/x/adapter",
+            "no_few_shot": True,
+            "parity": {"checked": True, "override": False, "mismatches": []},
+            "base_model": None,
+            "base_model_note": None,
+        }
+        return self.rd.adapter_note_lines(**{**defaults, **kwargs})
+
+    def test_the_prompting_arm_gets_one_line_and_no_guard_lines(self) -> None:
+        lines = self._lines(adapter=None, no_few_shot=False)
+        self.assertEqual(lines, ["- Adapter: none (prompting arm)"])
+
+    def test_a_passed_parity_check_names_the_fields_and_the_record(self) -> None:
+        lines = self._lines(
+            parity={
+                "checked": True,
+                "override": False,
+                "mismatches": [],
+                "fields_compared": list(TRAINED_ON) + ["prompt_sha256"],
+                "fields_not_in_training_record": [],
+                "training_record": {"path": "/runs/x/config.json", "source": "training_run_config"},
+            },
+            base_model={
+                "adapter_base_model": FIXTURE_MODEL_ID,
+                "run_model_id": FIXTURE_MODEL_ID,
+            },
+        )
+        parity_line = next(ln for ln in lines if "prompt parity" in ln)
+        self.assertIn("checked OK on 5 field(s)", parity_line)
+        self.assertIn("prompt_sha256", parity_line)
+        self.assertIn("/runs/x/config.json", parity_line)
+        base_line = next(ln for ln in lines if "base model" in ln)
+        self.assertIn("asserted", base_line)
+        self.assertIn(FIXTURE_MODEL_ID, base_line)
+
+    def test_a_field_the_record_lacks_is_reported_as_not_compared(self) -> None:
+        lines = self._lines(
+            parity={
+                "checked": True,
+                "override": False,
+                "mismatches": [],
+                "fields_compared": list(TRAINED_ON),
+                "fields_not_in_training_record": ["prompt_sha256"],
+                "training_record": {"path": "/runs/x/config.json", "source": "training_run_config"},
+            },
+            base_model_note="unasserted: no model was loaded in this run (--dry-run)",
+        )
+        parity_line = next(ln for ln in lines if "prompt parity" in ln)
+        self.assertIn("checked OK on 4 field(s)", parity_line)
+        self.assertIn("not compared: prompt_sha256", parity_line)
+        base_line = next(ln for ln in lines if "base model" in ln)
+        self.assertIn("unasserted", base_line)
+        self.assertIn("--dry-run", base_line)
+
+    def test_an_overridden_mismatch_is_stated_with_its_mismatches(self) -> None:
+        lines = self._lines(
+            parity={
+                "checked": False,
+                "override": True,
+                "mismatches": [
+                    {"field": "guided", "trained_on": False, "this_run": True},
+                    {"field": "prompt_file", "trained_on": "prompt_unguided.md", "this_run": None},
+                ],
+            }
+        )
+        parity_line = next(ln for ln in lines if "prompt parity" in ln)
+        self.assertIn("MISMATCHED and overridden", parity_line)
+        self.assertIn(self.rd.ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG, parity_line)
+        self.assertIn("guided (trained on False, this run True)", parity_line)
+        self.assertIn("this run null (absent)", parity_line)
+        self.assertIn("not the fine-tuned arm", parity_line)
+
+    def test_an_overridden_missing_record_is_stated_as_unchecked(self) -> None:
+        lines = self._lines(parity={"checked": False, "override": True, "mismatches": []})
+        parity_line = next(ln for ln in lines if "prompt parity" in ln)
+        self.assertIn("UNCHECKED and overridden", parity_line)
+        self.assertIn("no usable training record", parity_line)
+
+    def test_the_few_shot_override_line_is_kept(self) -> None:
+        lines = self._lines(no_few_shot=False)
+        self.assertIn(self.rd.ADAPTER_FEW_SHOT_OVERRIDE_FLAG, lines[0])
+        self.assertIn("not the fine-tuned arm", lines[0])
 
 
 class TestAdapterBaseModelAssertion(unittest.TestCase):
@@ -1147,6 +1434,28 @@ class TestAdapterProvenanceIsWritten(unittest.TestCase):
 
     def test_the_two_modules_agree_on_the_filename(self) -> None:
         self.assertEqual(train_lora.ADAPTER_PROVENANCE_FILE, self.rd.ADAPTER_PROVENANCE_FILE)
+
+    def test_the_prompt_content_hash_travels_into_the_provenance(self) -> None:
+        payload = train_lora.adapter_provenance(
+            self._snapshot(prompt_sha256=FIXTURE_PROMPT_SHA)
+        )
+        self.assertEqual(payload["prompt"]["prompt_sha256"], FIXTURE_PROMPT_SHA)
+        train_lora.write_adapter_provenance(
+            self.adapter_dir, self._snapshot(prompt_sha256=FIXTURE_PROMPT_SHA)
+        )
+        found = self.rd.read_adapter_training_record(self.adapter_dir)
+        self.assertEqual(found["trained_on"]["prompt_sha256"], FIXTURE_PROMPT_SHA)
+
+    def test_training_and_inference_hash_a_prompt_file_with_one_function(self) -> None:
+        """Content parity is only meaningful if both sides compute the same number."""
+        prompt_path = (
+            REPO_ROOT / "components" / "decomposer" / "models" / "mistral_7b_instruct"
+            / "prompt_unguided.md"
+        )
+        self.assertTrue(prompt_path.exists(), str(prompt_path))
+        self.assertEqual(
+            fd.prompt_file_sha256(prompt_path), self.rd.sha256_file(prompt_path)
+        )
 
     def test_the_committed_fixture_provenance_is_readable_by_the_guard(self) -> None:
         found = self.rd.read_adapter_training_record(REPO_ROOT / "tests" / "fixtures" / "adapter")

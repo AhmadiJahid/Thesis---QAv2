@@ -490,6 +490,17 @@ def _run_decomposer():
     return run_decomposer
 
 
+def prompt_file_sha256(prompt_path: Path) -> str:
+    """Content address of a prompt file, through the runner's own hash helper.
+
+    Delegated rather than reimplemented for the same reason the template helpers are: the
+    training record's ``prompt_sha256`` is compared against the evaluation run's by
+    ``run_decomposer.check_adapter_prompt_parity``, so the two numbers have to come from one
+    function.
+    """
+    return str(_run_decomposer().sha256_file(Path(prompt_path)))
+
+
 def select_prompt_file(model_cfg: dict[str, Any], *, guided: bool) -> str:
     """The prompt file ``run_decomposer.py`` would use for this guidance setting."""
     unguided_prompt_file = require(model_cfg, "unguided_prompt_file")

@@ -184,14 +184,24 @@ Guarantees that are hard failures, not warnings:
   zero-shot prompt, and the few-shot examples come from the same MuSiQue pool it trained on.
   `--adapter-with-few-shot-i-know` overrides it deliberately, prints a warning and is
   recorded in the run's metrics; such a run is not the fine-tuned arm of the comparison.
+  **That flag alone is not enough**: few-shot examples are also a prompt difference from the
+  training prompt, so the parity guard below refuses as well and
+  `--adapter-prompt-mismatch-i-know` has to be passed with it. Two flags, deliberately — one
+  says "I want examples", the other says "I accept the off-training prompt", and both land in
+  the config snapshot and the metrics.
 - **An adapter run whose prompt is not the prompt it was trained on is refused.** The
   training run's own record decides — `training_provenance.json` inside the adapter directory
   (written by `train_lora.py`), or the training run's `config.json` next to it for adapters
-  trained before that file existed. `guided`, the prompt file, the prompt style and whether
-  the prompt carries few-shot examples must all match, so `--adapter --no-few-shot --guided`
-  (a guided template with a hop line, which training never rendered) no longer runs. No
-  readable training record is also a refusal. `--adapter-prompt-mismatch-i-know` overrides
-  it, warns, and is recorded; such a run is not the fine-tuned arm either.
+  trained before that file existed. A record counts only if it says `script: train_lora.py`
+  **and** its `model_id` matches the base model `adapter_config.json` names, so a provenance
+  file copied in from another run does not pass. Compared fields: `guided`, the prompt file,
+  the prompt style and whether the prompt carries few-shot examples — so
+  `--adapter --no-few-shot --guided` (a guided template with a hop line, which training never
+  rendered) no longer runs — plus `prompt_sha256`, the content of the rendered prompt file,
+  **when the record carries it** (recorded from 2026-08-19 onwards; a record without it is
+  reported as not compared, not refused, because exp-001's predates it). No usable training
+  record is also a refusal. `--adapter-prompt-mismatch-i-know` overrides it, warns without
+  claiming a refusal, and is recorded; such a run is not the fine-tuned arm either.
 - **An adapter attaches only to the base model it names.** `adapter_config.json`'s
   `base_model_name_or_path` is compared against the run's `model_id` before
   `PeftModel.from_pretrained`, because LoRA weights attach by module name and shape: a

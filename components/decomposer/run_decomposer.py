@@ -1008,6 +1008,24 @@ ADAPTER_PROMPT_PARITY_FIELDS = (
     "few_shot_examples_in_prompt",
 )
 
+#: Content-level parity, compared **only when the training record carries it**. The four
+#: fields above are the prompt *selection*; the sha256 of the rendered prompt file is the
+#: prompt itself, which catches an edited prompt file that kept its name. ``train_lora.py``
+#: records it from this training run onwards; the exp-001 snapshot predates it, and an absent
+#: field is recorded as unchecked rather than refused (a re-train is not acceptable for it).
+ADAPTER_PROMPT_PARITY_OPTIONAL_FIELDS = ("prompt_sha256",)
+
+
+def _parity_value(value: Any) -> str:
+    """Render a parity field for a human: ``null`` for a missing one, never ``'None'``.
+
+    ``repr`` would print an absent field as the string ``'None'``, which reads like a prompt
+    file literally named "None". A field the record does not carry is reported as ``null``.
+    """
+    if value is None:
+        return "null (absent)"
+    return repr(value)
+
 
 def training_prompt_selection(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """The prompt choices a training record states, as ``(selection, problems)``.
@@ -1026,10 +1044,25 @@ def training_prompt_selection(payload: dict[str, Any]) -> tuple[dict[str, Any], 
     problems: list[str] = []
     for field in ADAPTER_PROMPT_PARITY_FIELDS:
         if field == "few_shot_examples_in_prompt":
+            # A boolean when the record has one; otherwise derived from the rendered block,
+            # which must at least be a string ("" = trained zero-shot).
             if field in prompt:
-                selection[field] = bool(prompt[field])
+                if not isinstance(prompt[field], bool):
+                    problems.append(
+                        f"'prompt.{field}' is {prompt[field]!r} "
+                        f"({type(prompt[field]).__name__}), not a boolean"
+                    )
+                else:
+                    selection[field] = prompt[field]
             elif "few_shot_examples" in prompt:
-                selection[field] = bool(str(prompt["few_shot_examples"]).strip())
+                block = prompt["few_shot_examples"]
+                if not isinstance(block, str):
+                    problems.append(
+                        f"'prompt.few_shot_examples' is {block!r} "
+                        f"({type(block).__name__}), not a string"
+                    )
+                else:
+                    selection[field] = bool(block.strip())
             else:
                 problems.append(
                     "no 'prompt.few_shot_examples_in_prompt' or 'prompt.few_shot_examples'"
@@ -1039,8 +1072,56 @@ def training_prompt_selection(payload: dict[str, Any]) -> tuple[dict[str, Any], 
             problems.append(f"no 'prompt.{field}'")
             continue
         value = prompt[field]
-        selection[field] = bool(value) if field == "guided" else str(value)
+        # Strict types, no coercion: bool("false") is True and str(None) is "None", and
+        # either would let a malformed record silently claim a training condition. A record
+        # this guard cannot read exactly is not a record it should compare against.
+        if field == "guided":
+            if not isinstance(value, bool):
+                problems.append(
+                    f"'prompt.guided' is {value!r} ({type(value).__name__}), not a boolean"
+                )
+                continue
+            selection[field] = value
+            continue
+        if not isinstance(value, str) or not value:
+            problems.append(
+                f"'prompt.{field}' is {value!r} ({type(value).__name__}), not a non-empty string"
+            )
+            continue
+        selection[field] = value
+    # Content-level parity, when the record carries it (see ADAPTER_PROMPT_PARITY_OPTIONAL_
+    # FIELDS): compared only if present, so records written before it existed stay usable.
+    for field in ADAPTER_PROMPT_PARITY_OPTIONAL_FIELDS:
+        if field not in prompt:
+            continue
+        value = prompt[field]
+        if not isinstance(value, str) or not value:
+            problems.append(
+                f"'prompt.{field}' is {value!r} ({type(value).__name__}), not a non-empty string"
+            )
+            continue
+        selection[field] = value
     return selection, problems
+
+
+def adapter_declared_base_model(adapter_path: str | Path) -> str | None:
+    """``adapter_config.json``'s ``base_model_name_or_path``, or None when unreadable.
+
+    The soft read of what :func:`assert_adapter_base_model` asserts: used to cross-check a
+    training record against the adapter it sits beside, where an unreadable file is a "cannot
+    cross-check" rather than a refusal (that refusal belongs at attach time, on a real run).
+    """
+    config_path = Path(adapter_path) / ADAPTER_CONFIG_FILE
+    if not config_path.exists():
+        return None
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(ADAPTER_BASE_MODEL_FIELD)
+    return str(value) if isinstance(value, str) and value else None
 
 
 def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
@@ -1050,8 +1131,16 @@ def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
 
     1. ``<adapter>/training_provenance.json`` - written by ``train_lora.py`` next to the
        weights, so a copied adapter directory carries its own provenance;
-    2. ``<adapter>/../config.json`` - the training run's config snapshot, required to be a
-       ``train_lora.py`` snapshot so an unrelated ``config.json`` cannot be mistaken for one.
+    2. ``<adapter>/../config.json`` - the training run's config snapshot, for adapters trained
+       before the provenance file existed (exp-001).
+
+    A candidate is only *usable* if it says it came from ``train_lora.py`` (``script``) and its
+    ``model_id`` agrees with the base model ``adapter_config.json`` names. Both checks apply to
+    both candidates: the provenance file is a plain JSON file inside a directory anyone can
+    copy, so "it is next to the weights" is not evidence that it describes them. A candidate
+    that fails either check is recorded as a problem and the next one is tried; when the
+    cross-check cannot be done at all (no readable ``adapter_config.json``, or a record with no
+    ``model_id``) the record is still usable and says so.
 
     Returns a record for the run artifacts; never raises. The refusal is
     :func:`check_adapter_prompt_parity`'s, which needs the record either way.
@@ -1062,6 +1151,7 @@ def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
         ("training_run_config", path.parent / TRAINING_SNAPSHOT_FILE),
     ]
     looked_at = [str(p) for _, p in candidates]
+    declared_base_model = adapter_declared_base_model(path)
     problems: list[str] = []
     for source, candidate in candidates:
         if not candidate.exists():
@@ -1075,13 +1165,38 @@ def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
         if not isinstance(payload, dict):
             problems.append(f"{candidate}: not a JSON object")
             continue
-        script = str(payload.get("script") or "")
-        if source == "training_run_config" and script != TRAINING_SCRIPT_NAME:
+        script = payload.get("script")
+        if script != TRAINING_SCRIPT_NAME:
             problems.append(
-                f"{candidate}: script is {script!r}, not {TRAINING_SCRIPT_NAME!r} (not a "
-                "training run's snapshot)"
+                f"{candidate}: 'script' is {script!r}, not {TRAINING_SCRIPT_NAME!r} (not a "
+                f"record written by {TRAINING_SCRIPT_NAME})"
             )
             continue
+        record_model_id = payload.get("model_id")
+        cross_check: dict[str, Any] = {
+            "checked": False,
+            "record_model_id": record_model_id if isinstance(record_model_id, str) else None,
+            "adapter_base_model": declared_base_model,
+        }
+        if isinstance(record_model_id, str) and record_model_id and declared_base_model:
+            if record_model_id != declared_base_model:
+                problems.append(
+                    f"{candidate}: 'model_id' is {record_model_id!r} but "
+                    f"{ADAPTER_CONFIG_FILE} names base model {declared_base_model!r} - this "
+                    "record does not describe this adapter (a copied or stale file)"
+                )
+                continue
+            cross_check["checked"] = True
+        else:
+            missing = (
+                f"the record has no 'model_id'"
+                if not (isinstance(record_model_id, str) and record_model_id)
+                else f"no readable {ADAPTER_CONFIG_FILE}.{ADAPTER_BASE_MODEL_FIELD} beside it"
+            )
+            cross_check["note"] = (
+                "unchecked: this record was not cross-checked against the adapter's own base "
+                f"model because {missing}"
+            )
         selection, field_problems = training_prompt_selection(payload)
         if field_problems:
             problems.append(f"{candidate}: " + "; ".join(field_problems))
@@ -1093,6 +1208,7 @@ def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
             "trained_on": selection,
             "training_run_id": payload.get("run_id"),
             "training_arm": payload.get("arm"),
+            "model_id_cross_check": cross_check,
             "looked_at": looked_at,
             "problems": problems,
         }
@@ -1103,6 +1219,12 @@ def read_adapter_training_record(adapter_path: str | Path) -> dict[str, Any]:
         "trained_on": None,
         "training_run_id": None,
         "training_arm": None,
+        "model_id_cross_check": {
+            "checked": False,
+            "record_model_id": None,
+            "adapter_base_model": declared_base_model,
+            "note": "unchecked: no usable training record was found",
+        },
         "looked_at": looked_at,
         "problems": problems,
     }
@@ -1144,37 +1266,61 @@ def check_adapter_prompt_parity(
     found = read_adapter_training_record(adapter)
     record["training_record"] = {
         k: found[k]
-        for k in ("found", "source", "path", "training_run_id", "training_arm", "looked_at",
-                  "problems")
+        for k in ("found", "source", "path", "training_run_id", "training_arm",
+                  "model_id_cross_check", "looked_at", "problems")
     }
     record["trained_on"] = found["trained_on"]
 
     if not found["found"]:
         detail = "\n  ".join(found["problems"]) or "no candidate paths"
-        message = (
-            f"[decomposer] REFUSING TO RUN: cannot tell what adapter {adapter} was trained "
-            f"on, so its prompt cannot be checked against this run's.\n"
+        body = (
+            f"cannot tell what adapter {adapter} was trained on, so its prompt cannot be "
+            f"checked against this run's.\n"
             f"  {detail}\n"
             f"Expected {ADAPTER_PROVENANCE_FILE} in the adapter directory (written by "
             f"{TRAINING_SCRIPT_NAME}) or the training run's {TRAINING_SNAPSHOT_FILE} next to "
-            f"it. Point --adapter at the directory {TRAINING_SCRIPT_NAME} wrote, or pass "
-            f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} to run unchecked (recorded in the config "
-            "snapshot and the metrics)."
+            f"it, naming {TRAINING_SCRIPT_NAME} in 'script' and this adapter's base model in "
+            f"'model_id'."
         )
         if not override:
-            raise SystemExit(message)
+            raise SystemExit(
+                f"[decomposer] REFUSING TO RUN: {body}\n"
+                f"Point --adapter at the directory {TRAINING_SCRIPT_NAME} wrote, or pass "
+                f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} to run unchecked (recorded in the "
+                "config snapshot and the metrics)."
+            )
         record["note"] = (
             "unchecked: no training record found and "
             f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} was passed, so this run's prompt is not "
             "known to be the one the adapter was trained on"
         )
-        print("WARNING: " + message)
+        print(
+            f"WARNING: running --adapter with its prompt UNCHECKED "
+            f"({ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG}): {body}\n"
+            "The run proceeds and is recorded as adapter_prompt_parity.checked false with "
+            "that override; it is not the fine-tuned arm of the comparison unless the prompt "
+            "is confirmed some other way."
+        )
         return record
 
     trained_on = found["trained_on"]
+    compared = list(ADAPTER_PROMPT_PARITY_FIELDS) + [
+        field for field in ADAPTER_PROMPT_PARITY_OPTIONAL_FIELDS if field in trained_on
+    ]
+    skipped = [f for f in ADAPTER_PROMPT_PARITY_OPTIONAL_FIELDS if f not in trained_on]
+    record["fields_compared"] = compared
+    record["fields_not_in_training_record"] = skipped
+    if skipped:
+        record["note"] = (
+            "unchecked (not a refusal): the training record carries no "
+            + ", ".join(skipped)
+            + f", so only {len(compared)} field(s) were compared. {TRAINING_SCRIPT_NAME} "
+            "records it from 2026-08-19 onwards; records written before that (exp-001) "
+            "predate it."
+        )
     mismatches = [
         {"field": field, "trained_on": trained_on.get(field), "this_run": run_selection.get(field)}
-        for field in ADAPTER_PROMPT_PARITY_FIELDS
+        for field in compared
         if trained_on.get(field) != run_selection.get(field)
     ]
     record["mismatches"] = mismatches
@@ -1184,36 +1330,113 @@ def check_adapter_prompt_parity(
 
     if mismatches:
         listing = "\n".join(
-            f"  {m['field']}: trained on {m['trained_on']!r}, this run {m['this_run']!r}"
+            f"  {m['field']}: trained on {_parity_value(m['trained_on'])}, this run "
+            f"{_parity_value(m['this_run'])}"
             for m in mismatches
         )
-        message = (
-            "[decomposer] REFUSING TO RUN: adapter prompt mismatch. The adapter was "
-            "fine-tuned on one prompt and this run renders another, so its numbers would not "
-            "be the fine-tuned arm's.\n"
+        body = (
+            "the adapter was fine-tuned on one prompt and this run renders another, so its "
+            "numbers would not be the fine-tuned arm's.\n"
             f"{listing}\n"
-            f"Training record: {found['path']} ({found['source']}).\n"
-            "guided/prompt_file decide whether the prompt carries a hop line - the very "
-            "difference the guided and unguided conditions exist to measure. Select the "
-            "condition (or drop --guided) that renders the prompt the adapter was trained "
-            f"on, or pass {ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} if you deliberately want the "
-            "off-training prompt and will report the run as that, not as the fine-tuned arm."
+            f"Training record: {found['path']} ({found['source']})."
         )
         if not override:
-            raise SystemExit(message)
+            raise SystemExit(
+                f"[decomposer] REFUSING TO RUN: adapter prompt mismatch - {body}\n"
+                "guided/prompt_file decide whether the prompt carries a hop line - the very "
+                "difference the guided and unguided conditions exist to measure. Select the "
+                "condition (or drop --guided) that renders the prompt the adapter was trained "
+                f"on, or pass {ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} if you deliberately want "
+                "the off-training prompt and will report the run as that, not as the "
+                "fine-tuned arm."
+            )
         record["note"] = (
             f"prompt mismatch accepted via {ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG}: this run is "
             "not the fine-tuned arm of the comparison"
         )
-        print("WARNING: " + message)
+        print(
+            f"WARNING: running --adapter on a MISMATCHED prompt "
+            f"({ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG}): {body}\n"
+            "The run proceeds and is recorded as adapter_prompt_parity.mismatches in the "
+            "config snapshot and the metrics: it is not the fine-tuned arm of the comparison."
+        )
         return record
 
     print(
         "[decomposer] adapter prompt parity OK: "
-        + ", ".join(f"{field}={run_selection.get(field)!r}" for field in ADAPTER_PROMPT_PARITY_FIELDS)
+        + ", ".join(f"{field}={_parity_value(run_selection.get(field))}" for field in compared)
         + f" (training record: {found['path']})"
+        + (f"; not in the record: {', '.join(skipped)}" if skipped else "")
     )
     return record
+
+
+def adapter_note_lines(
+    *,
+    adapter: str | None,
+    no_few_shot: bool,
+    parity: dict[str, Any],
+    base_model: dict[str, Any] | None,
+    base_model_note: str | None,
+) -> list[str]:
+    """The run note's adapter bullets: which adapter, and what was actually checked.
+
+    The two guards are refusals, so a run that reached the note either passed them or was
+    overridden - and the note has to say which, in the same voice as the few-shot override
+    line. A reader of ``notes.md`` should not have to open ``metrics.json`` to find out
+    whether the fine-tuned arm was verified as such.
+    """
+    head = "- Adapter: " + (f"`{adapter}`" if adapter else "none (prompting arm)")
+    if adapter and not no_few_shot:
+        head += (
+            f" - run WITH few-shot examples via {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}: this is "
+            "not the fine-tuned arm of the comparison."
+        )
+    if not adapter:
+        return [head]
+
+    if parity.get("checked"):
+        compared = parity.get("fields_compared") or list(ADAPTER_PROMPT_PARITY_FIELDS)
+        record = parity.get("training_record") or {}
+        parity_line = (
+            f"- Adapter prompt parity: checked OK on {len(compared)} field(s) "
+            f"({', '.join(compared)}) against `{record.get('path')}` "
+            f"({record.get('source')})"
+        )
+        skipped = parity.get("fields_not_in_training_record") or []
+        if skipped:
+            parity_line += (
+                f"; not in that record, so not compared: {', '.join(skipped)}"
+            )
+    elif parity.get("mismatches"):
+        listing = "; ".join(
+            f"{m['field']} (trained on {_parity_value(m['trained_on'])}, this run "
+            f"{_parity_value(m['this_run'])})"
+            for m in parity["mismatches"]
+        )
+        parity_line = (
+            f"- Adapter prompt parity: MISMATCHED and overridden via "
+            f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} - {listing}: this run is not the "
+            "fine-tuned arm of the comparison."
+        )
+    else:
+        parity_line = (
+            f"- Adapter prompt parity: UNCHECKED and overridden via "
+            f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} - no usable training record beside the "
+            "adapter, so the prompt is not known to be the one it was trained on: this run "
+            "is not the fine-tuned arm of the comparison."
+        )
+
+    if base_model:
+        base_line = (
+            f"- Adapter base model: asserted - `{base_model['adapter_base_model']}` "
+            f"({ADAPTER_CONFIG_FILE}) == run model_id `{base_model['run_model_id']}`"
+        )
+    else:
+        base_line = "- Adapter base model: " + (
+            base_model_note or "unasserted (no adapter was attached in this run)"
+        )
+    return [head, parity_line, base_line]
 
 
 def generate(
@@ -1388,15 +1611,20 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Deliberately run --adapter WITH few-shot examples. Refused by default (see "
         "check_adapter_few_shot_combination); such a run is not the fine-tuned arm of the "
-        "comparison and is recorded as an override.",
+        "comparison and is recorded as an override. NOTE: few-shot examples are also a "
+        "prompt difference from the zero-shot prompt the adapter was trained on, so the "
+        f"prompt-parity guard refuses too - this flag alone is not enough, and "
+        f"{ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG} has to be passed with it.",
     )
     p.add_argument(
         ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG,
         action="store_true",
         help="Deliberately run --adapter on a prompt it was not trained on (a different "
-        "guided setting or prompt file), or with no training record to check against. "
-        "Refused by default (see check_adapter_prompt_parity); such a run is not the "
-        "fine-tuned arm of the comparison and is recorded as an override.",
+        "guided setting, prompt file, prompt style, prompt content or few-shot setting), or "
+        "with no usable training record to check against. Refused by default (see "
+        "check_adapter_prompt_parity); such a run is not the fine-tuned arm of the "
+        "comparison and is recorded as an override. This is also the second flag needed "
+        f"alongside {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}.",
     )
     p.add_argument("--output-root", default=None)
     p.add_argument(
@@ -1764,6 +1992,11 @@ def main() -> None:
         and not args.no_few_shot
     )
 
+    # Computed once here rather than inline in the snapshot: the adapter prompt-parity guard
+    # below compares it against the training record's own prompt_sha256 when that record
+    # carries one, so both must be the same number.
+    prompt_sha256 = sha256_file(prompt_path)
+
     # Still before the model is loaded: an adapter evaluated on a prompt it never saw during
     # training is refused here, next to the prompt selection it is checked against.
     adapter_prompt_parity = check_adapter_prompt_parity(
@@ -1773,6 +2006,7 @@ def main() -> None:
             "prompt_file": prompt_file,
             "prompt_style": prompt_style,
             "few_shot_examples_in_prompt": bool(few_shot_enabled),
+            "prompt_sha256": prompt_sha256,
         },
         override=bool(args.adapter_prompt_mismatch_i_know),
     )
@@ -1809,7 +2043,7 @@ def main() -> None:
         "prompt_style": prompt_style,
         "prompt_file": prompt_file,
         "prompt_path": str(prompt_path),
-        "prompt_sha256": sha256_file(prompt_path),
+        "prompt_sha256": prompt_sha256,
         "unguided_prompt_invariant": prompt_invariant,
         "condition": condition_name,
         "condition_settings": condition,
@@ -2385,13 +2619,12 @@ def main() -> None:
         note_lines=[
             f"- Model folder: `{args.model}`"
             + ("" if not args.dry_run else " (model not loaded)"),
-            "- Adapter: "
-            + (f"`{args.adapter}`" if args.adapter else "none (prompting arm)")
-            + (
-                f" - run WITH few-shot examples via {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}: this is "
-                "not the fine-tuned arm of the comparison."
-                if args.adapter and not args.no_few_shot
-                else ""
+            *adapter_note_lines(
+                adapter=args.adapter,
+                no_few_shot=bool(args.no_few_shot),
+                parity=adapter_prompt_parity,
+                base_model=adapter_base_model_record,
+                base_model_note=metrics.get("adapter_base_model_note"),
             ),
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
             f"- Condition: {condition_name or 'none (no conditions block)'}; guided: {guided}; "
