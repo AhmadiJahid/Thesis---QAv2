@@ -2471,7 +2471,7 @@ def main() -> None:
                 + f"\n\n--- Prompt ({prompt_style}) ---\n"
                 + rendered
                 + "\n--- Raw generation ---\n"
-                + (gen["raw"] if gen else "")
+                + (gen["text"] if gen else "")
                 + "\n--- Response ---\n"
                 + decomposition
                 + "\n",
