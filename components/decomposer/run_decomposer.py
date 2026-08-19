@@ -542,7 +542,7 @@ def format_few_shot_examples(
     examples: list[dict],
     hop_count: int | None,
     *,
-    exemplar_hop_mode: str = "query",
+    exemplar_hop_mode: str,
 ) -> str:
     """Format (question, decomposition) pairs. Omit the hop line when unguided.
 

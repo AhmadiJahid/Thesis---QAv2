@@ -204,15 +204,20 @@ comparability has to be checkable from the committed artifacts alone.
 
 ## Open questions for Jahid
 
-1. **The comparison currently rests on one model.** As configured, exactly one model folder can
-   run these arms: `mistral_7b_instruct`. `qwen3_5_9b` ships an unguided prompt but is 9B —
-   above the ~8B ceiling in `configs/model_limits.json` — so it is refused at load;
-   `qwen2_5_3b` and `phi_4_mini_instruct` are within the ceiling but ship no unguided prompt.
-   Whether to add an unguided prompt to another ≤8B folder (making the comparison two-model) is
-   Jahid's decision; no agent should take it.
-2. **Is `max_new_tokens: 256` the intended token cap?** It is a plumbing default carried from
-   the largest per-model value, unmeasured. It bounds the uncapped arms, so it is part of the
-   experiment's definition rather than an implementation detail.
+Both were settled by Jahid on 2026-08-19, in session:
+
+1. **The comparison rests on one model — settled: two models.** As originally configured,
+   exactly one model folder could run these arms: `mistral_7b_instruct`; `qwen3_5_9b` shipped
+   an unguided prompt but was refused at load as 9B above the ~8B ceiling. Jahid: "You can use
+   9b parameter as well." — recorded as
+   [ADR 0015](./0015-admit-qwen3.5-9b-to-the-decomposer-despite-the-8b-ceiling.md) (pending
+   supervisor confirmation); `default_max_params` was raised to 1e10 and #12 runs on both
+   `mistral_7b_instruct` and `qwen3_5_9b`. `qwen2_5_3b` and `phi_4_mini_instruct` still ship no
+   unguided prompt and cannot run the unguided arms.
+2. **Is `max_new_tokens: 256` the intended token cap? — settled: 1024.** 256 was a plumbing
+   default carried from the largest per-model value, unmeasured, and it bounded the uncapped
+   arms. Jahid set 1024 (issue #12 comment, 2026-08-19) so a runaway generation is observable
+   rather than silently truncated; `rows_at_max_new_tokens` still reports any row that hits it.
 *(A third open question — what the few-shot exemplar hop lines should say — was decided by
 Jahid on 2026-08-19 and is now Decision item 8.)*
 

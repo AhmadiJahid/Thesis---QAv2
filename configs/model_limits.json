@@ -1,6 +1,6 @@
 {
-  "_note": "Standing constraint recorded in CLAUDE.md: roughly 8B parameters overall, router included. The former 600M router-specific cap was lifted by Jahid on 2026-08-17 (ADR 0008); the key stays so the load-time assertion still runs. Asserted in src/model_size.py at every model load. Changing a number here is Jahid's decision with his supervisor - not an agent's, and not a workaround for a model that fails the assertion.",
+  "_note": "Standing constraint recorded in CLAUDE.md: roughly 8B parameters overall, router included. The former 600M router-specific cap was lifted by Jahid on 2026-08-17 (ADR 0008); the key stays so the load-time assertion still runs. default_max_params was raised 8e9 -> 1e10 by Jahid on 2026-08-19 to admit Qwen3.5-9B as a decomposer model (ADR 0015, pending supervisor confirmation; if the 8B ceiling is reasserted, this reverts). The router cap is unchanged. Asserted in src/model_size.py at every model load. Changing a number here is Jahid's decision with his supervisor - not an agent's, and not a workaround for a model that fails the assertion.",
 
   "router_max_params": 8000000000,
-  "default_max_params": 8000000000
+  "default_max_params": 10000000000
 }

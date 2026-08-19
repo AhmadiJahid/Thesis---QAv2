@@ -529,12 +529,14 @@ class TestModelSizeGateWiring(unittest.TestCase):
             )
         self.assertIn("REFUSING TO RUN", str(ctx.exception))
 
-    def test_the_ceiling_is_the_committed_8b_one(self) -> None:
+    def test_the_ceiling_is_the_committed_one(self) -> None:
         committed = json.loads(
             (REPO_ROOT / "configs" / "model_limits.json").read_text(encoding="utf-8")
         )
         self.assertEqual(self.ceiling, committed["default_max_params"])
-        self.assertEqual(self.ceiling, 8_000_000_000)
+        # 1e10 since ADR 0015 (Qwen3.5-9B admitted, 2026-08-19); reverts to 8e9 if
+        # the supervisor reasserts the 8B ceiling.
+        self.assertEqual(self.ceiling, 10_000_000_000)
 
     def test_trainable_parameter_record_counts_only_requires_grad(self) -> None:
         class _Param:

@@ -141,7 +141,7 @@ def test_musique_config() -> dict:
     )
     check(
         "max_new_tokens override is present",
-        require(cfg, "generation_overrides.max_new_tokens") == 256,
+        require(cfg, "generation_overrides.max_new_tokens") == 1024,
     )
     return cfg
 
@@ -205,7 +205,7 @@ def test_conditions(cfg: dict) -> None:
     merged = rd.apply_generation_overrides(
         model_generation, require(cfg, "generation_overrides"), "<test>"
     )
-    check("override raises max_new_tokens to 256", merged["max_new_tokens"] == 256)
+    check("override raises max_new_tokens to 1024", merged["max_new_tokens"] == 1024)
     check(
         "override leaves the rest of decoding alone",
         all(merged[k] == model_generation[k] for k in ("do_sample", "temperature", "top_p")),
@@ -487,15 +487,15 @@ def test_prompt_selection(cfg: dict) -> None:
     )
     limits = load_config(require(cfg, "model_limits_config"))
     ceiling = int(require(limits, "default_max_params"))
-    check("the parameter ceiling is 8e9", ceiling == 8_000_000_000, str(ceiling))
+    check("the parameter ceiling is 1e10 (ADR 0015)", ceiling == 10_000_000_000, str(ceiling))
     check(
-        "qwen3_5_9b's own config records that it is above the ceiling",
-        "above the ~8B ceiling"
+        "qwen3_5_9b's own config records the ADR 0015 admission",
+        "ADR 0015"
         in load_config(models_dir / "qwen3_5_9b" / "config.json").get("notes", ""),
     )
     check(
-        "the musique config records the single runnable folder",
-        "runnable on exactly ONE model folder: mistral_7b_instruct"
+        "the musique config records the two runnable folders",
+        "TWO model folders: mistral_7b_instruct and qwen3_5_9b"
         in require(cfg, "_runnable_models_note"),
     )
 
@@ -1035,7 +1035,7 @@ def test_conditions_end_to_end() -> None:
             )
             check(
                 f"{name}: max_new_tokens is reported ({arm['metrics']['max_new_tokens']})",
-                arm["metrics"]["max_new_tokens"] == 256,
+                arm["metrics"]["max_new_tokens"] == 1024,
             )
             check(
                 f"{name}: every result row carries the same truncation and cost fields",
