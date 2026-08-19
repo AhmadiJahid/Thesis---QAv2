@@ -1,0 +1,178 @@
+{
+  "dry_run": false,
+  "arm": "full_train",
+  "model": "mistral_7b_instruct",
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "quantization": "4bit",
+  "seed": 42,
+  "seeded": {
+    "seed": 42,
+    "python_random": true,
+    "pythonhashseed_exported_for_subprocesses": "42",
+    "numpy": true,
+    "torch": true,
+    "torch_cuda": true
+  },
+  "training_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_train.jsonl",
+  "dataset": {
+    "num_examples": 19938,
+    "hop_counts": {
+      "2": 14376,
+      "3": 4387,
+      "4": 1175
+    },
+    "num_rows": 19938,
+    "guided": false,
+    "few_shot_examples_in_prompt": false,
+    "target_reference_style": "as_is",
+    "number_target_lines": false,
+    "prompt_style": "plain",
+    "dataset_type": "prompt_completion",
+    "prompts_are_dry_run_placeholders": false
+  },
+  "selection": {
+    "source_rows": {
+      "rows_in": 19938,
+      "dropped_missing_id": 0,
+      "dropped_missing_question": 0,
+      "dropped_missing_steps": 0,
+      "hop_disagreement_count": 0,
+      "hop_disagreement_ids": [],
+      "hop_disagreement_ids_capped_at": 20
+    },
+    "train_hops": null,
+    "hop_disagreement_fatal": false,
+    "num_after_hop_filter": 19938,
+    "max_examples": null,
+    "stratify_cap_by_hop": false,
+    "limit": null,
+    "num_selected": 19938,
+    "selected_hop_counts": {
+      "2": 14376,
+      "3": 4387,
+      "4": 1175
+    },
+    "seed": 42
+  },
+  "eval_set": {
+    "questions_template_key": "musique_eval_questions_template",
+    "hops": [
+      2,
+      3,
+      4
+    ],
+    "files": [
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+    ],
+    "ids_per_hop": {
+      "2": 200,
+      "3": 200,
+      "4": 200
+    },
+    "num_ids": 600,
+    "expected_ids_per_hop": 200,
+    "expected_total_ids": 600,
+    "expected_counts_source": "eval_set.expected in /cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+    "expected_counts_asserted": true
+  },
+  "eval_overlap": {
+    "checked_training_ids": 19938,
+    "distinct_training_ids": 19938,
+    "eval_ids": 600,
+    "overlap_count": 0,
+    "overlap_ids": [],
+    "asserted": true
+  },
+  "base_model_size": {
+    "component": "decomposer",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+    "parameter_count": 7248023552,
+    "parameter_ceiling": 8000000000,
+    "ceiling_asserted": true
+  },
+  "lora_model_size": {
+    "component": "decomposer",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3+lora",
+    "parameter_count": 7289966592,
+    "parameter_ceiling": 8000000000,
+    "ceiling_asserted": true
+  },
+  "trainable_parameters": {
+    "trainable_parameters": 41943040,
+    "total_parameters": 7289966592,
+    "trainable_percent": 0.5753529796148619,
+    "counting_note": "total_parameters is src/model_size.py count_parameters (transformers' num_parameters, which counts a packed 4-bit Params4bit as the parameters it stores), so it matches base_model_size.parameter_count. trainable_parameters is a numel sum over requires_grad parameters (the LoRA tensors, not quantized)."
+  },
+  "training": {
+    "_note": "trl SFTConfig fields. The dataset is prompt/completion typed and completion_only_loss masks the prompt out of the loss, so the model is trained on the decomposition text only. Batch 1 x grad-accum 16 with gradient checkpointing and max_length 1024 is what keeps a 4-bit 7B base inside 24 GiB on the RTX 3090 of docs/compute.md - an estimate until a run measures peak_gpu_memory_bytes, which the metrics JSON records. bf16 is supported on Ampere.",
+    "num_train_epochs": 2,
+    "max_steps": -1,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "learning_rate": 0.0002,
+    "lr_scheduler_type": "cosine",
+    "_warmup_note": "warmup_steps, not warmup_ratio: transformers 5.5.4 warns that warmup_ratio is deprecated and slated for removal, so the run would emit a deprecation warning and eventually break.",
+    "warmup_steps": 10,
+    "weight_decay": 0.0,
+    "max_grad_norm": 1.0,
+    "optim": "paged_adamw_8bit",
+    "max_length": 1024,
+    "packing": false,
+    "completion_only_loss": true,
+    "gradient_checkpointing": true,
+    "bf16": true,
+    "fp16": false,
+    "logging_steps": 10,
+    "save_strategy": "epoch",
+    "save_total_limit": 2,
+    "report_to": "none",
+    "dataloader_num_workers": 0
+  },
+  "train_result": {
+    "global_step": 2494,
+    "training_loss": 0.1403135217564911,
+    "metrics": {
+      "train_runtime": 15497.2494,
+      "train_samples_per_second": 2.573,
+      "train_steps_per_second": 0.161,
+      "total_flos": 2.6747965994267443e+17,
+      "train_loss": 0.1403135217564911,
+      "entropy": 0.048053163387812674,
+      "num_tokens": 6229948.0,
+      "mean_token_accuracy": 0.9862175250053405,
+      "epoch": 2.0
+    },
+    "peft_config": {
+      "r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "target_modules": [
+        "down_proj",
+        "gate_proj",
+        "k_proj",
+        "o_proj",
+        "q_proj",
+        "up_proj",
+        "v_proj"
+      ]
+    }
+  },
+  "wall_clock_seconds": 15497.545792341232,
+  "peak_gpu_memory_bytes": 5418511872,
+  "peak_gpu_memory_gib": 5.046,
+  "adapter_path": "runs/exp-001/20260818_222259/adapter",
+  "formatted_examples_path": "runs/exp-001/20260818_222259/formatted_examples.txt",
+  "decomposition_quality": null,
+  "decomposition_quality_note": "unmeasured here by design: this script only trains. Score the adapter with components/decomposer/run_decomposer.py --adapter <adapter dir> --no-few-shot followed by scripts/musique_decompositions_evaluator.py (scripts/compare_decomposer_arms.py wires both, plus --compare against the prompting arm).",
+  "git": {
+    "commit": "21243337f6516461636a8aed97d7ac88ca23f00a",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 1,
+    "dirty_files": [
+      "?? \"Plan after the meeting.md\""
+    ]
+  }
+}
