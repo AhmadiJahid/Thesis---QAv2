@@ -30,12 +30,17 @@ What it covers:
    removed - the mechanical version of "the arms differ in hop information only". Model,
    seed, decoding, retrieval (path *and* sha256) and the question ids must be identical
    across all three. Writes to a temp dir and deletes it.
-7. **Refusals** - a model folder without an unguided prompt, a run with no retrieval input
-   (``retrieval.require_input``), a row count that is not the pinned per-hop set, and a
-   query id whose hop depth cannot be parsed are each refused with a non-zero exit.
+7. **Refusals** - a model folder without an unguided prompt, a row count that is not the
+   pinned per-hop set, and a query id whose hop depth cannot be parsed are each refused
+   with a non-zero exit. ``resolve_retrieval_input`` is checked directly for its resolution
+   order (``--retrieval-input`` > ``retrieval.input`` > ``retrieval.input_key`` through the
+   paths config, ADR 0014) and for its two refusals: both config fields set, and no
+   retrieval input at all under ``retrieval.require_input``.
 8. **The evaluation set resolves** - the three pinned files of ADR 0007 exist under
-   ``data_root`` with ``eval_rows_per_hop`` rows each. Skipped with ``--skip-data-checks``
-   (the smoke test runs against fabricated fixtures, which are not that set).
+   ``data_root`` with ``eval_rows_per_hop`` rows each, and the retrieval artifact behind
+   ``retrieval.input_key`` exists with one row per evaluation question. Skipped with
+   ``--skip-data-checks`` (the smoke test runs against fabricated fixtures, which are
+   neither that set nor that artifact).
 
 Usage::
 
@@ -70,9 +75,10 @@ CHECKS: list[str] = []
 #: ships an unguided prompt, which the unguided arms require.
 E2E_MODEL = "mistral_7b_instruct"
 E2E_ROWS = 9
-#: configs/decomposer_musique.json sets retrieval.require_input, so the fixture runs pass a
-#: retrieval file; it holds one row per fixture question (9), not the pinned 600, which is
-#: why they also pass --allow-unpinned-eval-set.
+#: configs/decomposer_musique.json points retrieval.input_key at the real v1 artifact (ADR
+#: 0014), which is not in the fixture tree, so the fixture runs pass --retrieval-input (it
+#: takes precedence); it holds one row per fixture question (9), not the pinned 600, which
+#: is why they also pass --allow-unpinned-eval-set.
 E2E_RETRIEVAL = REPO_ROOT / "tests" / "fixtures" / "retrieval" / "top5_musique_conditions.jsonl"
 MODELS_DIR = REPO_ROOT / "components" / "decomposer" / "models"
 
@@ -1090,8 +1096,10 @@ def test_conditions_end_to_end() -> None:
                 f"rc={proc.returncode} needle={needle!r}",
             )
 
-        # No retrieval input at all: ADR 0006's fixed method is not rebuildable here, so the
-        # random-MetaQA-exemplar fallback is a refusal for this config.
+        # With no --retrieval-input the committed config still has one: retrieval.input_key
+        # resolves through the paths config (ADR 0014). Under the fixture paths config that
+        # key points at a file the fixture tree does not contain, so the run refuses by
+        # NAMING the resolved artifact rather than falling back to MetaQA exemplars.
         proc = _run_runner(
             [
                 "--condition", "unguided", "--dry-run", "--dry-run-limit", "1",
@@ -1100,9 +1108,11 @@ def test_conditions_end_to_end() -> None:
         )
         out = proc.stdout + proc.stderr
         check(
-            "refused: no retrieval input (retrieval.require_input)",
-            proc.returncode != 0 and "require_input" in out and "ADR 0006" in out,
-            f"rc={proc.returncode}",
+            "no --retrieval-input: the config's input_key is resolved, not defaulted away",
+            proc.returncode != 0
+            and "retrieval input not found" in out
+            and "sim_dev_sample600_top20_rerankTop5.jsonl" in out,
+            f"rc={proc.returncode} out={out[-200:]!r}",
         )
 
         # Row counts that are not the pinned set: refused unless the flag is passed.
@@ -1235,6 +1245,66 @@ def test_metaqa_guided_prompt_is_unchanged() -> None:
 # ----------------------------------------------------------------- data resolution
 
 
+def test_retrieval_input_resolution() -> None:
+    """``resolve_retrieval_input``: precedence, and the two refusals it carries.
+
+    The committed MuSiQue config now names its retrieval artifact through
+    ``retrieval.input_key`` (ADR 0014), so the ``require_input`` refusal is no longer
+    reachable through it. The guard still protects any config with no retrieval input - the
+    fallback it prevents is a seeded random draw from the committed MetaQA pool, i.e. a
+    different few-shot method under the label of ADR 0006's - so it is checked here directly.
+    """
+    print("[retrieval input resolution]")
+    paths_cfg = {
+        "data_root_resolved": "/data/root",
+        "datasets": {"artifact": "musique/top5.jsonl"},
+    }
+
+    def cfg(input_value: str | None, input_key: str | None, require_input: bool = True) -> dict:
+        block: dict = {"input": input_value, "require_input": require_input}
+        if input_key is not None:
+            block["input_key"] = input_key
+        return {"_config_path": "<test>", "retrieval": block}
+
+    def refusal(*args) -> str:
+        try:
+            rd.resolve_retrieval_input(*args)
+        except SystemExit as exc:
+            return str(exc)
+        return "<no refusal>"
+
+    resolved = rd.resolve_retrieval_input(None, cfg(None, "artifact"), paths_cfg)
+    check(
+        "input_key resolves against data_root from the paths config",
+        resolved == "/data/root/musique/top5.jsonl",
+        str(resolved),
+    )
+    check(
+        "--retrieval-input wins over input_key",
+        rd.resolve_retrieval_input("cli.jsonl", cfg(None, "artifact"), paths_cfg) == "cli.jsonl",
+    )
+    check(
+        "an explicit retrieval.input path is still honoured",
+        rd.resolve_retrieval_input(None, cfg("explicit.jsonl", None), paths_cfg) == "explicit.jsonl",
+    )
+    both = refusal(None, cfg("explicit.jsonl", "artifact"), paths_cfg)
+    check(
+        "refused: retrieval.input and retrieval.input_key both set",
+        "set exactly one" in both,
+        both[:160],
+    )
+    neither = refusal(None, cfg(None, None), paths_cfg)
+    check(
+        "refused: no retrieval input at all (retrieval.require_input, ADR 0006)",
+        "require_input" in neither and "ADR 0006" in neither,
+        neither[:160],
+    )
+    check(
+        "require_input false gives None rather than a refusal",
+        rd.resolve_retrieval_input(None, cfg(None, None, require_input=False), paths_cfg) is None,
+    )
+
+
 def test_eval_set_resolves(cfg: dict) -> None:
     print("[evaluation set]")
     paths_cfg = load_paths(require(cfg, "paths_config"))
@@ -1261,6 +1331,17 @@ def test_eval_set_resolves(cfg: dict) -> None:
         total == expected_rows * 3 and len(ids) == total,
         f"total={total} distinct_ids={len(ids)}",
     )
+    # The retrieval artifact ADR 0014 pins the conditions to, resolved the same way the
+    # runner resolves it: through datasets.<retrieval.input_key> in the paths config.
+    artifact = Path(rd.resolve_retrieval_input(None, cfg, paths_cfg))
+    check("the pinned retrieval artifact exists", artifact.exists(), str(artifact))
+    if artifact.exists():
+        rows = [line for line in artifact.read_text(encoding="utf-8").splitlines() if line.strip()]
+        check(
+            f"the retrieval artifact has one row per evaluation question ({total})",
+            len(rows) == total,
+            f"rows={len(rows)}",
+        )
 
 
 def main() -> int:
@@ -1287,6 +1368,7 @@ def main() -> int:
     test_incremental_decoder()
     test_stopping_criteria_adapter()
     test_self_exclusion()
+    test_retrieval_input_resolution()
     test_conditions_end_to_end()
     test_metaqa_guided_prompt_is_unchanged()
     if args.skip_data_checks:

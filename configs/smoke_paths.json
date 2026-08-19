@@ -1,5 +1,5 @@
 {
-  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ. The fixture files behind musique_eval_questions_template keep the real file names (which end in _200) but hold 3 fabricated rows each, not 200 - they exist so the MuSiQue decomposer path and the train/eval overlap assertion can be exercised, not to stand in for the evaluation set.",
+  "_note": "Paths config for the synthetic smoke test only (scripts/smoke_test.py sets QAV2_PATHS_CONFIG to this file). data_root points at the hand-written fixtures under tests/fixtures/, which are fabricated - no MuSiQue or MetaQA rows. Real runs use configs/paths.json. Keys mirror paths.json exactly; only the roots differ. The fixture files behind musique_eval_questions_template keep the real file names (which end in _200) but hold 3 fabricated rows each, not 200 - they exist so the MuSiQue decomposer path and the train/eval overlap assertion can be exercised, not to stand in for the evaluation set. musique_few_shot_top5_pinned600 mirrors the key added to paths.json for ADR 0014, but NO such file exists in the fixture tree: every fixture and smoke stage passes --retrieval-input explicitly (tests/fixtures/retrieval/*.jsonl), which takes precedence over the key, so the key is never resolved under this paths config.",
 
   "data_root": "tests/fixtures/data_root",
   "runs_root": "runs/smoke",
@@ -27,6 +27,7 @@
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",
     "musique_chunks_masked_fixed_dir": "musique/chunks_only_question_masked_fixed",
     "musique_sample_extracts_dir": "musique/sample_extracts",
+    "musique_few_shot_top5_pinned600": "musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
     "musique_pool_enriched": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_all_questions_all_expanded_enriched.jsonl",
     "embedding_cache_dir": "cache/emb_cache"
   },

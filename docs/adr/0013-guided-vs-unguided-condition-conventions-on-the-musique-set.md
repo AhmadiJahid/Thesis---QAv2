@@ -1,7 +1,9 @@
 # 0013. Guided-vs-Unguided Condition Conventions on the MuSiQue Set
 
 - **Status**: Accepted (two items remain open questions for Jahid, marked below; the third was decided on 2026-08-19)
-- **Date**: 2026-08-19 (amended the same day after the PR #21 delta re-review)
+- **Date**: 2026-08-19 (amended the same day after the PR #21 delta re-review, and again when
+  ADR [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md) settled
+  which retrieval artifact the conditions read)
 
 Records the conventions established by PR #21 (issue #12) for the guided-versus-unguided
 comparison. Everything here is sourced either to **Jahid's plan, prompt 4** (his statement of
@@ -101,9 +103,16 @@ decision it protects:
 
 - **No retrieval input** (`retrieval.require_input`) — ADR
   [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) fixes the few-shot
-  method (bi-encoder top-20 → cross-encoder top-5, typed masking, pool 2000) and it lives in an
+  method (bi-encoder top-20 → cross-encoder top-5, typed masking) and it lives in an
   upstream artifact. Without it the run would fall back to random exemplars from the committed
-  MetaQA pool — a different method under the label of the fixed one.
+  MetaQA pool — a different method under the label of the fixed one. **Which** artifact was
+  left open by this ADR and was decided by Jahid on 2026-08-19 in ADR
+  [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md): the v1
+  `sim_dev_sample600_top20_rerankTop5.jsonl` over the **9,156-example v1 pool**, not ADR 0006's
+  pool of 2,000. It is named in the config as `retrieval.input_key`, a `datasets.<key>` in the
+  paths config, so a run needs only `--condition`; `--retrieval-input` still overrides it for
+  fixture runs, and setting both `retrieval.input` and `retrieval.input_key` is refused. Every
+  "pool 2000" in this ADR describes ADR 0006's method, not the pool #12 runs on.
 - **Rows that are not the pinned set** — checked two ways, both refusals: the per-hop row
   counts must be `eval_rows_per_hop: 200` for hops 2/3/4, **and** the loaded question ids must
   be exactly the ids of the three files ADR

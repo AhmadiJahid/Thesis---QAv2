@@ -58,7 +58,8 @@ RUNS_ROOT = REPO_ROOT / "runs" / "smoke"
 WORK = RUNS_ROOT / "work"
 
 #: Retrieval input for the three MuSiQue condition stages. configs/decomposer_musique.json
-#: sets retrieval.require_input, so those stages must pass one (see the stages' comment).
+#: points retrieval.input_key at the real v1 artifact (ADR 0014), which the fixture tree does
+#: not contain, so those stages pass this one instead (see the stages' comment).
 MUSIQUE_CONDITIONS_RETRIEVAL = FIXTURES / "retrieval" / "top5_musique_conditions.jsonl"
 
 MUSIQUE_SCRIPTS = REPO_ROOT / "MusiQue" / "scripts"
@@ -477,9 +478,12 @@ def _stages() -> list[Stage]:
         # unguided_prompt_must_equal_guided_minus_hop_lines).
         #
         # Two flags every MuSiQue stage needs, and why:
-        #   --retrieval-input        the config sets retrieval.require_input, so a run with
-        #                            no retrieval file is refused rather than falling back
-        #                            to random MetaQA exemplars (ADR 0006's fixed method).
+        #   --retrieval-input        the config's retrieval.input_key points at the real v1
+        #                            artifact (ADR 0014), which is not in the fixture tree,
+        #                            so the fixture retrieval file is passed explicitly; the
+        #                            flag takes precedence over the key. Without either, the
+        #                            run is refused (retrieval.require_input) rather than
+        #                            falling back to random MetaQA exemplars (ADR 0006).
         #   --allow-unpinned-eval-set the fixtures hold 3 rows per hop, not the pinned 200
         #                            (ADR 0007), so the pinned-set assertion is opted out of
         #                            explicitly and the metrics record it. A real arm never

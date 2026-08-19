@@ -64,6 +64,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
 from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import (  # noqa: E402
+    data_path,
     load_config,
     load_paths,
     optional,
@@ -1111,28 +1112,53 @@ def sha256_file(path: Path) -> str:
 
 
 def resolve_retrieval_input(
-    cli_value: str | None, cfg: dict
+    cli_value: str | None, cfg: dict, paths_cfg: dict
 ) -> str | None:
     """The retrieval input, refusing the silent-fallback path when the config forbids it.
 
+    Resolution order, first non-empty wins:
+
+    1. ``--retrieval-input`` (a path, absolute or repo-relative) - fixture and smoke runs;
+    2. ``retrieval.input`` - an explicit path in the config;
+    3. ``retrieval.input_key`` - a ``datasets.<key>`` in the paths config, resolved against
+       ``data_root``. This is the repo's convention for a path to data outside the tree
+       (``questions_template_key``, ``few_shot_pool_key``, ...), and it is how ADR 0014
+       pins the MuSiQue conditions to the v1 artifact without an absolute path in a config.
+
+    ``retrieval.input`` and ``retrieval.input_key`` may not both be set: two paths in one
+    config, one of them silently ignored, is exactly the kind of difference that would make
+    two arms incomparable without saying so.
+
     ``configs/decomposer_musique.json`` sets ``retrieval.require_input``: the few-shot
-    method is fixed by ADR 0006 (bi-encoder top-20 -> cross-encoder top-5, typed masking,
-    pool 2000) and is an upstream artifact this runner cannot rebuild. With no retrieval
-    input, a few-shot-enabled model folder falls back to the committed **MetaQA** exemplar
-    pool via a seeded random draw - a different method, run under the label of the fixed
-    one. For the MuSiQue conditions that is a refusal, not a default.
+    method is fixed by ADR 0006 (bi-encoder top-20 -> cross-encoder top-5, typed masking)
+    and is an upstream artifact this runner cannot rebuild. With no retrieval input, a
+    few-shot-enabled model folder falls back to the committed **MetaQA** exemplar pool via
+    a seeded random draw - a different method, run under the label of the fixed one. For
+    the MuSiQue conditions that is a refusal, not a default.
     """
-    value = cli_value or require(cfg, "retrieval.input")
+    explicit = require(cfg, "retrieval.input")
+    input_key = optional(cfg, "retrieval.input_key")
+    src = cfg.get("_config_path", "<config>")
+    if explicit and input_key:
+        raise SystemExit(
+            f"{src} sets both 'retrieval.input' ({explicit!r}) and 'retrieval.input_key' "
+            f"({input_key!r}); set exactly one, so the config names one retrieval file."
+        )
+    value = cli_value or explicit
+    # Resolved only when nothing more specific was given, so a fixture run under a paths
+    # config that does not carry the key still works off --retrieval-input.
+    if not value and input_key:
+        value = str(data_path(paths_cfg, input_key))
     if value:
         return value
     if not optional(cfg, "retrieval.require_input"):
         return None
-    src = cfg.get("_config_path", "<config>")
     raise SystemExit(
-        f"no retrieval input: pass --retrieval-input, or set 'retrieval.input' in {src}.\n"
+        f"no retrieval input: pass --retrieval-input, or set 'retrieval.input' / "
+        f"'retrieval.input_key' in {src}.\n"
         f"{src} sets 'retrieval.require_input', because the few-shot method for this config "
         "is fixed by ADR 0006 (bi-encoder top-20 -> cross-encoder top-5 rerank, typed "
-        "masking, pool 2000) and lives in an upstream artifact. Without it the run would "
+        "masking) and lives in an upstream artifact. Without it the run would "
         "silently fall back to random exemplars from the committed MetaQA pool, which is "
         "neither that method nor a MuSiQue pool - and every condition would be scored under "
         "a method the config does not describe."
@@ -1317,7 +1343,7 @@ def main() -> None:
     sample_size = args.sample_size if args.sample_size is not None else require(cfg, "sample_size")
     embed_key = args.embed_model or require(cfg, "embed_model")
     embed_model_id = require(cfg, f"embed_models.{embed_key}")
-    retrieval_input = resolve_retrieval_input(args.retrieval_input, cfg)
+    retrieval_input = resolve_retrieval_input(args.retrieval_input, cfg, paths_cfg)
     retrieval_mode = args.retrieval_mode or require(cfg, "retrieval.mode")
     retrieval_k = args.retrieval_k if args.retrieval_k is not None else int(require(cfg, "retrieval.k"))
     retrieval_modes = require(cfg, "retrieval.modes")
@@ -1467,6 +1493,7 @@ def main() -> None:
         "embed_model_id": embed_model_id,
         "retrieval": {
             "input": str(retrieval_input) if retrieval_input else None,
+            "input_key": optional(cfg, "retrieval.input_key"),
             "input_resolved": str(retrieval_path) if retrieval_path else None,
             "input_sha256": retrieval_sha256,
             "mode": retrieval_mode,
