@@ -39,6 +39,7 @@ When **not** to write one:
 | [0011](./0011-comparison-artifact-conventions-and-the-significance-claim-floor.md) | Comparison-Artifact Conventions and the Significance-Claim Floor | Accepted (provisional items pending Jahid/supervisor) |
 | [0012](./0012-fine-tuning-arm-conventions-for-the-decomposer.md) | Fine-Tuning Arm Conventions for the Decomposer | Accepted (open items pending Jahid/supervisor) |
 | [0013](./0013-guided-vs-unguided-condition-conventions-on-the-musique-set.md) | Guided-vs-Unguided Condition Conventions on the MuSiQue Set | Accepted (two open questions for Jahid) |
+| [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md) | The Guided-vs-Unguided Experiment Runs on the v1 Pool and Retrieval Artifact | Accepted (Jahid 2026-08-19, pending supervisor confirmation) |
 
 ---
 
