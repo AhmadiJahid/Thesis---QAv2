@@ -202,7 +202,7 @@ comparability has to be checkable from the committed artifacts alone.
   ADR 0006 item 6, resolved separately by ADR
   [0010](./0010-keep-the-router-as-a-hop-count-regressor-prioritize-fine-tuning.md)).
 
-## Open questions for Jahid
+## Open questions (settled)
 
 Both were settled by Jahid on 2026-08-19, in session:
 

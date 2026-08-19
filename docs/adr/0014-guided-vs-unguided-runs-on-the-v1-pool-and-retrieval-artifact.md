@@ -15,7 +15,7 @@ Jahid's clarification, same session: the 2,000-example figure originated from th
 
 ## Consequences
 
-- `configs/decomposer_musique.json` gets `retrieval.input` set to the v1 artifact (content-addressed: the runner records its sha256, `e5c418a9b25f…`), unblocking the #12 run.
+- `configs/decomposer_musique.json` gets the v1 artifact pinned (content-addressed: the runner records its sha256, `e5c418a9b25f…`), unblocking the #12 run. *(Amended 2026-08-19, PR #21 final review M-1: the implementation set `retrieval.input_key` — resolving through `datasets.musique_few_shot_top5_pinned600` in `configs/paths.json` — rather than `retrieval.input`, so no absolute path enters a config. The resolution order is a convention worth recording here: `--retrieval-input` flag > `retrieval.input` > `retrieval.input_key`; setting both `input` and `input_key` is a refusal, and `require_input: true` means no silent fallback exists.)*
 - **Deviation recorded, not hidden:** this contradicts ADR 0006 §4 (pool size 2,000, supervisor decision). It stands as Jahid's call pending supervisor confirmation; if the supervisor reasserts the 2,000 pin, that supersedes this ADR and #12 re-runs on a conforming artifact.
 - Scope is #12's retrieval only. This does **not** resolve the "best pool" identity for the `pool_2000` fine-tuning arm (issue #13), and does not close the #14 pool-construction sweep — pool strategies remain a live research question.
 - Thesis reporting must state the pool as 9,156 (v1), not 2,000, wherever #12's results appear.
