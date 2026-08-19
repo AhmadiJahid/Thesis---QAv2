@@ -170,11 +170,11 @@ class TestOverlapAssertion(unittest.TestCase):
         self.assertEqual(record["hops"], [2, 3, 4])
         self.assertEqual(len(record["files"]), 3)
         self.assertEqual(record["num_ids"], len(eval_ids))
-        # The fixture set carries one id per hop file; the real set carries 200 (ADR 0007).
+        # The fixture set carries three ids per hop file; the real set carries 200 (ADR 0007).
         self.assertEqual(sorted(record["ids_per_hop"]), ["2", "3", "4"])
         # ... and the counts it found are the ones the fixture paths config declares, asserted.
-        self.assertEqual(record["expected_ids_per_hop"], 1)
-        self.assertEqual(record["expected_total_ids"], 3)
+        self.assertEqual(record["expected_ids_per_hop"], 3)
+        self.assertEqual(record["expected_total_ids"], 9)
         self.assertTrue(record["expected_counts_asserted"])
         self.assertIn("smoke_paths.json", record["expected_counts_source"])
 
@@ -210,14 +210,14 @@ class TestOverlapAssertion(unittest.TestCase):
         """A file with fewer ids than declared: same class of failure, caught the same way."""
         cfg = load_config(CONFIG_NAME)
         paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
-        # The fixture files hold 1 row each; declaring the real 200/600 must fail here.
+        # The fixture files hold 3 rows each; declaring the real 200/600 must fail here.
         eval_cfg = dict(require(cfg, "eval_set"))
         eval_cfg["expected"] = {"ids_per_hop": 200, "total_ids": 600}
         paths_cfg = {k: v for k, v in paths_cfg.items() if k != fd.PATHS_EVAL_EXPECTED_KEY}
         with self.assertRaises(SystemExit) as ctx:
             fd.load_eval_ids(paths_cfg, eval_cfg)
         message = str(ctx.exception)
-        self.assertIn("1 distinct id(s), expected 200", message)
+        self.assertIn("3 distinct id(s), expected 200", message)
 
     def test_inconsistent_declared_counts_are_refused(self) -> None:
         cfg = load_config(CONFIG_NAME)
@@ -529,12 +529,14 @@ class TestModelSizeGateWiring(unittest.TestCase):
             )
         self.assertIn("REFUSING TO RUN", str(ctx.exception))
 
-    def test_the_ceiling_is_the_committed_8b_one(self) -> None:
+    def test_the_ceiling_is_the_committed_one(self) -> None:
         committed = json.loads(
             (REPO_ROOT / "configs" / "model_limits.json").read_text(encoding="utf-8")
         )
         self.assertEqual(self.ceiling, committed["default_max_params"])
-        self.assertEqual(self.ceiling, 8_000_000_000)
+        # 1e10 since ADR 0015 (Qwen3.5-9B admitted, 2026-08-19); reverts to 8e9 if
+        # the supervisor reasserts the 8B ceiling.
+        self.assertEqual(self.ceiling, 10_000_000_000)
 
     def test_trainable_parameter_record_counts_only_requires_grad(self) -> None:
         class _Param:

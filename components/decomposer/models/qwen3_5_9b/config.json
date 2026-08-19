@@ -33,5 +33,5 @@
   "logging": {
     "prompt_log_every": 5
   },
-  "notes": "Chat template used with enable_thinking=false so the model does not emit <think> blocks; the prompt file is split on <<<USER>>> into system/user halves. trust_remote_code=true because the qwen3_5 architecture was not registered in the transformers release v1 used. Default quantization 4bit NF4 to keep VRAM ~5-6 GB. NOTE: 9B parameters is above the ~8B ceiling in configs/model_limits.json, so run_decomposer.py will refuse to run this folder until Jahid changes the ceiling."
+  "notes": "Chat template used with enable_thinking=false so the model does not emit <think> blocks; the prompt file is split on <<<USER>>> into system/user halves. trust_remote_code=true because the qwen3_5 architecture was not registered in the transformers release v1 used. Default quantization 4bit NF4 to keep VRAM ~5-6 GB. NOTE: 9B parameters is above the ~8B standing ceiling; Jahid admitted this model on 2026-08-19 (ADR 0015, pending supervisor confirmation) and default_max_params in configs/model_limits.json was raised to 1e10, so run_decomposer.py loads this folder."
 }

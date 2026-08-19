@@ -1,5 +1,5 @@
 {
-  "_note": "Every dataset path in the pipeline resolves from here. data_root is OUTSIDE the working tree because data never enters git (CLAUDE.md). data_root is a symlink layer over the v1 repo (/cta/users/fyilmaz/Thesis---QA) - nothing is copied; see docs/compute.md 'Dataset location'. All datasets.* paths verified resolving 2026-08-17 except musique_chunks_masked_dir: the pre-fix masked chunks were superseded by the _fixed variant in v1 and no longer exist anywhere; the key is kept for provenance only. musique_eval_questions_template was added 2026-08-18 for issue #13 and verified resolving then: it covers the three ADR 0007 evaluation files, 200 rows each, 600 distinct ids. Do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
+  "_note": "Every dataset path in the pipeline resolves from here. data_root is OUTSIDE the working tree because data never enters git (CLAUDE.md). data_root is a symlink layer over the v1 repo (/cta/users/fyilmaz/Thesis---QA) - nothing is copied; see docs/compute.md 'Dataset location'. All datasets.* paths verified resolving 2026-08-17 except musique_chunks_masked_dir: the pre-fix masked chunks were superseded by the _fixed variant in v1 and no longer exist anywhere; the key is kept for provenance only. musique_eval_questions_template is the pinned v1 MuSiQue evaluation set of ADR 0007 (hop in 2/3/4); it was added 2026-08-18 for issue #13 and verified resolving then, and the same three files were verified resolving with 200 rows each (600 distinct ids) on 2026-08-17 for issue #12 - one key, both users. musique_few_shot_top5_pinned600 is the v1 few-shot retrieval artifact that ADR 0014 pins issue #12 to (bi-encoder top-20 -> cross-encoder top-5 over exactly the pinned 600 queries, pool 9,156); it was added 2026-08-19 and verified then: 600 rows, sha256 e5c418a9b25f5ef290a78dd3a99642e4b0c5d7b6fbe6b5e2785a1424239ae70d. Do not hard-code a path in a script. runs_root is gitignored; committed run artifacts live under experiments/<exp-id>/.",
 
   "data_root": "/cta/users/fyilmaz/thesis-qav2-data",
   "runs_root": "runs",
@@ -21,6 +21,7 @@
     "musique_chunks_masked_dir": "musique/chunks_only_question_masked",
     "musique_chunks_masked_fixed_dir": "musique/chunks_only_question_masked_fixed",
     "musique_sample_extracts_dir": "musique/sample_extracts",
+    "musique_few_shot_top5_pinned600": "musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
     "musique_pool_enriched": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_all_questions_all_expanded_enriched.jsonl",
     "embedding_cache_dir": "cache/emb_cache"
   },

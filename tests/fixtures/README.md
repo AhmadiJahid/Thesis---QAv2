@@ -24,13 +24,13 @@ data_root/                     # stands in for the real data_root (configs/smoke
     dev_data/
       musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
       musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
-      musique_ans_v1.0_dev_sample_{2,3,4}_hop_200.jsonl  # stands in for the ADR 0007
-                                        # evaluation set: 1 fabricated row per hop, not
-                                        # 200. The filenames mirror the real ones because
-                                        # the path template is shared; the ids match the
-                                        # gold rows above, so the train/eval overlap
-                                        # assertion in train_lora.py has something real
-                                        # to check against.
+      musique_ans_v1.0_dev_sample_{2,3,4}_hop_200.jsonl  # stands in for the pinned ADR 0007
+                                        # evaluation set: real names, 3 fabricated rows per
+                                        # hop, NOT 200. The ids match the gold rows above and
+                                        # retrieval/top5_musique_conditions.jsonl, so both the
+                                        # train/eval overlap assertion in train_lora.py and
+                                        # the decomposer's id-identity check have something
+                                        # real to check against.
     chunks_only_question_masked_fixed/roberta_large_ner_english/
       ..._questions_2_hop.jsonl, ..._questions_3_hop_1.jsonl   # chunks to combine
       ..._all_questions_all_expanded_enriched.jsonl            # the pool to sample from
@@ -43,7 +43,14 @@ decomposer_arms/               # two fabricated "arms" (metrics.json only) for
                                # difference is exactly 0 by construction. The finetuned arm
                                # deliberately has no cost block, to exercise the
                                # cost-unmeasured branch.
-retrieval/                     # a similarity top-k file (also used as decomposer input)
+retrieval/
+  top20.jsonl                  # a similarity top-k file (also used as decomposer input)
+  top5_musique_conditions.jsonl # retrieval input for the three MuSiQue conditions: one row
+                               # per dev_sample fixture question (9), typed_top_k of 6 so
+                               # k=5 still holds after self-exclusion. Two rows exercise it:
+                               # the first lists the query itself (same id), and
+                               # 4hop1__d003_c's candidate 4hop1__t010_j repeats the query's
+                               # question text under a different id.
 pool_sweep_summary/            # a sweep summary CSV for the plotting script
 router_runs/                   # two completed router runs for the analysis script
 decomposer_run/                # a run directory with analysis/ dumps

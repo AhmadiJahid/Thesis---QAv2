@@ -57,6 +57,11 @@ DATA_ROOT = FIXTURES / "data_root"
 RUNS_ROOT = REPO_ROOT / "runs" / "smoke"
 WORK = RUNS_ROOT / "work"
 
+#: Retrieval input for the three MuSiQue condition stages. configs/decomposer_musique.json
+#: points retrieval.input_key at the real v1 artifact (ADR 0014), which the fixture tree does
+#: not contain, so those stages pass this one instead (see the stages' comment).
+MUSIQUE_CONDITIONS_RETRIEVAL = FIXTURES / "retrieval" / "top5_musique_conditions.jsonl"
+
 MUSIQUE_SCRIPTS = REPO_ROOT / "MusiQue" / "scripts"
 SCRIPTS = REPO_ROOT / "scripts"
 COMPONENTS = REPO_ROOT / "components"
@@ -102,6 +107,7 @@ def _stages() -> list[Stage]:
     analysis_dir = WORK / "router_analysis"
     router_dry = WORK / "router_dry"
     decomposer_dry = WORK / "decomposer_dry"
+    decomposer_musique = WORK / "decomposer_musique"
     finetune_dry = WORK / "finetune_dry"
     arms_dir = WORK / "decomposer_arms"
     arms_out = WORK / "arms_comparison"
@@ -457,6 +463,76 @@ def _stages() -> list[Stage]:
             ],
             note="chat-template prompt split on <<<USER>>> (system/user halves)",
         ),
+        Stage(
+            name="decomposer_conditions_unit",
+            cmd=[
+                sys.executable, REPO_ROOT / "tests" / "test_decomposer_conditions.py",
+                "--skip-data-checks",
+            ],
+            note="the three MuSiQue conditions end to end (prompts compared arm by arm) "
+            "+ the step-line stopping rule",
+        ),
+        # The three arms of issue #12, one stage each. mistral_7b_instruct is used because
+        # it ships an unguided prompt: a folder without one cannot run the unguided arms
+        # (configs/decomposer_musique.json sets unguided_prompt_must_omit_hop_count and
+        # unguided_prompt_must_equal_guided_minus_hop_lines).
+        #
+        # Two flags every MuSiQue stage needs, and why:
+        #   --retrieval-input        the config's retrieval.input_key points at the real v1
+        #                            artifact (ADR 0014), which is not in the fixture tree,
+        #                            so the fixture retrieval file is passed explicitly; the
+        #                            flag takes precedence over the key. Without either, the
+        #                            run is refused (retrieval.require_input) rather than
+        #                            falling back to random MetaQA exemplars (ADR 0006).
+        #   --allow-unpinned-eval-set the fixtures hold 3 rows per hop, not the pinned 200
+        #                            (ADR 0007), so the pinned-set assertion is opted out of
+        #                            explicitly and the metrics record it. A real arm never
+        #                            passes this flag.
+        Stage(
+            name="decomposer_dry_run_musique_unguided",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "unguided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
+                "--output-root", decomposer_musique / "unguided",
+            ],
+            expect_dir_globs=[
+                (decomposer_musique / "unguided", "*/results.json"),
+                (decomposer_musique / "unguided", "*/metrics.json"),
+                (decomposer_musique / "unguided", "*/config.json"),
+                (decomposer_musique / "unguided", "*/notes.md"),
+            ],
+            note="MuSiQue conditions: no hop count in the prompt",
+        ),
+        Stage(
+            name="decomposer_dry_run_musique_oracle_guided",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "oracle_guided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
+                "--output-root", decomposer_musique / "oracle_guided",
+            ],
+            expect_dir_globs=[(decomposer_musique / "oracle_guided", "*/results.json")],
+            note="MuSiQue conditions: gold hop count injected into the prompt",
+        ),
+        Stage(
+            name="decomposer_dry_run_musique_unguided_capped",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "unguided_capped", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
+                "--output-root", decomposer_musique / "unguided_capped",
+            ],
+            expect_dir_globs=[(decomposer_musique / "unguided_capped", "*/results.json")],
+            note="MuSiQue conditions: step-line cap configured (no generation in a dry run)",
+        ),
+        # The fine-tuning arm of issue #13.
         Stage(
             name="decomposer_dry_run_adapter",
             cmd=[

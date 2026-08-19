@@ -1,0 +1,78 @@
+{
+  "_note": "MuSiQue variant of configs/decomposer.json for components/decomposer/run_decomposer.py (issue #12). Same runner, same per-model configs; only the question source, the hop depths and the condition block differ. The MetaQA defaults in configs/decomposer.json are untouched. Select a condition with --condition; nothing else has to be passed, because retrieval.input_key pins the retrieval artifact in this file (docs/adr/0014). The three conditions share seed, model folder (--model), retrieval input and decoding settings, so the only difference between them is what the prompt says about the hop count and whether generation is stopped at a step-line budget. That claim is enforced by the runner, not just stated here: see unguided_prompt_must_equal_guided_minus_hop_lines below.",
+
+  "seed": 42,
+  "guided": false,
+  "sample_size": null,
+
+  "hops": [2, 3, 4],
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_format": "jsonl",
+  "questions_jsonl": {
+    "question_field": "question",
+    "id_field": "id"
+  },
+  "unguided_hop_placeholder": "Unknown",
+
+  "few_shot_exemplar_hop_count": "exemplar_gold",
+  "_few_shot_exemplar_hop_count_note": "Guided arms only (an unguided prompt has no hop line anywhere). 'exemplar_gold': each few-shot exemplar's 'Hop count:' line states that exemplar's own gold step count - Jahid's decision of 2026-08-19 on issue #12. The alternative, 'query', stamps the query's hop count on every exemplar; that is v1's behaviour and it is what configs/decomposer.json keeps for the MetaQA path, so this decision does not silently change MetaQA prompts. Options not taken: dropping the exemplar hop lines in both arms, and keeping v1's behaviour with the confound stated in the thesis (docs/adr/0013).",
+
+  "unguided_prompt_must_omit_hop_count": true,
+  "unguided_prompt_must_equal_guided_minus_hop_lines": true,
+  "_unguided_prompt_note": "Two guards, both refusals. (1) unguided_prompt_must_omit_hop_count: a model folder with no 'unguided_prompt_file' falls back to its guided prompt and fills {hop_count} with unguided_hop_placeholder, so an 'unguided' run would still show 'Hop count: Unknown' under a rule saying the step count must equal the hop count - that is neither arm. The guard also catches an unguided prompt that hardcodes a hop line with no placeholder in it. (2) unguided_prompt_must_equal_guided_minus_hop_lines: the unguided prompt must be the guided prompt with its hop-bearing lines removed and NOTHING else changed - no added instruction, no dropped rule. Jahid's plan (prompt 4) says the three conditions hold everything else identical and unguided means 'no hop count in the prompt'; if the unguided prompt also reworded the rules, a quality gap could not be attributed to the hop count. Both v2 unguided prompts were regenerated from their guided sibling by that rule, which means they are NO LONGER byte-identical to v1's (v1's mistral unguided prompt replaced the hop rule with 'Decompose into the minimal number of atomic steps.', and v1's qwen3_5_9b unguided prompt dropped the whole rule block) - see docs/adr/0013.",
+
+  "_eval_set_note": "questions_template_key resolves to the pinned v1 MuSiQue evaluation set of ADR 0007: musique/dev_data/musique_ans_v1.0_dev_sample_{hop}_hop_200.jsonl for hop in 2/3/4, 200 rows each, 600 total. hops must stay [2, 3, 4] and sample_size null for a run to be on that set; all three conditions must read exactly these questions, which is what makes them comparable.",
+  "eval_rows_per_hop": 200,
+  "_eval_rows_per_hop_note": "Asserted by run_decomposer.py at load time, whether the questions come from questions_template_key or from --retrieval-input, and asserted twice over: (1) the per-hop row counts must be 200/200/200 (600 total), and (2) the loaded question ids must be EXACTLY the ids in the three files behind questions_template_key - counts alone would let a different 600 questions through, and 600 of the wrong questions is not the pinned set. A mismatch is refused, naming the offending hop depths and up to ten offending ids. ADR 0007 pins the set and ADR 0011's stance is that a comparison across different evaluation sets is not a comparison. --allow-unpinned-eval-set is the explicit opt-out for fixture/smoke runs; it records evaluation_set.pinned false in the metrics and such a run is not an experiment arm.",
+
+  "condition": "unguided",
+  "conditions": {
+    "unguided": {
+      "guided": false,
+      "_note": "No hop count in the prompt: the model decides how many steps to emit."
+    },
+    "oracle_guided": {
+      "guided": true,
+      "_note": "Two kinds of hop line, both gold. (1) The QUERY's gold hop count goes into the prompt through the guided mechanism's {hop_count} placeholder: the gold depth of the evaluation file the question was read from, or the depth parsed from its id on the retrieval path - never a prediction, and never a fallback (an id whose hop depth cannot be parsed is refused). (2) Each FEW-SHOT EXEMPLAR's 'Hop count:' line carries THAT EXEMPLAR's own gold hop count, defined as the number of steps in its own gold decomposition (pool_few_shot_decomposition_musique), counted with the shared splitter in src/step_lines.py - Jahid's decision of 2026-08-19 on issue #12, set here by few_shot_exemplar_hop_count. v1 stamped the query's hop count on every exemplar, which made most exemplar hop lines contradict the exemplar shown beneath them (measured: 1740 of 3000 on the 600 oracle_guided prompts of the 2026-08-19 dry run); that behaviour is gone from this config and v1's guided numbers are not directly comparable - see docs/adr/0013. An exemplar with a missing or empty gold decomposition is refused, naming its pool id: there is deliberately no fallback to the query's hop count."
+    },
+    "unguided_capped": {
+      "guided": false,
+      "stop_after_step_lines": 8,
+      "_note": "Same prompt as 'unguided'. Generation is stopped once 8 step lines are complete - a transformers StoppingCriteria during decoding, plus a trim of the partial line the criterion can leave behind after it fires. Step lines are counted with the evaluator's own step normalization (src/step_lines.py), after <think>/tail post-processing, so 8 means 8 of the steps that get scored. The supervisor's example in the 2026-08-12 meeting used a cap of 6; 8 is Jahid's plan default and is the value set here - see docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md and docs/adr/0013."
+    }
+  },
+  "_conditions_note": "A condition may set only 'guided' and 'stop_after_step_lines' (plus '_note'). Decoding, model and seed are deliberately NOT per-condition: run_decomposer.py rejects any other key so the three arms cannot drift apart.",
+
+  "generation_overrides": {
+    "max_new_tokens": 1024
+  },
+  "_generation_overrides_note": "Applied identically to every condition, on top of the per-model generation block, so decoding is the same in all three arms. max_new_tokens is the hard token cap that bounds a runaway generation in the uncapped arms too, which is why every run reports rows_at_max_new_tokens: a row that hit the token budget is a truncated output, not a decomposition the model chose to end. 1024 was set by Jahid on 2026-08-19 (issue #12), replacing the unmeasured 256 plumbing default carried over from the per-model configs, so that a runaway generation in the uncapped arms is observable rather than silently truncated at the token budget.",
+
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "embed_model": "e5-small",
+
+  "retrieval": {
+    "input": null,
+    "input_key": "musique_few_shot_top5_pinned600",
+    "require_input": true,
+    "mode": "typed",
+    "k": 5,
+    "modes": ["raw", "typed", "uniform"],
+    "hop_fallback": null
+  },
+  "_retrieval_note": "input_key names the ONE retrieval artifact all three conditions read, so a run needs nothing but --condition. It resolves through datasets.musique_few_shot_top5_pinned600 in configs/paths.json - the repo convention for data outside the tree; no absolute path in a config - to the v1 artifact sim_dev_sample600_top20_rerankTop5.jsonl (600 rows, one per pinned query; sha256 e5c418a9b25f...). This is Jahid's decision of 2026-08-19, docs/adr/0014: issue #12 runs on the v1 pool, which is 9,156 examples - NOT the 2,000 of ADR 0006 section 4, and thesis reporting must state 9,156 wherever these results appear. The artifact's method is ADR 0006's: bi-encoder (e5-small-v2) top-20 reranked by the cross-encoder (ms-marco-MiniLM-L-12-v2) to top-5, typed masking, seed 42, over that 9,156 pool (provenance traced on issue #12, zero pool/eval overlap). ADR 0014 stands pending supervisor confirmation of the pool deviation; if the 2,000 pin is reasserted, this key changes and #12 re-runs. input and input_key may not both be set (the runner refuses), and --retrieval-input overrides both - that is how the fixture and smoke runs point at tests/fixtures/retrieval/*.jsonl. require_input true: with neither the key, input, nor the flag, the conditions REFUSE to run rather than fall back to random exemplars from the committed MetaQA pool, which is neither ADR 0006's method nor a MuSiQue pool. The runner records the resolved path AND its sha256 in the config snapshot and the metrics, so the arms' comparability is checkable from the committed artifacts. On the retrieval path the questions come from the retrieval file rather than from questions_template_key, so that file must have been built over exactly the pinned 600 (ADR 0007) - asserted by id, not left to a reader of metrics.json: the loaded ids are compared against the ids of the three files behind questions_template_key and a mismatch is refused. hop_fallback null: the hop depth is parsed from the query id ('2hop__...'), and an id it cannot parse is a refusal, never a guess - in the oracle_guided arm a guessed depth would be injected as if it were the gold hop count.",
+
+  "few_shot_pool_key": "few_shot_decompositions",
+  "embedding_cache_key": "embedding_cache_dir",
+  "masking_config": "masking.json",
+
+  "_runnable_models_note": "Issue #12 runs on TWO model folders: mistral_7b_instruct and qwen3_5_9b, both shipping parity-guarded unguided prompts. Qwen3.5-9B is above the ~8B standing ceiling; Jahid admitted it on 2026-08-19 (ADR 0015, pending supervisor confirmation) and default_max_params in configs/model_limits.json was raised to 1e10 accordingly - if the supervisor reasserts 8B, the Qwen arms become out-of-scope and the comparison rests on mistral_7b_instruct alone. qwen2_5_3b and phi_4_mini_instruct are within the ceiling but ship no unguided prompt, so they cannot run the unguided arms.",
+
+  "output_subdir": "decomposer_musique",
+  "progress_every": 10,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

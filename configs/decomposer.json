@@ -1,5 +1,5 @@
 {
-  "_note": "Shared config for components/decomposer/run_decomposer.py. Per-model prompt style, generation, loader, few-shot and post-processing settings live in components/decomposer/models/<model>/config.json. v1 carried these as argparse defaults inside each copy of decomposer.py.",
+  "_note": "Shared config for components/decomposer/run_decomposer.py, MetaQA questions. Per-model prompt style, generation, loader, few-shot and post-processing settings live in components/decomposer/models/<model>/config.json. v1 carried these as argparse defaults inside each copy of decomposer.py. questions_format 'lines' is the MetaQA plain-text question file format (one question per line); the MuSiQue variant lives in configs/decomposer_musique.json and does not change anything here.",
 
   "seed": 42,
   "guided": false,
@@ -7,7 +7,11 @@
 
   "hops": [1, 2, 3],
   "questions_template_key": "metaqa_questions_template",
+  "questions_format": "lines",
   "unguided_hop_placeholder": "Unknown",
+
+  "few_shot_exemplar_hop_count": "query",
+  "_few_shot_exemplar_hop_count_note": "v1 behaviour, unchanged: in a guided MetaQA run every few-shot exemplar's 'Hop count:' line states the QUERY's hop count. Jahid's 2026-08-19 decision to state each exemplar's own gold step count instead was taken for the MuSiQue conditions (configs/decomposer_musique.json sets 'exemplar_gold'), so it is not applied here: changing it would change MetaQA guided prompts, which no one asked for. Verified 2026-08-19 that this path renders exactly as before.",
 
   "embed_models": {
     "minilm": "sentence-transformers/all-MiniLM-L6-v2",
