@@ -1,0 +1,19 @@
+{
+  "_note": "FABRICATED fixture, not a trained adapter: there are no weights in this directory. It exists so the smoke test's --adapter dry run has an adapter directory whose base model and training prompt can be checked (run_decomposer.assert_adapter_base_model, run_decomposer.check_adapter_prompt_parity). base_model_name_or_path matches components/decomposer/models/mistral_7b_instruct/config.json model_id, which is what the parity/base-model guards compare against.",
+  "peft_type": "LORA",
+  "task_type": "CAUSAL_LM",
+  "base_model_name_or_path": "mistralai/Mistral-7B-Instruct-v0.3",
+  "r": 16,
+  "lora_alpha": 32,
+  "lora_dropout": 0.05,
+  "bias": "none",
+  "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj"
+  ]
+}

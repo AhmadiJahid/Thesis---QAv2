@@ -540,7 +540,7 @@ def _stages() -> list[Stage]:
                 "--model", "mistral_7b_instruct", "--dry-run", "--dry-run-limit", "2",
                 "--retrieval-input", FIXTURES / "retrieval" / "top20.jsonl",
                 "--retrieval-mode", "uniform", "--retrieval-k", "5",
-                "--adapter", FIXTURES / "decomposer_arms" / "finetuned",
+                "--adapter", FIXTURES / "adapter",
                 "--no-few-shot",
                 "--output-root", decomposer_dry / "adapter",
             ],
@@ -549,7 +549,8 @@ def _stages() -> list[Stage]:
                 (decomposer_dry / "adapter", "*/metrics.json"),
             ],
             note="fine-tuned arm plumbing: --adapter recorded, --no-few-shot empties the "
-            "few-shot block, cost block written (no weights, so cost is unmeasured)",
+            "few-shot block, prompt parity checked against the fixture adapter's training "
+            "provenance, cost block written (no weights, so cost is unmeasured)",
         ),
         Stage(
             name="finetune_dry_run_pool_2000",
