@@ -33,7 +33,10 @@ Guarantees, all of them hard:
   LoRA-wrapped model is asserted again after the adapter is attached;
 - training ids are asserted disjoint from the ADR 0007 evaluation ids, naming offenders;
 - adapters and checkpoints are written under the gitignored ``runs/`` root, and the run
-  leaves a config snapshot, a metrics JSON and a run note.
+  leaves a config snapshot, a metrics JSON and a run note;
+- the prompt this run trained on is written *inside* the adapter directory
+  (``training_provenance.json``), so the evaluation run can refuse an adapter evaluated on a
+  prompt it never saw (``run_decomposer.check_adapter_prompt_parity``).
 
 Evaluation is **not** done here: the adapter is scored by running
 ``components/decomposer/run_decomposer.py --adapter <adapter dir> --no-few-shot`` over the
@@ -234,6 +237,50 @@ def trainable_parameter_record(model: Any) -> dict[str, Any]:
     }
 
 
+#: Prompt provenance, written *inside* the adapter directory. The training run's config
+#: snapshot next to it says the same thing, but an adapter is a directory that gets copied
+#: and moved; this file travels with the weights, and it is what
+#: ``run_decomposer.check_adapter_prompt_parity`` reads to refuse evaluating an adapter on a
+#: prompt it was never trained on. Same filename as
+#: ``run_decomposer.ADAPTER_PROVENANCE_FILE``.
+ADAPTER_PROVENANCE_FILE = "training_provenance.json"
+
+
+def adapter_provenance(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """The prompt this run trained on, in the shape the evaluation-side guard reads.
+
+    ``few_shot_examples_in_prompt`` is derived from the rendered ``few_shot_examples`` string
+    (this script trains zero-shot, i.e. an empty block) so the guard compares a boolean
+    rather than re-deriving the rule.
+    """
+    prompt = dict(require(snapshot, "prompt"))
+    prompt["few_shot_examples_in_prompt"] = bool(str(prompt.get("few_shot_examples", "")).strip())
+    return {
+        "script": snapshot.get("script"),
+        "created_utc": snapshot.get("created_utc"),
+        "run_id": snapshot.get("run_id"),
+        "arm": snapshot.get("arm"),
+        "model": snapshot.get("model"),
+        "model_id": snapshot.get("model_id"),
+        "prompt": prompt,
+        "_note": (
+            "What this adapter was trained on, for run_decomposer.py's adapter prompt-parity "
+            "guard. The base model is checked separately, from adapter_config.json's "
+            "base_model_name_or_path."
+        ),
+    }
+
+
+def write_adapter_provenance(adapter_dir: Path, snapshot: dict[str, Any]) -> Path:
+    """Write :func:`adapter_provenance` into the adapter directory. Returns the path."""
+    path = Path(adapter_dir) / ADAPTER_PROVENANCE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(adapter_provenance(snapshot), indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    return path
+
+
 # -------------------------------------------------------------------------------- args
 
 
@@ -432,6 +479,7 @@ def main() -> None:
     train_result: dict[str, Any] | None = None
     peak_gpu_bytes: int | None = None
     wall_clock_seconds: float | None = None
+    adapter_provenance_path: Path | None = None
 
     if not args.dry_run:
         import torch
@@ -478,6 +526,8 @@ def main() -> None:
 
         trainer.save_model(str(adapter_dir))
         tokenizer.save_pretrained(str(adapter_dir))
+        adapter_provenance_path = write_adapter_provenance(adapter_dir, snapshot)
+        print(f"[finetune] adapter prompt provenance -> {adapter_provenance_path}")
         train_result = {
             "global_step": int(result.global_step),
             "training_loss": float(result.training_loss) if result.training_loss is not None else None,
@@ -518,6 +568,9 @@ def main() -> None:
             round(peak_gpu_bytes / (1024**3), 3) if peak_gpu_bytes is not None else None
         ),
         "adapter_path": str(adapter_dir) if not args.dry_run else None,
+        "adapter_provenance_path": (
+            str(adapter_provenance_path) if adapter_provenance_path else None
+        ),
         "formatted_examples_path": str(sample_path),
         "decomposition_quality": None,
         "decomposition_quality_note": (

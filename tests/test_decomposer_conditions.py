@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Checks for the MuSiQue decomposer conditions (issue #12). No GPU, no model weights.
 
-pytest is not in the environment, so this is a plain script: every check is an assertion
-with a hand-computed expectation, and the exit code is the result.
+This is a plain script: every check is an assertion with a hand-computed expectation, and the
+exit code is the result. It is also importable by pytest, so the harness functions that take
+arguments are named ``check_*`` rather than ``test_*``: pytest reads a parameter on a
+``test_*`` function as a request for a fixture, and those five functions turned
+``pytest tests/`` into five collection errors (PR #21 review, M-3). ``main()`` below is the
+order they run in.
 
 What it covers:
 
@@ -146,7 +150,7 @@ def test_musique_config() -> dict:
     return cfg
 
 
-def test_conditions(cfg: dict) -> None:
+def check_conditions(cfg: dict) -> None:
     print("[conditions]")
     conditions = require(cfg, "conditions")
     check(
@@ -218,7 +222,7 @@ def test_conditions(cfg: dict) -> None:
         check("rejects an override key the model does not define", False)
 
 
-def test_prompt_invariant(cfg: dict) -> None:
+def check_prompt_invariant(cfg: dict) -> None:
     """The unguided prompt of every folder that has one == guided minus hop-bearing lines.
 
     This is the mechanical form of Jahid's design (plan prompt 4): three conditions on the
@@ -405,7 +409,7 @@ def test_exemplar_hop_lines() -> None:
         check("an unknown exemplar hop mode is refused", False)
 
 
-def test_prompt_selection(cfg: dict) -> None:
+def check_prompt_selection(cfg: dict) -> None:
     """Guided vs unguided picks a different prompt file when the model folder has both."""
     print("[prompt selection]")
     models_dir = MODELS_DIR
@@ -500,7 +504,7 @@ def test_prompt_selection(cfg: dict) -> None:
     )
 
 
-def test_guided_cli_cannot_override_a_condition(cfg: dict) -> None:
+def check_guided_cli_cannot_override_a_condition(cfg: dict) -> None:
     """--guided must not silently relabel an arm."""
     print("[--guided vs condition]")
     conditions = require(cfg, "conditions")
@@ -1305,7 +1309,7 @@ def test_retrieval_input_resolution() -> None:
     )
 
 
-def test_eval_set_resolves(cfg: dict) -> None:
+def check_eval_set_resolves(cfg: dict) -> None:
     print("[evaluation set]")
     paths_cfg = load_paths(require(cfg, "paths_config"))
     template = require(paths_cfg, "datasets." + require(cfg, "questions_template_key"))
@@ -1355,12 +1359,12 @@ def main() -> int:
 
     test_metaqa_defaults_unchanged()
     cfg = test_musique_config()
-    test_conditions(cfg)
-    test_prompt_invariant(cfg)
+    check_conditions(cfg)
+    check_prompt_invariant(cfg)
     test_compound_hop_lines_are_refused()
     test_exemplar_hop_lines()
-    test_prompt_selection(cfg)
-    test_guided_cli_cannot_override_a_condition(cfg)
+    check_prompt_selection(cfg)
+    check_guided_cli_cannot_override_a_condition(cfg)
     test_shared_step_normalization()
     test_completed_step_line_count()
     test_trim_to_step_lines()
@@ -1374,7 +1378,7 @@ def main() -> int:
     if args.skip_data_checks:
         print("[evaluation set] skipped (--skip-data-checks)")
     else:
-        test_eval_set_resolves(cfg)
+        check_eval_set_resolves(cfg)
 
     print(f"\n{len(CHECKS)} checks passed")
     return 0

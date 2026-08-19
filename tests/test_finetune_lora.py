@@ -7,6 +7,12 @@ and names the offending ids, the prompt/completion formatting matches what the r
 produce at inference, and the parameter-ceiling gate in ``train_lora.py`` is wired to
 ``src/model_size.py`` (both directions: within the ceiling and over it).
 
+It also covers the two guards on the adapter *evaluation* path (PR #24 re-review): an
+adapter may only be evaluated on the prompt its training run recorded
+(``check_adapter_prompt_parity``), and it may only attach to the base model
+``adapter_config.json`` names (``assert_adapter_base_model``). Their fixtures are fabricated
+JSON in a temp directory - no weights, no run directory, no data.
+
 Run::
 
     .venv/bin/python -m unittest discover -s tests -v
@@ -16,7 +22,9 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from typing import Any
 
@@ -805,6 +813,394 @@ class TestCostReporting(unittest.TestCase):
         self.assertIsNone(summary["mean_prompt_tokens_per_query"])
         self.assertIsNone(summary["mean_latency_seconds_per_query"])
         self.assertIn("unmeasured", summary["note"])
+
+
+#: The prompt an unguided zero-shot adapter was trained on. Every expectation in the
+#: prompt-parity tests is computed against this by hand.
+TRAINED_ON = {
+    "guided": False,
+    "prompt_file": "prompt_unguided.md",
+    "prompt_style": "plain",
+    "few_shot_examples_in_prompt": False,
+}
+
+
+class TestAdapterPromptParity(unittest.TestCase):
+    """An adapter may only be evaluated on the prompt its training run recorded.
+
+    All fixtures here are fabricated JSON in a temp directory: no adapter weights, no real
+    run directory, no data.
+    """
+
+    def setUp(self) -> None:
+        import run_decomposer
+
+        self.rd = run_decomposer
+        self._tmp = tempfile.TemporaryDirectory()
+        self.run_dir = Path(self._tmp.name) / "20260818_222259"
+        self.adapter_dir = self.run_dir / "adapter"
+        self.adapter_dir.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _write_provenance(self, **prompt_overrides: Any) -> Path:
+        """The file train_lora.py writes into the adapter directory."""
+        prompt = {**TRAINED_ON, **prompt_overrides}
+        path = self.adapter_dir / self.rd.ADAPTER_PROVENANCE_FILE
+        path.write_text(
+            json.dumps({"script": "train_lora.py", "run_id": "r1", "arm": "full_train",
+                        "prompt": prompt}),
+            encoding="utf-8",
+        )
+        return path
+
+    def _write_training_snapshot(self, *, script: str = "train_lora.py", **prompt_overrides: Any) -> Path:
+        """The training run's config snapshot, next to the adapter dir (the exp-001 shape:
+        ``prompt.few_shot_examples`` as an empty string rather than a boolean)."""
+        prompt = {
+            "guided": TRAINED_ON["guided"],
+            "few_shot_examples": "",
+            "prompt_file": TRAINED_ON["prompt_file"],
+            "prompt_style": TRAINED_ON["prompt_style"],
+            **prompt_overrides,
+        }
+        path = self.run_dir / self.rd.TRAINING_SNAPSHOT_FILE
+        path.write_text(
+            json.dumps({"script": script, "run_id": "20260818_222259", "arm": "full_train",
+                        "prompt": prompt}),
+            encoding="utf-8",
+        )
+        return path
+
+    def _check(self, *, run_selection: dict[str, Any], override: bool = False) -> dict[str, Any]:
+        return self.rd.check_adapter_prompt_parity(
+            adapter=str(self.adapter_dir), run_selection=run_selection, override=override
+        )
+
+    # ---- the record is found ----
+
+    def test_the_provenance_file_in_the_adapter_dir_is_preferred(self) -> None:
+        provenance = self._write_provenance()
+        self._write_training_snapshot()
+        record = self._check(run_selection=dict(TRAINED_ON))
+        self.assertTrue(record["checked"])
+        self.assertEqual(record["mismatches"], [])
+        self.assertEqual(record["training_record"]["source"], "adapter_provenance")
+        self.assertEqual(record["training_record"]["path"], str(provenance))
+        self.assertEqual(record["trained_on"], TRAINED_ON)
+
+    def test_the_training_run_snapshot_next_to_the_adapter_is_the_fallback(self) -> None:
+        """The exp-001 case: an adapter trained before the provenance file existed."""
+        snapshot = self._write_training_snapshot()
+        record = self._check(run_selection=dict(TRAINED_ON))
+        self.assertTrue(record["checked"])
+        self.assertEqual(record["training_record"]["source"], "training_run_config")
+        self.assertEqual(record["training_record"]["path"], str(snapshot))
+        # few_shot_examples "" (the training block) -> few_shot_examples_in_prompt False.
+        self.assertEqual(record["trained_on"], TRAINED_ON)
+
+    def test_a_non_empty_few_shot_block_reads_as_trained_with_examples(self) -> None:
+        self._write_training_snapshot(few_shot_examples="Q: ...\nSteps: ...")
+        record = self._check(
+            run_selection={**TRAINED_ON, "few_shot_examples_in_prompt": True}
+        )
+        self.assertTrue(record["checked"])
+        self.assertTrue(record["trained_on"]["few_shot_examples_in_prompt"])
+
+    # ---- the refusals ----
+
+    def test_a_guided_run_against_an_unguided_adapter_is_refused(self) -> None:
+        """The finding: --adapter --no-few-shot --guided used to be accepted."""
+        self._write_provenance()
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(
+                run_selection={**TRAINED_ON, "guided": True, "prompt_file": "prompt.md"}
+            )
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO RUN", message)
+        self.assertIn("adapter prompt mismatch", message)
+        self.assertIn("guided: trained on False, this run True", message)
+        self.assertIn("prompt_file: trained on 'prompt_unguided.md', this run 'prompt.md'", message)
+        self.assertIn(self.rd.ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG, message)
+
+    def test_exactly_the_mismatching_fields_are_named(self) -> None:
+        self._write_provenance()
+        with self.assertRaises(SystemExit):
+            self._check(run_selection={**TRAINED_ON, "prompt_style": "chat_template"})
+        record = self._check(
+            run_selection={**TRAINED_ON, "prompt_style": "chat_template"}, override=True
+        )
+        self.assertEqual([m["field"] for m in record["mismatches"]], ["prompt_style"])
+        self.assertEqual(record["mismatches"][0]["trained_on"], "plain")
+        self.assertEqual(record["mismatches"][0]["this_run"], "chat_template")
+
+    def test_a_few_shot_prompt_against_a_zero_shot_adapter_is_refused(self) -> None:
+        self._write_provenance()
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection={**TRAINED_ON, "few_shot_examples_in_prompt": True})
+        self.assertIn("few_shot_examples_in_prompt", str(ctx.exception))
+
+    def test_no_training_record_at_all_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        message = str(ctx.exception)
+        self.assertIn("cannot tell what adapter", message)
+        self.assertIn(self.rd.ADAPTER_PROVENANCE_FILE, message)
+        self.assertIn(self.rd.TRAINING_SNAPSHOT_FILE, message)
+
+    def test_a_config_json_from_another_script_is_not_a_training_record(self) -> None:
+        self._write_training_snapshot(script="run_decomposer.py")
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        self.assertIn("not a training run's snapshot", str(ctx.exception))
+
+    def test_a_record_missing_a_prompt_field_is_not_usable(self) -> None:
+        path = self.adapter_dir / self.rd.ADAPTER_PROVENANCE_FILE
+        path.write_text(
+            json.dumps({"script": "train_lora.py", "prompt": {"guided": False}}),
+            encoding="utf-8",
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            self._check(run_selection=dict(TRAINED_ON))
+        message = str(ctx.exception)
+        self.assertIn("no 'prompt.prompt_file'", message)
+        self.assertIn("no 'prompt.prompt_style'", message)
+
+    # ---- the override, and the prompting arm ----
+
+    def test_the_named_override_runs_and_is_recorded(self) -> None:
+        self._write_provenance()
+        record = self._check(run_selection={**TRAINED_ON, "guided": True}, override=True)
+        self.assertTrue(record["override"])
+        # An overridden mismatch is a recorded mismatch, not a passed check.
+        self.assertFalse(record["checked"])
+        self.assertEqual([m["field"] for m in record["mismatches"]], ["guided"])
+        self.assertIn("not the fine-tuned arm", record["note"])
+
+    def test_the_override_also_covers_a_missing_record(self) -> None:
+        record = self._check(run_selection=dict(TRAINED_ON), override=True)
+        self.assertFalse(record["checked"])
+        self.assertIsNone(record["trained_on"])
+        self.assertIn("unchecked", record["note"])
+
+    def test_a_run_without_an_adapter_is_not_checked(self) -> None:
+        record = self.rd.check_adapter_prompt_parity(
+            adapter=None, run_selection=dict(TRAINED_ON), override=False
+        )
+        self.assertFalse(record["checked"])
+        self.assertIn("no --adapter", record["note"])
+
+    def test_the_override_flag_is_named_and_on_the_parser(self) -> None:
+        self.assertEqual(
+            self.rd.ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG, "--adapter-prompt-mismatch-i-know"
+        )
+        argv = [
+            "run_decomposer.py", "--model", "mistral_7b_instruct", "--adapter", "a",
+            "--no-few-shot", self.rd.ADAPTER_PROMPT_PARITY_OVERRIDE_FLAG,
+        ]
+        with unittest.mock.patch.object(sys, "argv", argv):
+            args = self.rd._parse_args()
+        self.assertTrue(args.adapter_prompt_mismatch_i_know)
+
+    def test_the_parity_fields_are_the_four_prompt_choices(self) -> None:
+        self.assertEqual(
+            self.rd.ADAPTER_PROMPT_PARITY_FIELDS,
+            ("guided", "prompt_file", "prompt_style", "few_shot_examples_in_prompt"),
+        )
+
+
+class TestAdapterBaseModelAssertion(unittest.TestCase):
+    """An adapter attaches by module name and shape, so its base model is asserted."""
+
+    def setUp(self) -> None:
+        import run_decomposer
+
+        self.rd = run_decomposer
+        self._tmp = tempfile.TemporaryDirectory()
+        self.adapter_dir = Path(self._tmp.name) / "adapter"
+        self.adapter_dir.mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _write_adapter_config(self, payload: dict[str, Any]) -> Path:
+        path = self.adapter_dir / self.rd.ADAPTER_CONFIG_FILE
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def test_the_matching_base_model_is_asserted_and_recorded(self) -> None:
+        path = self._write_adapter_config(
+            {"base_model_name_or_path": "mistralai/Mistral-7B-Instruct-v0.3"}
+        )
+        record = self.rd.assert_adapter_base_model(
+            self.adapter_dir, model_id="mistralai/Mistral-7B-Instruct-v0.3"
+        )
+        self.assertTrue(record["base_model_asserted"])
+        self.assertEqual(record["adapter_base_model"], "mistralai/Mistral-7B-Instruct-v0.3")
+        self.assertEqual(record["run_model_id"], "mistralai/Mistral-7B-Instruct-v0.3")
+        self.assertEqual(record["adapter_config_path"], str(path))
+
+    def test_a_different_base_model_is_refused_and_both_are_named(self) -> None:
+        self._write_adapter_config(
+            {"base_model_name_or_path": "mistralai/Mistral-7B-Instruct-v0.2"}
+        )
+        with self.assertRaises(SystemExit) as ctx:
+            self.rd.assert_adapter_base_model(
+                self.adapter_dir, model_id="mistralai/Mistral-7B-Instruct-v0.3"
+            )
+        message = str(ctx.exception)
+        self.assertIn("REFUSING TO RUN", message)
+        self.assertIn("mistralai/Mistral-7B-Instruct-v0.2", message)
+        self.assertIn("mistralai/Mistral-7B-Instruct-v0.3", message)
+
+    def test_an_absent_field_is_refused_rather_than_skipped(self) -> None:
+        self._write_adapter_config({"peft_type": "LORA"})
+        with self.assertRaises(SystemExit) as ctx:
+            self.rd.assert_adapter_base_model(self.adapter_dir, model_id="m")
+        self.assertIn("base_model_name_or_path", str(ctx.exception))
+
+    def test_a_missing_adapter_config_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            self.rd.assert_adapter_base_model(self.adapter_dir, model_id="m")
+        self.assertIn(self.rd.ADAPTER_CONFIG_FILE, str(ctx.exception))
+
+    def test_attach_adapter_asserts_before_loading_anything(self) -> None:
+        """The guard is wired into attach_adapter, not only available beside it."""
+        self._write_adapter_config({"base_model_name_or_path": "some/other-base"})
+        with self.assertRaises(SystemExit) as ctx:
+            self.rd.attach_adapter(object(), self.adapter_dir, model_id="m")
+        self.assertIn("adapter base-model mismatch", str(ctx.exception))
+
+    def test_the_field_name_is_pefts_own(self) -> None:
+        self.assertEqual(self.rd.ADAPTER_CONFIG_FILE, "adapter_config.json")
+        self.assertEqual(self.rd.ADAPTER_BASE_MODEL_FIELD, "base_model_name_or_path")
+
+    def test_the_committed_fixture_adapter_names_the_model_folders_base(self) -> None:
+        """The smoke test's --adapter fixture must match the model folder it runs against."""
+        fixture = json.loads(
+            (REPO_ROOT / "tests" / "fixtures" / "adapter" / self.rd.ADAPTER_CONFIG_FILE)
+            .read_text(encoding="utf-8")
+        )
+        model_cfg = load_config(
+            REPO_ROOT / "components" / "decomposer" / "models" / "mistral_7b_instruct"
+            / "config.json"
+        )
+        self.assertEqual(
+            fixture[self.rd.ADAPTER_BASE_MODEL_FIELD], require(model_cfg, "model_id")
+        )
+
+
+class TestAdapterProvenanceIsWritten(unittest.TestCase):
+    """``train_lora.py`` records the training prompt where the evaluation guard reads it."""
+
+    def setUp(self) -> None:
+        import run_decomposer
+
+        self.rd = run_decomposer
+        self._tmp = tempfile.TemporaryDirectory()
+        self.adapter_dir = Path(self._tmp.name) / "adapter"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _snapshot(self, **prompt_overrides: Any) -> dict[str, Any]:
+        return {
+            "script": "train_lora.py",
+            "created_utc": "2026-08-19T00:00:00+00:00",
+            "run_id": "20260819_000000",
+            "arm": "full_train",
+            "model": "mistral_7b_instruct",
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "prompt": {
+                "guided": False,
+                "few_shot_examples": "",
+                "prompt_file": "prompt_unguided.md",
+                "prompt_style": "plain",
+                **prompt_overrides,
+            },
+        }
+
+    def test_a_zero_shot_training_prompt_records_no_examples(self) -> None:
+        payload = train_lora.adapter_provenance(self._snapshot())
+        self.assertFalse(payload["prompt"]["few_shot_examples_in_prompt"])
+        self.assertEqual(payload["run_id"], "20260819_000000")
+        self.assertEqual(payload["model_id"], "mistralai/Mistral-7B-Instruct-v0.3")
+
+    def test_a_non_empty_few_shot_block_records_examples(self) -> None:
+        payload = train_lora.adapter_provenance(self._snapshot(few_shot_examples="Q: x"))
+        self.assertTrue(payload["prompt"]["few_shot_examples_in_prompt"])
+
+    def test_what_training_writes_is_what_the_guard_reads(self) -> None:
+        path = train_lora.write_adapter_provenance(self.adapter_dir, self._snapshot())
+        self.assertEqual(path.name, self.rd.ADAPTER_PROVENANCE_FILE)
+        found = self.rd.read_adapter_training_record(self.adapter_dir)
+        self.assertTrue(found["found"])
+        self.assertEqual(found["source"], "adapter_provenance")
+        self.assertEqual(found["trained_on"], TRAINED_ON)
+        # And the run that renders that same prompt passes the guard.
+        record = self.rd.check_adapter_prompt_parity(
+            adapter=str(self.adapter_dir), run_selection=dict(TRAINED_ON), override=False
+        )
+        self.assertTrue(record["checked"])
+        self.assertEqual(record["mismatches"], [])
+
+    def test_the_two_modules_agree_on_the_filename(self) -> None:
+        self.assertEqual(train_lora.ADAPTER_PROVENANCE_FILE, self.rd.ADAPTER_PROVENANCE_FILE)
+
+    def test_the_committed_fixture_provenance_is_readable_by_the_guard(self) -> None:
+        found = self.rd.read_adapter_training_record(REPO_ROOT / "tests" / "fixtures" / "adapter")
+        self.assertTrue(found["found"])
+        self.assertEqual(found["trained_on"], TRAINED_ON)
+
+
+class TestCostColumnDefinitionsAreReported(unittest.TestCase):
+    """The arms note prints what its cost columns measure, taken from the runs themselves."""
+
+    def setUp(self) -> None:
+        import compare_decomposer_arms
+
+        self.mod = compare_decomposer_arms
+        self.definitions = {"prompt_tokens": "tokens in the rendered prompt"}
+
+    def test_arms_that_agree_are_one_group(self) -> None:
+        groups = self.mod.cost_definition_groups(
+            {
+                "prompting": {"cost_definitions": dict(self.definitions)},
+                "finetuned": {"cost_definitions": dict(self.definitions)},
+            }
+        )
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(sorted(groups[0][0]), ["finetuned", "prompting"])
+        self.assertEqual(groups[0][1], self.definitions)
+
+    def test_arms_that_disagree_are_separate_groups(self) -> None:
+        groups = self.mod.cost_definition_groups(
+            {
+                "prompting": {"cost_definitions": dict(self.definitions)},
+                "finetuned": {"cost_definitions": {"prompt_tokens": "something else"}},
+            }
+        )
+        self.assertEqual(len(groups), 2)
+
+    def test_an_arm_without_definitions_is_left_out_rather_than_invented(self) -> None:
+        groups = self.mod.cost_definition_groups(
+            {
+                "prompting": {"cost_definitions": dict(self.definitions)},
+                "finetuned": {"cost_definitions": None},
+            }
+        )
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0][0], ["prompting"])
+
+    def test_the_runner_writes_the_definitions_the_note_reports(self) -> None:
+        import run_decomposer
+
+        summary = run_decomposer.cost_summary(
+            [{"prompt_tokens": 10, "completion_tokens": 2, "latency_seconds": 0.5}]
+        )
+        for key in ("prompt_tokens", "completion_tokens", "latency_seconds"):
+            self.assertIn(key, summary["definitions"])
 
 
 if __name__ == "__main__":

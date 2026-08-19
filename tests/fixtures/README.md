@@ -40,9 +40,17 @@ predictions/                   # decomposer-shaped prediction files
 decomposer_arms/               # two fabricated "arms" (metrics.json only) for
                                # scripts/compare_decomposer_arms.py; the smoke test copies
                                # the same predictions file into both, so every comparison
-                               # difference is exactly 0 by construction. The finetuned arm
-                               # deliberately has no cost block, to exercise the
-                               # cost-unmeasured branch.
+                               # difference is exactly 0 by construction. The prompting arm
+                               # carries a cost block with its 'definitions' (so the note's
+                               # cost-column definitions are exercised); the finetuned arm
+                               # deliberately has none, to exercise the cost-unmeasured
+                               # branch.
+adapter/                       # a fabricated LoRA adapter directory with NO weights:
+                               # adapter_config.json (base_model_name_or_path) and
+                               # training_provenance.json (the prompt it was "trained" on),
+                               # which is what the smoke test's --adapter dry run is checked
+                               # against by run_decomposer's base-model and prompt-parity
+                               # guards
 retrieval/
   top20.jsonl                  # a similarity top-k file (also used as decomposer input)
   top5_musique_conditions.jsonl # retrieval input for the three MuSiQue conditions: one row

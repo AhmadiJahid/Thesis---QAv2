@@ -184,6 +184,18 @@ Guarantees that are hard failures, not warnings:
   zero-shot prompt, and the few-shot examples come from the same MuSiQue pool it trained on.
   `--adapter-with-few-shot-i-know` overrides it deliberately, prints a warning and is
   recorded in the run's metrics; such a run is not the fine-tuned arm of the comparison.
+- **An adapter run whose prompt is not the prompt it was trained on is refused.** The
+  training run's own record decides — `training_provenance.json` inside the adapter directory
+  (written by `train_lora.py`), or the training run's `config.json` next to it for adapters
+  trained before that file existed. `guided`, the prompt file, the prompt style and whether
+  the prompt carries few-shot examples must all match, so `--adapter --no-few-shot --guided`
+  (a guided template with a hop line, which training never rendered) no longer runs. No
+  readable training record is also a refusal. `--adapter-prompt-mismatch-i-know` overrides
+  it, warns, and is recorded; such a run is not the fine-tuned arm either.
+- **An adapter attaches only to the base model it names.** `adapter_config.json`'s
+  `base_model_name_or_path` is compared against the run's `model_id` before
+  `PeftModel.from_pretrained`, because LoRA weights attach by module name and shape: a
+  different fine-tune of the same architecture would load silently.
 - **A hop-signal disagreement is fatal for an arm that filters on hops** (`train_hops` not
   null): the generalisation claim rests on those labels being right.
 - Adapters, checkpoints and prediction dumps stay under `runs/`; only config, metrics and the

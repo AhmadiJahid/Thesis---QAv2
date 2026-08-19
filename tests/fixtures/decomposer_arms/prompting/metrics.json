@@ -14,6 +14,12 @@
     "mean_total_tokens_per_query": 560.0,
     "mean_latency_seconds_per_query": 1.25,
     "median_latency_seconds_per_query": 1.25,
-    "total_generation_seconds": 5.0
+    "total_generation_seconds": 5.0,
+    "definitions": {
+      "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+      "completion_tokens": "number of newly generated tokens for that row",
+      "latency_seconds": "wall clock around model.generate for that row (CUDA synchronized), excluding tokenization and decoding",
+      "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded"
+    }
   }
 }

@@ -35,9 +35,12 @@ nothing in the output saying so.
 Two things it deliberately does not do:
 
 - **It reads the evaluator's per-item file only for item ids.** Nothing else in it is
-  parsed, and both shapes are accepted - the bare list of earlier runs and the stamped
-  object of PR #22 (``{"schema": ..., "items": [...]}``) - so the schema change is still
-  the evaluator's business.
+  parsed: the shape of record is the versioned object of ADR 0011 section 2
+  (``{"schema": "musique_decomposition_per_item/1", ..., "items": [...]}``), and what the
+  items say is the evaluator's business, not this script's. The id reader also tolerates a
+  bare top-level list, but that pre-PR-#22 shape is retired: ``--compare``, which this
+  script runs on every non-baseline arm, refuses it, so such an arm cannot reach a
+  comparison here - it must be re-scored.
 - **It never compares runs scored under different settings.** All arms are scored by one
   invocation config, which is also what the evaluator's ``--compare`` requires.
 """
@@ -101,8 +104,11 @@ def _cost_block(run_dir: Path) -> tuple[dict[str, Any] | None, str | None]:
 def per_item_ids(path: Path) -> list[str]:
     """The ``item_id`` of every scored item, in file order.
 
-    Accepts both per-item shapes: a bare JSON list (runs before PR #22) and the stamped
-    object ``{"schema": ..., "items": [...]}`` (PR #22 onward). Only the ids are read.
+    Reads the versioned object of ADR 0011 section 2
+    (``{"schema": "musique_decomposition_per_item/1", ..., "items": [...]}``). A bare
+    top-level list is still tolerated *here* (only ids are read, and this check should not
+    be the thing that fails on an old file), but that shape is retired: the evaluator's
+    ``--compare`` refuses it, so an arm scored under it cannot be compared without re-scoring.
     """
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     rows = payload.get("items") if isinstance(payload, dict) else payload
@@ -192,6 +198,30 @@ def assert_items_within_eval_hops(
         "hop_counts": {k: hop_counts[k] for k in sorted(hop_counts, key=int)},
         "asserted": True,
     }
+
+
+def cost_definition_groups(
+    per_arm: dict[str, dict[str, Any]],
+) -> list[tuple[list[str], dict[str, Any]]]:
+    """Group arm names by the cost definitions their runs recorded.
+
+    The cost columns of the table are per-query aggregates; what they aggregate (a prompt
+    token, a latency second) is defined by the decomposer run that measured it, and each run
+    writes those definitions into its own ``cost`` block. Printing them next to the numbers
+    is what makes the table readable on its own.
+
+    Normally there is exactly one group: every arm was produced by the same runner. More than
+    one group is the interesting case and is reported as such - it means a cost column does
+    not mean the same thing on both sides of the comparison.
+    """
+    groups: dict[str, tuple[list[str], dict[str, Any]]] = {}
+    for name, record in per_arm.items():
+        definitions = record.get("cost_definitions")
+        if not isinstance(definitions, dict) or not definitions:
+            continue
+        key = json.dumps(definitions, sort_keys=True, default=str)
+        groups.setdefault(key, ([], definitions))[0].append(name)
+    return list(groups.values())
 
 
 def _fmt(value: Any) -> str:
@@ -302,6 +332,9 @@ def main() -> None:
             "eval_hops_check": hop_record,
             "quality": {key: arm_metrics.get(key) for key in quality_keys},
             "cost": ({key: cost.get(key) for key in cost_keys} if cost else None),
+            # The run's own definitions of what its cost numbers measure, carried through so
+            # this comparison's metrics and note state it too.
+            "cost_definitions": (cost.get("definitions") if cost else None),
             "cost_note": cost_note,
         }
 
@@ -355,6 +388,40 @@ def main() -> None:
             _fmt(record["cost"].get(k)) if record["cost"] else "unmeasured" for k in cost_keys
         ]
         note_lines.append(f"| {name} | " + " | ".join(cells) + " |")
+    note_lines.append("")
+
+    # What the cost columns mean, printed where they are reported: the numbers above are
+    # per-query aggregates (mean/median over the rows that generated; a row with no
+    # measurement, e.g. from a --dry-run, is excluded), and each arm's run recorded what the
+    # per-row measurements are.
+    note_lines.append(
+        "- Cost columns are per-query aggregates of each arm's own `cost` block: "
+        "`mean_*_per_query` / `median_*_per_query` over `rows_measured` rows, "
+        "`total_generation_seconds` summed over the same rows. The per-row measurements they "
+        "aggregate, as defined by the run that measured them:"
+    )
+    groups = cost_definition_groups(per_arm)
+    for names, definitions in groups:
+        if len(names) == len(per_arm):
+            scope = "all arms"
+        else:
+            label = "arm" if len(names) == 1 else "arms"
+            scope = f"{label} " + ", ".join(f"`{n}`" for n in names)
+        note_lines.append(f"  - {scope}:")
+        for key in sorted(definitions):
+            note_lines.append(f"    - `{key}`: {definitions[key]}")
+    if len(groups) > 1:
+        note_lines.append(
+            "  - NOTE: the arms above do not agree on what their cost numbers measure, so "
+            "the cost columns are not comparable across them as they stand."
+        )
+    undefined = [name for name, record in per_arm.items() if not record.get("cost_definitions")]
+    if undefined:
+        note_lines.append(
+            "  - no cost definitions recorded by: "
+            + ", ".join(f"`{n}`" for n in undefined)
+            + " (no cost block in that run's metrics.json, so its cost cells are unmeasured)"
+        )
     note_lines.append("")
 
     for key, record in comparisons.items():

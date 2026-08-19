@@ -1,0 +1,19 @@
+{
+  "_note": "FABRICATED fixture, not a run. Same shape train_lora.py writes into a real adapter directory (train_lora.adapter_provenance): the prompt selection an evaluation run is checked against by run_decomposer.check_adapter_prompt_parity. The values are the unguided zero-shot prompt of components/decomposer/models/mistral_7b_instruct, which is what the smoke test's --adapter dry run renders.",
+  "script": "train_lora.py",
+  "created_utc": "2026-08-19T00:00:00+00:00",
+  "run_id": "00000000_000000",
+  "arm": "smoke_fixture",
+  "model": "mistral_7b_instruct",
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "prompt": {
+    "guided": false,
+    "few_shot_examples": "",
+    "few_shot_examples_in_prompt": false,
+    "target_reference_style": "as_is",
+    "number_target_lines": false,
+    "prompt_file": "prompt_unguided.md",
+    "prompt_style": "plain",
+    "unguided_hop_placeholder": "Unknown"
+  }
+}
