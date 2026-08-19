@@ -1,0 +1,137 @@
+{
+  "script": "train_lora.py",
+  "created_utc": "2026-08-18T22:23:02.237317+00:00",
+  "run_id": "20260818_222259",
+  "component": "decomposer",
+  "task": "lora_finetune",
+  "arm": "full_train",
+  "arm_spec": {
+    "_note": "The full MuSiQue training split, no cap and no hop filter.",
+    "train_source_key": "musique_train",
+    "train_source_path": null,
+    "train_hops": null,
+    "max_examples": null,
+    "stratify_cap_by_hop": false,
+    "eval_hops": [
+      2,
+      3,
+      4
+    ]
+  },
+  "model": "mistral_7b_instruct",
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "quantization": "4bit",
+  "seed": 42,
+  "seeded": {
+    "seed": 42,
+    "python_random": true,
+    "pythonhashseed_exported_for_subprocesses": "42",
+    "numpy": true,
+    "torch": true,
+    "torch_cuda": true
+  },
+  "prompt": {
+    "_note": "The training prompt is built from the SAME per-model prompt file the prompting arm uses (components/decomposer/models/<model>/), with the few-shot block empty: the fine-tuned arm is meant to answer zero-shot, and inference must see the string shape training saw (run_decomposer.py --adapter ... --no-few-shot). target_reference_style 'as_is' trains on the gold step text verbatim; 'bracketed' rewrites '#1' to '[#1]' to match the convention the prompt file states. The choice is not neutral and is Jahid's to make: the evaluator strips brackets before matching steps (so exact-match and step-F1 are unaffected), but reference_validity_micro is vacuously 1.0 for predictions with no [#k] references, and ROUGE-L tokenises before punctuation stripping, so '#1' and '[#1]' are different tokens there.",
+    "_unguided_hop_placeholder_note": "Not duplicated here: it is read from decomposer_config below, so the training prompt and the inference prompt cannot drift apart on it.",
+    "guided": false,
+    "few_shot_examples": "",
+    "target_reference_style": "as_is",
+    "number_target_lines": false,
+    "prompt_file": "prompt_unguided.md",
+    "prompt_path": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/prompt_unguided.md",
+    "prompt_style": "plain",
+    "unguided_hop_placeholder": "Unknown"
+  },
+  "loader": {
+    "_note": "Base-model loading for training. QLoRA is the 4bit path (bitsandbytes NF4 + double quantization); 'none' loads in dtype. device_map 'auto' needs accelerate.",
+    "trust_remote_code": false,
+    "device_map": "auto",
+    "dtype": "bfloat16",
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": "bfloat16",
+    "bnb_4bit_use_double_quant": true,
+    "attn_implementation": null
+  },
+  "lora": {
+    "_note": "target_modules are the attention/MLP projection names of Llama/Mistral-family models. A different base architecture uses different names, so this list is a config value, not a default buried in code; peft raises if a name is absent.",
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "bias": "none",
+    "task_type": "CAUSAL_LM",
+    "target_modules": [
+      "q_proj",
+      "k_proj",
+      "v_proj",
+      "o_proj",
+      "gate_proj",
+      "up_proj",
+      "down_proj"
+    ]
+  },
+  "training": {
+    "_note": "trl SFTConfig fields. The dataset is prompt/completion typed and completion_only_loss masks the prompt out of the loss, so the model is trained on the decomposition text only. Batch 1 x grad-accum 16 with gradient checkpointing and max_length 1024 is what keeps a 4-bit 7B base inside 24 GiB on the RTX 3090 of docs/compute.md - an estimate until a run measures peak_gpu_memory_bytes, which the metrics JSON records. bf16 is supported on Ampere.",
+    "num_train_epochs": 2,
+    "max_steps": -1,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "learning_rate": 0.0002,
+    "lr_scheduler_type": "cosine",
+    "_warmup_note": "warmup_steps, not warmup_ratio: transformers 5.5.4 warns that warmup_ratio is deprecated and slated for removal, so the run would emit a deprecation warning and eventually break.",
+    "warmup_steps": 10,
+    "weight_decay": 0.0,
+    "max_grad_norm": 1.0,
+    "optim": "paged_adamw_8bit",
+    "max_length": 1024,
+    "packing": false,
+    "completion_only_loss": true,
+    "gradient_checkpointing": true,
+    "bf16": true,
+    "fp16": false,
+    "logging_steps": 10,
+    "save_strategy": "epoch",
+    "save_total_limit": 2,
+    "report_to": "none",
+    "dataloader_num_workers": 0
+  },
+  "eval_set": {
+    "questions_template_key": "musique_eval_questions_template",
+    "hops": [
+      2,
+      3,
+      4
+    ],
+    "files": [
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+    ],
+    "ids_per_hop": {
+      "2": 200,
+      "3": 200,
+      "4": 200
+    },
+    "num_ids": 600,
+    "expected_ids_per_hop": 200,
+    "expected_total_ids": 600,
+    "expected_counts_source": "eval_set.expected in /cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+    "expected_counts_asserted": true
+  },
+  "training_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_train.jsonl",
+  "limit": null,
+  "config": "/cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+  "model_config": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/config.json",
+  "decomposer_config": "/cta/users/fyilmaz/Thesis---QAv2/configs/decomposer.json",
+  "output_root": "runs/exp-001",
+  "adapter_dir": "runs/exp-001/20260818_222259/adapter",
+  "dry_run": false,
+  "git": {
+    "commit": "21243337f6516461636a8aed97d7ac88ca23f00a",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 1,
+    "dirty_files": [
+      "?? \"Plan after the meeting.md\""
+    ]
+  }
+}

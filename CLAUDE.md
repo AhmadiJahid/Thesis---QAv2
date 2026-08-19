@@ -47,7 +47,7 @@ You obey the same economics: consume summaries, never transcripts, and at a phas
 
 These are decisions already taken by Jahid's supervisor and his professor. The system records them and the reviewer enforces them; they change only when those humans change them — not by an agent, and not by Tural.
 
-- **Model size is capped small.** Roughly **8B parameters maximum** overall, **router included**. (A separate ~600M router cap was recorded here by the 2026-08-11 setup render and attributed to the supervisor; Jahid stated on 2026-08-17 that no such router cap binds him and had it lifted — see ADR 0008. If the supervisor reasserts a router-specific cap, that supersedes this.)
+- **Model size is capped small.** Roughly **8B parameters maximum** overall, **router included**. (A separate ~600M router cap was recorded here by the 2026-08-11 setup render and attributed to the supervisor; Jahid stated on 2026-08-17 that no such router cap binds him and had it lifted — see ADR 0008. If the supervisor reasserts a router-specific cap, that supersedes this. On 2026-08-19 Jahid admitted Qwen3.5-9B as a decomposer model for issue #12, raising `default_max_params` to 10B — ADR 0015, pending supervisor confirmation; if the supervisor reasserts the 8B ceiling, that supersedes.)
 - **No closed commercial model may score, rate, or judge decomposition quality.** Scoring decompositions by asking Gemini's API to rate them was rejected by the supervisor as not scientifically defensible. This binds the scientific evaluation loop — it says nothing about the closed models that run these coding sessions. Never reintroduce it silently.
 - **Fine-tuning is allowed** and is expected as a comparison arm against prompting.
 
