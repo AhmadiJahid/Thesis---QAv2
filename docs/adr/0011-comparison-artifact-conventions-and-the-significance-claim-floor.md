@@ -5,6 +5,8 @@
 
 Amends [0009](./0009-paired-bootstrap-and-mcnemar-as-the-significance-protocol.md) (the significance protocol of record) with three conventions established by PR #22 (issue #20 hardening). PR #22's Gate-1 review found the conventions sound but unrecorded; this ADR is that record. None of these came from the supervisor.
 
+*(Amended 2026-08-20 by [0020](./0020-prior-work-re-analysis-convention.md): analysis notes reporting a statistics battery carry a machine-readable JSON companion beside the note.)*
+
 ## Context
 
 PR #22 hardened `--compare` in `scripts/musique_decompositions_evaluator.py`. Three of its choices are protocol-shaped — they will appear in every run's config snapshot and every comparison output, and in November they would read as settled decisions unless their provenance is recorded.

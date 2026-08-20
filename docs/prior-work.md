@@ -58,6 +58,8 @@ Shared patterns per FINDINGS: exact match is low (gold plans are hard to reprodu
 
 FINDINGS' takeaways for next work: prefer typed (or at least masked) few-shot retrieval over raw; unguided decomposition needs stronger length/hop control; optimize for step F1 / ordered accuracy / hop EM, not only exact match.
 
+**Significance check (2026-08-20):** paired tests over these per-item files show the composite gap above is *not* significant and is 87% one fragile term; typed > raw holds on the step-level metrics (uncorrected), typed vs uniform decides nothing at n=600 — see `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md` before citing this table.
+
 ## 4. Pool sweep — pool size × retrieval × mask mode (FINDINGS §5)
 
 Source: `Thesis---QA/handoff/results_analysis/pool_sweep_summary/all_runs.csv` + plots. 33 cells (sizes 1000/2000/4000/8000; balanced/imbalanced; biencoder_only vs biencoder_plus_ce; modes raw/typed/uniform); eval size typically 750 questions per cell. Same pool/eval provenance as §3: pool from MuSiQue train, eval from dev (`Thesis---QA/configs/pool_sweep.json:16,26`), which keeps the retrieval numbers leak-free.
@@ -74,6 +76,8 @@ Best cells by metric:
 Aggregate mean composite_score: mode typed 0.267, uniform 0.259, raw 0.243; biencoder_only 0.257, biencoder_plus_ce 0.256; size 4000 is highest among sizes at 0.311 (2000: 0.271, 1000: 0.232, 8000: 0.230).
 
 FINDINGS' conclusions: typed masking is the best average retrieval mode in this sweep; larger pool is not always better (8000 drops vs 4000); cross-encoder rerank is not a free win on mean composite (it helps some metrics, especially hop-count EM / step F1 at larger pools — consult the delta plots per metric); exact match stays ~3–5% across the board — pool size alone does not solve gold-plan matching.
+
+**Significance check (2026-08-20):** over the 15 matched cell pairs, +CE raises ROUGE-L F1 in 15/15 (5 survive Holm) and shows no significant effect on exact match (0/15 by any test, signs split 7/8) — see `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`.
 
 ## 5. MetaQA KG compile/execute charts (FINDINGS §6)
 
