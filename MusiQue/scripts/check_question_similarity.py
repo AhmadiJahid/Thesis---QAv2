@@ -19,6 +19,18 @@ Ported from v1. Adapted for v2: embedding model registry, NER model, top-k, devi
 query glob and cache directory come from ``configs/similarity.json`` /
 ``configs/paths.json``; the embedding model's parameter count is asserted against the
 ceiling; the run writes the standard trail.
+
+**Hop-matched retrieval** (issue #15, ADR 0022) is an opt-in candidate filter: with
+``--hop-match`` the top-k for each query is computed over the pool rows in that query's
+hop bucket only, where the hop comes from the query id (``--hop-source gold``) or from a
+predictions JSONL (``--hop-source predictions``, the future router's interface). The knobs
+live in ``hop_match`` in ``configs/similarity.json`` and default to **off**, which is the
+mixed condition and the behaviour this script had before the flag existed.
+
+``--dry-run`` loads the pool and the queries, resolves and validates the hop side (bucket
+sizes, unparseable ids, missing predictions) and writes the run trail **without loading the
+embedding model** — the preflight for a hop-matched run, and the only part of this script a
+machine without model weights can execute.
 """
 from __future__ import annotations
 
@@ -41,6 +53,7 @@ from _prep_common import (
 
 import numpy as np
 
+import hop_matching
 from model_size import assert_within_ceiling, load_limits
 from pool_embeddings import needs_e5_prefix
 from run_artifacts import now_iso, write_run_artifacts
@@ -202,12 +215,25 @@ def _top_k_from_scores(
     scores: np.ndarray,
     pool_rows: list[dict[str, Any]],
     top_k: int,
+    allowed_indices: list[list[int]] | None = None,
 ) -> list[list[dict[str, Any]]]:
-    """Top-k neighbours from a (num_queries x num_pool) similarity matrix."""
+    """Top-k neighbours from a (num_queries x num_pool) similarity matrix.
+
+    ``allowed_indices[i]`` restricts query ``i`` to a subset of the pool (hop-matched
+    retrieval, ADR 0022): the ranking then happens *inside* the subset, so the query still
+    gets ``top_k`` neighbours. ``None`` is the unfiltered path, byte-for-byte the code that
+    ran before hop matching existed — the mixed condition is not a special case of the
+    filter, it is the absence of it.
+    """
     all_neighbours: list[list[dict[str, Any]]] = []
     for i in range(scores.shape[0]):
         row_scores = scores[i]
-        top_idx = np.argsort(row_scores)[::-1][:top_k]
+        if allowed_indices is None:
+            top_idx = np.argsort(row_scores)[::-1][:top_k]
+        else:
+            allowed = allowed_indices[i]
+            local = np.argsort(row_scores[allowed])[::-1][:top_k]
+            top_idx = [allowed[int(j)] for j in local]
         neighbours: list[dict[str, Any]] = []
         for j in top_idx:
             prow = pool_rows[int(j)]
@@ -243,7 +269,193 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--out", type=Path, default=None, help="Output JSONL path (default: stdout).")
     p.add_argument("--run-dir", type=Path, default=None)
     p.add_argument("--seed", type=int, default=None)
+
+    hop = p.add_mutually_exclusive_group()
+    hop.add_argument(
+        "--hop-match",
+        dest="hop_match",
+        action="store_true",
+        default=None,
+        help="Restrict each query's candidates to the pool rows of its hop depth "
+        "(hop-matched retrieval, issue #15). Default: hop_match.enabled in the config.",
+    )
+    hop.add_argument(
+        "--no-hop-match",
+        dest="hop_match",
+        action="store_false",
+        help="Force the mixed condition even if the config enables hop matching.",
+    )
+    p.add_argument(
+        "--hop-source",
+        choices=list(hop_matching.HOP_SOURCES),
+        default=None,
+        help="Where a query's hop depth comes from: 'gold' (parsed from the query id) or "
+        "'predictions' (a JSONL from --hop-predictions).",
+    )
+    p.add_argument(
+        "--hop-predictions",
+        type=Path,
+        default=None,
+        help="JSONL of hop predictions (one object per query: query id + predicted hop). "
+        "Required by --hop-source predictions.",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate the pool, the queries and the hop filter and write the run trail "
+        "without loading the embedding model or computing any top-k.",
+    )
     return p.parse_args()
+
+
+def _build_hop_filters(
+    *,
+    query_files: list[Path],
+    n_per_file: int | None,
+    pool_rows: list[dict[str, Any]],
+    pool_buckets: dict[int, list[int]],
+    predicted_hops: dict[str, int] | None,
+    hop_settings: hop_matching.HopMatchSettings,
+    top_k: int,
+) -> tuple[dict[str, hop_matching.HopFilter], list[dict[str, Any]], int]:
+    """Build every query file's hop filter up front, before any embedding is paid for.
+
+    Returns ``({query file: filter}, per-file summaries, total queries)``; the filter map
+    is empty when hop matching is off. Doing this as a pre-pass matters for more than
+    speed: the output JSONL is opened for writing later, so an infeasible hop bucket in the
+    *third* query file would otherwise leave a truncated artifact at a path the sweep's
+    skip-if-exists logic would then treat as done.
+    """
+    filters: dict[str, hop_matching.HopFilter] = {}
+    per_file: list[dict[str, Any]] = []
+    total_queries = 0
+    for qpath in query_files:
+        query_rows = _load_jsonl(qpath, limit=n_per_file)
+        total_queries += len(query_rows)
+        entry: dict[str, Any] = {"query_file": str(qpath), "queries": len(query_rows)}
+        if not query_rows:
+            print(f"  {qpath}: 0 queries loaded (empty file or n=0)")
+            per_file.append(entry)
+            continue
+        hop_filter = hop_matching.build_hop_filter(
+            query_rows=query_rows,
+            pool_buckets=pool_buckets,
+            settings=hop_settings,
+            top_k=top_k,
+            predicted_hops=predicted_hops,
+        )
+        if hop_filter is not None:
+            filters[str(qpath)] = hop_filter
+            entry["hop_match"] = hop_filter.summary()
+            print(
+                f"  {qpath}: {len(query_rows)} queries, hop counts "
+                f"{entry['hop_match']['query_hop_counts']}, candidates per query "
+                f"{entry['hop_match']['candidates_per_query_min']}"
+                f"..{entry['hop_match']['candidates_per_query_max']} "
+                f"(need >= {hop_filter.min_candidates})"
+            )
+        else:
+            print(f"  {qpath}: {len(query_rows)} queries, mixed (all {len(pool_rows)} pool rows)")
+        per_file.append(entry)
+    return filters, per_file, total_queries
+
+
+def _dry_run(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    *,
+    query_files: list[Path],
+    n_per_file: int | None,
+    pool_rows: list[dict[str, Any]],
+    pool_path: Path,
+    pool_buckets: dict[int, list[int]],
+    predicted_hops: dict[str, int] | None,
+    hop_settings: hop_matching.HopMatchSettings,
+    top_k: int,
+    modes: list[str],
+    embed_key: str,
+    model_id: str,
+    device: str,
+    seed: int,
+    seeded: Any,
+    run_dir: Path,
+) -> None:
+    """Preflight: validate the hop filter and write the trail, loading no model.
+
+    This is what the smoke test can run (no weights on the machine) and what an
+    experiment should run before it spends GPU time: every hop-side failure mode — an
+    unparseable pool or query id, a query with no prediction, a bucket too small for
+    ``top_k`` — is raised here, before the first embedding.
+
+    Because no model is loaded, the parameter-count assertion in ``src/model_size.py`` is
+    **not** exercised by a dry run (same caveat as the router/decomposer dry runs).
+    """
+    print("\n=== DRY RUN: no model is loaded and no top-k is computed ===")
+    _, per_file, total_queries = _build_hop_filters(
+        query_files=query_files,
+        n_per_file=n_per_file,
+        pool_rows=pool_rows,
+        pool_buckets=pool_buckets,
+        predicted_hops=predicted_hops,
+        hop_settings=hop_settings,
+        top_k=top_k,
+    )
+
+    dest = str(args.out) if args.out else "stdout"
+    print(f"\nDry run OK: {total_queries} queries over {len(query_files)} file(s); "
+          f"nothing written to {dest}")
+
+    metrics = {
+        "script": Path(__file__).name,
+        "created_utc": now_iso(),
+        "dry_run": True,
+        "seed": seed,
+        "seeded": seeded,
+        "embed_model": embed_key,
+        "embed_model_id": model_id,
+        "model_size": None,
+        "device": device,
+        "modes": modes,
+        "top_k": top_k,
+        "num_queries_per_file": n_per_file,
+        "pool_file": str(pool_path),
+        "pool_rows": len(pool_rows),
+        "query_files": [str(p) for p in query_files],
+        "total_queries": total_queries,
+        "total_written": 0,
+        "output": dest,
+        "hop_match": hop_settings.as_record(top_k),
+        "hop_match_per_query_file": per_file,
+    }
+    write_run_artifacts(
+        run_dir,
+        config_snapshot={
+            "script": Path(__file__).name,
+            "config_path": cfg.get("_config_path"),
+            "dry_run": True,
+            "pool_file": str(args.pool_file),
+            "query_files": [str(p) for p in query_files],
+            "mode": args.mode,
+            "top_k": top_k,
+            "n": n_per_file,
+            "embed_model": embed_key,
+            "device": device,
+            "seed": seed,
+            "hop_match": hop_settings.as_record(top_k),
+            "out": dest,
+        },
+        metrics=metrics,
+        note_title="Bi-encoder question similarity (dry run)",
+        note_lines=[
+            "- Dry run: the hop filter and the inputs were validated; **no model was loaded**, "
+            "no top-k was computed and no output JSONL was written.",
+            f"- Pool: `{pool_path}` ({len(pool_rows)} rows)",
+            f"- Query files: {len(query_files)} ({total_queries} queries, n={n_per_file} each)",
+            f"- Modes: {', '.join(modes)}; top-k: {top_k}",
+            f"- Hop matching: {hop_settings.as_record(top_k)}",
+        ],
+        prefix="similarity_",
+    )
 
 
 def main() -> None:
@@ -265,6 +477,12 @@ def main() -> None:
     cache_enabled = bool(require(cfg, "bi_encoder.cache_enabled")) and not args.no_cache
     cache_dir = args.cache_dir or dataset_path(paths_cfg, require(cfg, "bi_encoder.cache_dir_key"))
     run_dir = args.run_dir or run_dir_for(paths_cfg, require(cfg, "bi_encoder.run_subdir"))
+    hop_settings = hop_matching.settings_from_config(
+        cfg,
+        enabled=args.hop_match,
+        hop_source=args.hop_source,
+        predictions_file=args.hop_predictions,
+    )
 
     if args.query_file is not None:
         query_files = [args.query_file.resolve()]
@@ -288,6 +506,67 @@ def main() -> None:
         print(f"Cache : {cache_dir}  (rebuild={args.rebuild_cache})")
     else:
         print("Cache : disabled")
+
+    # Hop-matched retrieval (issue #15, ADR 0022). The pool buckets are computed once: the
+    # pool is the same for every query file, and an unparseable pool id must stop the run
+    # before any embedding work is paid for.
+    pool_buckets: dict[int, list[int]] = {}
+    predicted_hops: dict[str, int] | None = None
+    if hop_settings.enabled:
+        pool_buckets = hop_matching.group_pool_by_hop(pool_rows)
+        print(
+            f"Hop   : matched on {hop_settings.hop_source}; pool buckets "
+            f"{ {h: len(v) for h, v in sorted(pool_buckets.items())} }"
+        )
+        if hop_settings.hop_source == "predictions":
+            predicted_hops = hop_matching.load_predicted_hops(
+                hop_settings.predictions_file,
+                id_field=hop_settings.predictions_id_field,
+                hop_field=hop_settings.predictions_hop_field,
+            )
+            print(
+                f"        predictions: {len(predicted_hops)} from "
+                f"{hop_settings.predictions_file}"
+            )
+    else:
+        print("Hop   : mixed (no hop constraint)")
+
+    if args.dry_run:
+        _dry_run(
+            args,
+            cfg,
+            query_files=query_files,
+            n_per_file=n_per_file,
+            pool_rows=pool_rows,
+            pool_path=pool_path,
+            pool_buckets=pool_buckets,
+            predicted_hops=predicted_hops,
+            hop_settings=hop_settings,
+            top_k=top_k,
+            modes=modes,
+            embed_key=embed_key,
+            model_id=model_id,
+            device=device,
+            seed=seed,
+            seeded=seeded,
+            run_dir=run_dir,
+        )
+        return
+
+    # Validate the hop side of every query file before a single vector is computed, so an
+    # infeasible bucket costs no embedding time and leaves no half-written output.
+    hop_filters: dict[str, hop_matching.HopFilter] = {}
+    hop_summaries: list[dict[str, Any]] = []
+    if hop_settings.enabled:
+        hop_filters, hop_summaries, _ = _build_hop_filters(
+            query_files=query_files,
+            n_per_file=n_per_file,
+            pool_rows=pool_rows,
+            pool_buckets=pool_buckets,
+            predicted_hops=predicted_hops,
+            hop_settings=hop_settings,
+            top_k=top_k,
+        )
 
     from sentence_transformers import SentenceTransformer
 
@@ -355,6 +634,18 @@ def main() -> None:
             raw_questions = [r["question"] for r in query_rows]
             print(f"  Loaded {len(query_rows)} queries")
 
+            # Built (and validated) in the pre-pass above; None is the mixed condition.
+            # A missing or mis-sized filter while matching is on would silently serve this
+            # file as mixed, so it is a refusal rather than a fallback.
+            hop_filter = hop_filters.get(str(qpath))
+            if hop_settings.enabled and hop_filter is None:
+                raise SystemExit(f"Internal error: no hop filter was built for {qpath}")
+            if hop_filter is not None and len(hop_filter.allowed) != len(query_rows):
+                raise SystemExit(
+                    f"Internal error: hop filter for {qpath} covers {len(hop_filter.allowed)} "
+                    f"queries but {len(query_rows)} were loaded"
+                )
+
             masked: dict[str, list[str]] = {}
             if any(m in modes for m in ("typed", "uniform")):
                 missing = [
@@ -391,7 +682,12 @@ def main() -> None:
                 print(f"  Mode {mode}: embedding {len(q_texts)} queries ...")
                 q_emb = _embed(q_texts, embed_model, model_id, prefix="query")
                 scores = np.dot(q_emb, pool_emb_by_mode[mode].T)
-                results_by_mode[mode] = _top_k_from_scores(scores, pool_rows, top_k)
+                results_by_mode[mode] = _top_k_from_scores(
+                    scores,
+                    pool_rows,
+                    top_k,
+                    allowed_indices=hop_filter.allowed if hop_filter is not None else None,
+                )
 
             for i, qrow in enumerate(query_rows):
                 result: dict[str, Any] = {
@@ -403,6 +699,15 @@ def main() -> None:
                     result["query_question_masked_typed"] = query_texts_by_mode["typed"][i]
                 if "uniform" in modes:
                     result["query_question_masked_uniform"] = query_texts_by_mode["uniform"][i]
+                if hop_filter is not None:
+                    # Per-row provenance, so a later reader can tell which condition
+                    # produced this row without consulting the metrics JSON. Absent in the
+                    # mixed condition, which keeps that output byte-identical.
+                    result["hop_match"] = {
+                        "hop_source": hop_filter.settings.hop_source,
+                        "query_hop": hop_filter.query_hops[i],
+                        "pool_candidates": len(hop_filter.allowed[i]),
+                    }
                 for mode in modes:
                     result[f"{mode}_top_k"] = results_by_mode[mode][i]
                 out_handle.write(json.dumps(result, ensure_ascii=False) + "\n")
@@ -436,6 +741,8 @@ def main() -> None:
         "cache_enabled": cache_enabled,
         "cache_hits_per_mode": cache_hits,
         "query_files_masked_on_the_fly": masked_on_the_fly_files,
+        "hop_match": hop_settings.as_record(top_k),
+        "hop_match_per_query_file": hop_summaries,
     }
     write_run_artifacts(
         run_dir,
@@ -452,6 +759,7 @@ def main() -> None:
             "device": device,
             "seed": seed,
             "cache_enabled": cache_enabled,
+            "hop_match": hop_settings.as_record(top_k),
             "out": dest,
         },
         metrics=metrics,
@@ -463,6 +771,7 @@ def main() -> None:
             f"- Modes: {', '.join(modes)}; top-k: {top_k}",
             f"- Rows written: {total_written} -> `{dest}`",
             f"- Cache hits per mode: {cache_hits}",
+            f"- Hop matching: {hop_settings.as_record(top_k)}",
         ],
         prefix="similarity_",
     )

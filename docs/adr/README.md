@@ -49,6 +49,7 @@ When **not** to write one:
 | [0019](./0019-musique-answering-backend-conventions.md) | MuSiQue Answering-Backend Conventions: Reader, Context and Scoring | Accepted (Jahid, 2026-08-20, in session; pending supervisor confirmation) |
 | [0020](./0020-prior-work-re-analysis-convention.md) | Prior-Work Re-Analysis Convention | Accepted |
 | [0021](./0021-clustering-pool-construction-strategy.md) | Clustering-Based Pool Construction: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
+| [0022](./0022-hop-matched-retrieval-the-implementers-design.md) | Hop-Matched Retrieval: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
 
 ---
 
