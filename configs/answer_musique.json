@@ -1,0 +1,72 @@
+{
+  "_note": "Config for components/answerer/run_answerer.py: the MuSiQue answering backend of issue #16. It scores a decomposition by whether executing it leads to the right final answer. The three methodology choices it encodes were made by Jahid on 2026-08-20 in session, pending supervisor confirmation, and are recorded in docs/adr/0019: (1) the reader is a model from the DECOMPOSER's registry (components/decomposer/models/<model>/config.json), default mistral_7b_instruct, swappable here or with --model; (2) the context for every sub-question is the MuSiQue item's full paragraph list, the standard answerable setting - there is no gold-supporting-only and no retrieval condition; (3) scoring is MuSiQue's official answer EM and answer F1 against the gold answer plus its alias list (src/answer_metrics.py). No model scores, rates or judges anything (CLAUDE.md standing constraint).",
+
+  "seed": 42,
+
+  "reader_model": "mistral_7b_instruct",
+  "reader_models_dir_key": "decomposer_models_dir",
+  "reader_prompt_file": "components/answerer/prompts/reader.md",
+  "_reader_note": "reader_models_dir_key names a repo.* key in configs/paths.json, so the reader reuses the decomposer's model registry: model_id, loader/quantization, decoding and post_process all come from that folder's config.json and no new model family is introduced (ADR 0019 decision 1). Only the prompt is the answerer's own, because a decomposition prompt cannot answer a question; it is one committed file for every model, split on chat_template.split_marker for a chat-template folder and joined for a plain one (see run_answerer.py::render_reader_template).",
+
+  "chat_split_marker": "<<<USER>>>",
+
+  "context": {
+    "policy": "all_paragraphs",
+    "paragraph_template": "[{idx}] {title}: {text}",
+    "separator": "\n",
+    "expected_paragraphs_per_item": 20
+  },
+  "_context_note": "policy 'all_paragraphs' is the only implemented policy and the only one that may ship (ADR 0019 decision 2): every paragraph of the MuSiQue item, in the item's own order, with no filtering by is_supporting and no retrieval. Any other value is refused rather than silently approximated. expected_paragraphs_per_item is a REPORTING reference, not an assertion: MuSiQue dev is 20 paragraphs per item for almost every item but not all of them (measured 2026-08-20 on musique_ans_v1.0_dev.jsonl: 2401 of 2417 rows have 20, and 16 rows have 17-19), so the run reports how many items carried fewer instead of refusing them.",
+
+  "items_key": "musique_dev",
+  "gold_decompositions_key": "musique_dev_gold_clean",
+  "_source_note": "items_key is the MuSiQue file that carries the context paragraphs and the gold answer + aliases for an item (id, question, paragraphs, answer, answer_aliases). gold_decompositions_key is the gold-decomposition file used by --gold-decompositions, the oracle-decomposition ceiling: only the gold sub-question TEXT is read from it, never the gold sub-answers, so the ceiling measures the reader executing a perfect plan rather than a plan that already contains its answers.",
+
+  "fields": {
+    "id": "id",
+    "question": "question",
+    "answer": "answer",
+    "answer_aliases": "answer_aliases",
+    "paragraphs": "paragraphs",
+    "paragraph_idx": "idx",
+    "paragraph_title": "title",
+    "paragraph_text": "paragraph_text",
+    "gold_decomposition": "question_decomposition"
+  },
+
+  "substitution": {
+    "accept_bare_references": true,
+    "dry_run_answer_template": "DRY_RUN_ANSWER_FOR_STEP_{k}"
+  },
+  "_substitution_note": "Each [#k] in a sub-question is replaced by the answer the reader produced for step k (src/step_lines.py::substitute_step_references). accept_bare_references also recognises MuSiQue's bare '#k', which is both the gold convention read by --gold-decompositions and, per ADR 0012 (target_reference_style 'as_is'), the style the fine-tuned arm emits; without it the oracle ceiling could not be executed at all. A reference with no answer yet (a forward reference, an out-of-range k, a failed or empty generation) is left in the text verbatim and counted, never dropped. dry_run_answer_template stands in for a generated answer under --dry-run so the substitution chain is exercised with no model loaded.",
+
+  "answer_post_process": {
+    "take_first_line": true,
+    "strip_prefixes": ["Answer:", "answer:", "A:"],
+    "max_answer_chars": 200
+  },
+  "_answer_post_process_note": "The reader is instructed to output the answer alone; this is the mechanical cleanup of what it actually returns, after the model folder's own post_process block (<think> stripping and truncate_at). max_answer_chars bounds a runaway answer before it is scored - a truncation, recorded per row and counted in the metrics, not a silent edit.",
+
+  "generation_overrides": {
+    "max_new_tokens": 64
+  },
+  "_generation_overrides_note": "Applied on top of the model folder's generation block, identically for every sub-question. A MuSiQue answer is a short span, so the decomposer folders' decomposition-sized budget is not the right one here; a row that reached this budget is reported as rows_at_max_new_tokens.",
+
+  "hops": [2, 3, 4],
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_format": "jsonl",
+  "questions_jsonl": {
+    "question_field": "question",
+    "id_field": "id"
+  },
+  "eval_rows_per_hop": 200,
+  "_eval_set_note": "The same pinned ADR 0007 evaluation set the decompositions were produced on: 200 items per hop depth for hops 2/3/4, 600 total, and exactly those ids. Asserted by identity, not only by count, with the shared assertion in run_decomposer.py (assert_pinned_eval_set) - an end-to-end number on a different set is not comparable to the decomposition-quality numbers or to another arm (ADR 0011). --gold-decompositions restricts itself to those ids for the same reason: the oracle ceiling has to be a ceiling for the set the arms ran on. --allow-unpinned-eval-set is the recorded opt-out for fixture and smoke runs, which are not experiment arms.",
+
+  "limit": null,
+  "output_subdir": "answer_musique",
+  "out_prefix": "answer",
+  "progress_every": 10,
+  "prompt_log_every": 25,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

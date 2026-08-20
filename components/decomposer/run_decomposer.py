@@ -1758,6 +1758,7 @@ def assert_pinned_eval_set(
     pinned_ids: set[str] | None = None,
     pinned_files: list[str] | None = None,
     pinned_id_problems: list[str] | None = None,
+    remedy: str | None = None,
 ) -> dict[str, Any]:
     """Assert the run loaded the pinned evaluation set - by **id**, not only by count.
 
@@ -1771,6 +1772,12 @@ def assert_pinned_eval_set(
       is not the pinned set - so the ids are compared, and a mismatch names the offenders.
 
     ``--allow-unpinned-eval-set`` is the explicit, recorded opt-out for fixture runs.
+
+    ``remedy`` is the caller-specific sentence the refusal ends with. It exists because this
+    assertion is shared: the decomposer's remedy is to point ``--retrieval-input`` at a file
+    built over the pinned questions, while the answering backend's
+    (``components/answerer/run_answerer.py``) is to point ``--predictions`` at a run over
+    them. A wrong remedy in an otherwise correct refusal sends the reader to the wrong flag.
     """
     expected_per_hop = optional(cfg, "eval_rows_per_hop")
     record: dict[str, Any] = {
@@ -1850,9 +1857,12 @@ def assert_pinned_eval_set(
         f"Loaded per hop: {rows_per_hop} (total {total}), source: {source}.\n"
         f"Pinned id files: {pinned_files}\n"
         "ADR 0007 pins that set and ADR 0011's stance is that a comparison across different "
-        "evaluation sets is not a comparison, so this is a refusal. Point --retrieval-input "
-        "at a file built over exactly those questions, or pass --allow-unpinned-eval-set for "
-        "a fixture run that is not an experiment arm."
+        "evaluation sets is not a comparison, so this is a refusal. "
+        + (
+            remedy
+            or "Point --retrieval-input at a file built over exactly those questions, or "
+            "pass --allow-unpinned-eval-set for a fixture run that is not an experiment arm."
+        )
     )
 
 
