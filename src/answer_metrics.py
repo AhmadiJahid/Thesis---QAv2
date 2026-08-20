@@ -164,8 +164,14 @@ def gold_answer_set(answer: Any, aliases: Any) -> list[str]:
 def score_answer(pred: str, golds: list[str]) -> tuple[float, float]:
     """``(exact_match, f1)`` — MuSiQue's max over the gold answer set.
 
-    With an empty gold set there is nothing to score against, so both are 0.0; that is
-    a broken item rather than a correct prediction, and the caller counts it.
+    With an empty gold set there is nothing to score against, so both are 0.0; that is a
+    broken item rather than a correct prediction. Consequences, stated because a zero looks
+    like a measurement: such an item **stays in the EM/F1 denominator as a zero** rather than
+    being dropped, and it is counted separately as ``items_with_no_gold_answer`` in the
+    answering backend's metrics, so the two readings can be told apart. Upstream would
+    instead raise on ``max()`` of an empty sequence. Measured 2026-08-20: **0** of the pinned
+    600 evaluation items (and 0 of all 2417 dev rows) have an empty gold set, so on this data
+    the case is cosmetic — the note exists so a dataset swap re-checks it.
     """
     if not golds:
         return (0.0, 0.0)

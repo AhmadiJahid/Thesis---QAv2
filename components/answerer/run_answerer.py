@@ -496,7 +496,17 @@ def load_items(path: Path, *, id_field: str, question_field: str) -> tuple[dict,
 
     Both indexes exist because a decomposer run's predictions dump joins by ``query_id``
     while an older or hand-made predictions file may only carry the question text — the same
-    two keys the decomposition evaluator accepts.
+    two keys the decomposition evaluator accepts. The id index is authoritative; the question
+    index is only the fallback for a row with no id.
+
+    **The question fallback keeps the FIRST row** for a normalized question
+    (``setdefault``), so with two dev items sharing a question text an id-less prediction is
+    scored against the earlier one. Measured 2026-08-20 on the real dev set: 6
+    duplicate-question groups covering 12 of 2417 rows, **all 6 agreeing on the normalized
+    gold answer** (2 groups touch the pinned 600), so a mis-scored item is unreachable on
+    this data — and every prediction a decomposer run produces carries a ``query_id``
+    anyway. The note exists so a dataset swap re-checks it rather than inheriting the
+    assumption.
     """
     by_id: dict[str, dict] = {}
     by_question: dict[str, dict] = {}
