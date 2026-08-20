@@ -10,6 +10,17 @@ Every metric here is **string-level**: no model is in the loop (`METRIC_DEFINITI
 `not_a_semantic_metric`). Two decompositions that mean the same thing but word a step
 differently score as a mismatch.
 
+**This file is the decomposition-*quality* half of MuSiQue evaluation only.** The end-to-end
+half — execute the decomposition and score the answer it produces — is
+[`components/answerer/run_answerer.py`](../components/answerer/run_answerer.py), whose answer
+EM / answer F1 are defined in [`src/answer_metrics.py`](../src/answer_metrics.py) (MuSiQue's
+official metrics) and whose conventions are recorded in ADR
+[0019](adr/0019-musique-answering-backend-conventions.md). Those numbers are reported
+overall and per gold hop depth, in the same style as `per_gold_hop_metrics` below, and they
+are string-level too — no model scores anything on either side. The two halves share one
+reading of "a step" (`src/step_lines.py`), pinned against each other by
+`tests/test_answer_musique.py::TestStepReadingMatchesTheDecompositionEvaluator`.
+
 ## 1. How rows are built
 
 - **Predictions** (`--predictions`): a JSON list of objects with `question` and

@@ -44,6 +44,7 @@ When **not** to write one:
 | [0016](./0016-real-run-only-invariants-get-source-level-guards.md) | Real-Run-Only Invariants Get Source-Level Guards | Accepted |
 | [0017](./0017-triage-of-the-2026-08-12-transcript-cross-check.md) | Triage of the 2026-08-12 Transcript Cross-Check | Accepted (Jahid, 2026-08-20) |
 | [0018](./0018-resolve-the-carried-v1-research-decisions.md) | Resolve the Carried v1 Research Decisions | Accepted (Jahid, 2026-08-20; embedding model pending supervisor confirmation) |
+| [0019](./0019-musique-answering-backend-conventions.md) | MuSiQue Answering-Backend Conventions: Reader, Context and Scoring | Accepted (Jahid, 2026-08-20, in session; pending supervisor confirmation) |
 
 ---
 
