@@ -28,6 +28,17 @@ THINK_BLOCK_RX = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 #: an enumerated and a bare decomposition of the same steps score the same.
 _ENUMERATOR_RX = re.compile(r"^\s*\d+\.\s*")
 
+#: A reference to the result of step k, in either of the two conventions this repo has:
+#: ``[#k]`` — what the decomposer prompt files instruct ("Use [#1], [#2], ... ONLY to refer
+#: to previous step results"), the same grammar as
+#: ``scripts/musique_decompositions_evaluator.py::_REF_RX``; and bare ``#k`` — MuSiQue's own
+#: gold convention and, per ADR 0012 (``target_reference_style: "as_is"``), the style the
+#: fine-tuned arm is trained to emit, the same grammar as
+#: ``src/finetune_data.py::_BARE_REF_RX``. One regex with two alternatives so substitution is
+#: a single pass: a resolved answer that itself contains "#3" must not be rescanned.
+_REF_RX = re.compile(r"\[#(?P<bracketed>\d+)\]|(?<!\[)#(?P<bare>\d+)")
+_BRACKETED_REF_RX = re.compile(r"\[#(?P<bracketed>\d+)\]")
+
 
 def split_step_lines(text: str) -> list[str]:
     """Split a decomposition string into steps.
@@ -130,3 +141,46 @@ def trim_to_step_lines(text: str, max_step_lines: int) -> str:
 def step_line_count(text: str) -> int:
     """Number of step lines in a finished decomposition (the evaluator's count)."""
     return len(split_step_lines(text))
+
+
+def substitute_step_references(
+    text: str, answers: dict[int, str], *, accept_bare: bool = True
+) -> tuple[str, list[int], list[int]]:
+    """Replace each ``[#k]`` (and optionally bare ``#k``) with the answer of step k.
+
+    This is what makes a decomposition *executable*: step 2 of "Which union organised the
+    strike? / Who leads [#1]?" can only be asked once step 1 has an answer. Used by the
+    MuSiQue answering backend (``components/answerer/run_answerer.py``).
+
+    ``answers`` maps a **1-based** step index to the answer produced for that step.
+    Returns ``(substituted_text, resolved_ks, unresolved_ks)``:
+
+    - a reference whose k has a non-empty answer in ``answers`` is replaced by it and k is
+      reported in ``resolved_ks`` (once per occurrence);
+    - a reference with no answer — a forward reference, an out-of-range k, or a step whose
+      generation failed or came back empty — is **left in the text verbatim** and reported
+      in ``unresolved_ks``. Leaving it is deliberate: dropping it would silently turn
+      "Who leads [#1]?" into a different, answerable-looking question, and the caller
+      counts these so a run says how often it happened.
+
+    Substitution is a single left-to-right pass, so an inserted answer that itself contains
+    ``#3`` is not rescanned. Which grammars are recognised is the caller's (config's) choice:
+    ``accept_bare`` false recognises only the bracketed form the prompts instruct.
+    """
+    resolved: list[int] = []
+    unresolved: list[int] = []
+
+    def _replace(match: re.Match[str]) -> str:
+        # groupdict, not group(): the bracketed-only regex has no "bare" group at all.
+        groups = match.groupdict()
+        raw = groups.get("bracketed") or groups.get("bare")
+        k = int(raw)
+        answer = answers.get(k)
+        if isinstance(answer, str) and answer.strip():
+            resolved.append(k)
+            return answer.strip()
+        unresolved.append(k)
+        return match.group(0)
+
+    rx = _REF_RX if accept_bare else _BRACKETED_REF_RX
+    return rx.sub(_replace, text), resolved, unresolved

@@ -19,6 +19,9 @@ from run_config import load_config, require
 _LIMIT_KEY = {
     "router": "router_max_params",
     "decomposer": "default_max_params",
+    # The MuSiQue answering backend's reader (issue #16). It loads a model from the
+    # decomposer's own registry, so it takes the same overall ceiling.
+    "answerer": "default_max_params",
     "retrieval": "default_max_params",
     "ner": "default_max_params",
     "reranker": "default_max_params",
