@@ -3,6 +3,8 @@
 - **Status**: Accepted (Jahid, 2026-08-20, in session)
 - **Date**: 2026-08-20
 
+Amends [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) (item 1 below softens its §3 "fixed" k values) and [0009](./0009-paired-bootstrap-and-mcnemar-as-the-significance-protocol.md) (item 4 below).
+
 ## Context
 
 `docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md` (PR #17) found a
@@ -41,7 +43,9 @@ every bullet in session on 2026-08-20; this ADR records the decisions.
 
 #19 narrows to the two waiting-on-supervisor bullets. Comparison artifacts gain a t-test
 (#30, Gate 1). Any future write-up describing top-20/top-5 must present them as ablatable
-working values. Three new issues (#27–#29) enter the backlog.
+working values. Three new issues (#27–#29) enter the backlog. Note the k-ablation is not a
+config flip on the #12 path: that path reads a pinned, content-addressed artifact built at
+top-20/top-5 (ADR 0014), so ablating k means rebuilding the retrieval artifact.
 
 ## Alternatives considered
 

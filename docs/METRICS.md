@@ -145,7 +145,8 @@ snapshot and metrics JSON):
 The weights are a **choice, not a result**: they were hard-coded literals in v1 and were
 promoted to config in v2 so a run records them. Jahid's supervisor flagged this score as
 handmade and possibly biased and asked for it to be checked against standard methods
-(`docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md`, open item 4). Two
+(`docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md`; that check is
+tracked as issue #29). Two
 consequences worth carrying into the write-up: the 0.2 reference-validity term is a micro
 rate that can swing the composite on a handful of `[#k]` references, and the step-count
 term is direction-blind (it uses the MAE, so over- and under-decomposition are penalised
