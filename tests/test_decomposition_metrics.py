@@ -19,6 +19,7 @@ Run::
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.util
 import json
@@ -573,6 +574,22 @@ class TestPairedTTest(unittest.TestCase):
         self.assertFalse(row["significant"])
         self.assertIsNotNone(row["degenerate"])
 
+    def test_non_finite_input_yields_a_degenerate_row_not_a_nan_in_json(self) -> None:
+        """N5: nothing non-finite reaches the metrics JSON.
+
+        `NaN` and `Infinity` are what Python's json writer emits for those floats and are
+        **not valid JSON**, so a non-finite result is reported as a degenerate row instead.
+        A NaN cannot come from a v1 file any more (the loader type-checks every compared
+        column), which is exactly why this guard is tested directly.
+        """
+        row = self._row([1.0, float("nan"), 0.5], [0.0, 0.0, 0.0])
+        self.assertIsNone(row["t_statistic"])
+        self.assertIsNone(row["p_value"])
+        self.assertFalse(row["significant"])
+        self.assertIsNotNone(row["degenerate"])
+        # Serialisable, and strictly so: json rejects NaN when told to.
+        json.dumps(row, allow_nan=False)
+
     def test_single_item_is_degenerate(self) -> None:
         """n = 1: dof = 0, no t-test exists."""
         row = self._row([1.0], [0.0])
@@ -1047,10 +1064,14 @@ class TestV1CompareShim(EvaluatorTestBase):
         self.assertTrue(block["prior_work_not_v2_evidence"])
         self.assertIn("NO commit SHA", block["caveat"])
         self.assertEqual(block["alignment"], "normalized_question")
-        self.assertEqual(block["same_item_check"]["pairs"], metrics["num_aligned_items"])
+        check = block["same_item_check"]
+        self.assertEqual(check["pairs"], metrics["num_aligned_items"])
+        # 'question' is the alignment key here, so it witnesses nothing and is recorded as
+        # tautological; 'gold_steps' is what actually verified the pairing.
+        self.assertEqual(check["verification_fields"], ["gold_steps"])
+        self.assertEqual(check["tautological_fields"], ["question"])
         self.assertEqual(
-            block["same_item_check"]["fields_verified_equal"]["question"],
-            metrics["num_aligned_items"],
+            check["fields_verified_equal"]["gold_steps"], metrics["num_aligned_items"]
         )
         for side, record in block["inputs"].items():
             with self.subTest(side=side):
@@ -1107,7 +1128,11 @@ class TestV1CompareShim(EvaluatorTestBase):
         block = metrics["v1_format_inputs"]
         self.assertEqual(block["alignment"], "position")
         self.assertIn("file order", block["alignment_definition"])
-        self.assertEqual(block["same_item_check"]["fields_verified_equal"]["gold_steps"], 4)
+        check = block["same_item_check"]
+        # Position ids say nothing about the item, so both fields witness the pairing here.
+        self.assertEqual(check["verification_fields"], ["question", "gold_steps"])
+        self.assertEqual(check["tautological_fields"], [])
+        self.assertEqual(check["fields_verified_equal"], {"question": 4, "gold_steps": 4})
 
     def test_positional_alignment_refuses_misaligned_files(self) -> None:
         """Row i of one file holding a different question than row i of the other aborts.
@@ -1161,6 +1186,238 @@ class TestV1CompareShim(EvaluatorTestBase):
                 self.assertIn("read-only", str(caught.exception))
         # Anywhere else is fine.
         EVAL._refuse_writing_into_prior_work(self.tmp / "somewhere", root)
+
+    # ---- negative controls from the PR #36 Gate-1 review (I-1, N3, N5) ----
+
+    #: A distinctive string standing in for dataset question text, so a test can assert it
+    #: never reaches an error message.
+    FABRICATED_QUESTION = "ZZQuestionTextThatMustNotAppearInAnyErrorMessage"
+
+    def _synthetic_v1(
+        self,
+        name: str,
+        rows: int,
+        *,
+        with_question: bool,
+        with_gold: bool,
+        offset: float = 0.0,
+        gold_prefix: str = "step",
+        drop_last: bool = False,
+        null_metric_row: int | None = None,
+    ) -> Path:
+        """A v1-shaped bare list built field by field, so a field can be left out.
+
+        The evaluator's own per-item files always carry `question` and `gold_steps`, which is
+        exactly why the vacuous case has to be constructed by hand.
+        """
+        out = []
+        for i in range(rows - (1 if drop_last else 0)):
+            row: dict[str, Any] = {
+                "exact_match": float(i % 2),
+                "step_f1": min(1.0, 0.1 * (i % 7) + offset),
+                "ordered_step_accuracy": min(1.0, 0.05 * (i % 5) + offset),
+                "rouge_l_f1": min(1.0, 0.2 + 0.03 * (i % 9) + offset),
+                "reference_valid_count": 0,
+                "reference_total_count": 0,
+                "step_count_abs_error": i % 3,
+                "hop_count_exact_match": float((i + 1) % 2),
+            }
+            if with_question:
+                row["question"] = f"{self.FABRICATED_QUESTION} number {i}?"
+            if with_gold:
+                row["gold_steps"] = [f"{gold_prefix} {i}.1", f"{gold_prefix} {i}.2"]
+            if null_metric_row == i:
+                row["step_f1"] = None
+            out.append(row)
+        path = self.tmp / f"v1syn_{name}.json"
+        path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _refuse(self, argv: list[str], run_dir_name: str) -> str:
+        proc = self._run(
+            [*argv, "--run-dir", str(self.tmp / run_dir_name)], expect_ok=False
+        )
+        self.assertNotEqual(proc.returncode, 0, "expected a refusal, got success")
+        return proc.stdout + proc.stderr
+
+    def test_unverifiable_pairing_is_refused_not_reported(self) -> None:
+        """I-1 negative control: two v1 files with no witness field must not compare.
+
+        The Gate-1 review's demonstration: two unrelated 40-row v1 files carrying neither
+        `question` nor `gold_steps` produced rc=0, a full battery, and a run note claiming
+        "every pair verified to be the same item ({'question': 0, 'gold_steps': 0})". With no
+        id and no witness field there is nothing that says row i of one file is the same
+        evaluation item as row i of the other, so the comparison is refused.
+        """
+        a = self._synthetic_v1("vac_a", 40, with_question=False, with_gold=False)
+        b = self._synthetic_v1("vac_b", 40, with_question=False, with_gold=False, offset=0.05)
+        message = self._refuse(
+            ["--compare", str(a), str(b), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_vacuous",
+        )
+        self.assertIn("nothing can verify that the paired rows are the same", message)
+        self.assertIn("missing: ['question', 'gold_steps']", message)
+        self.assertFalse((self.tmp / "v1_vacuous" / "compare_metrics.json").exists())
+
+    def test_the_alignment_key_alone_cannot_witness_the_pairing(self) -> None:
+        """I-1: under normalized_question, matching questions verify nothing.
+
+        The question IS the key rows were grouped by, so equality is true by construction. A
+        file carrying only that field has no independent witness and is refused.
+        """
+        a = self._synthetic_v1("taut_a", 40, with_question=True, with_gold=False)
+        b = self._synthetic_v1("taut_b", 40, with_question=True, with_gold=False, offset=0.05)
+        message = self._refuse(
+            [
+                "--compare", str(a), str(b), "--v1-per-item",
+                "--v1-alignment", "normalized_question",
+            ],
+            "v1_tautological",
+        )
+        self.assertIn("nothing can verify that the paired rows are the same", message)
+        self.assertIn("true by construction", message)
+
+    def test_positional_alignment_requires_the_question_and_the_gold(self) -> None:
+        """I-1: positional alignment needs both witness fields, per ADR 0020 condition 3(b).
+
+        That condition (amended 2026-08-20 by PR #35) makes positional alignment admissible
+        only when the alignment field *and* the gold are asserted equal on every matched row,
+        so a file carrying only the gold is refused rather than compared on half the check.
+        """
+        a = self._synthetic_v1("wit_a", 40, with_question=False, with_gold=True)
+        b = self._synthetic_v1("wit_b", 40, with_question=False, with_gold=True, offset=0.05)
+        message = self._refuse(
+            ["--compare", str(a), str(b), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_one_witness",
+        )
+        self.assertIn("missing: ['question']", message)
+        self.assertIn("ADR 0020 condition 3", message)
+
+    def test_the_gold_is_the_witness_under_question_alignment(self) -> None:
+        """I-1 positive control: with the question as the key, the gold verifies the pairing."""
+        a = self._synthetic_v1("goldwit_a", 40, with_question=True, with_gold=True)
+        b = self._synthetic_v1("goldwit_b", 40, with_question=True, with_gold=True, offset=0.05)
+        run_dir = self.tmp / "v1_gold_witness"
+        self._run(
+            [
+                "--compare", str(a), str(b), "--v1-per-item",
+                "--v1-alignment", "normalized_question", "--run-dir", str(run_dir),
+            ]
+        )
+        metrics = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+        check = metrics["v1_format_inputs"]["same_item_check"]
+        self.assertEqual(check["verification_fields"], ["gold_steps"])
+        self.assertEqual(check["tautological_fields"], ["question"])
+        self.assertEqual(check["fields_verified_equal"], {"gold_steps": 40})
+        note = (run_dir / "compare_notes.md").read_text(encoding="utf-8")
+        self.assertIn("all 40 pairs verified to be the same evaluation item on `gold_steps`", note)
+
+    def test_the_verification_sentence_is_built_from_the_counts(self) -> None:
+        """I-1: the note never asserts verification unconditionally.
+
+        Checked at the formatter, because the refusal above means the run cannot reach the
+        note with nothing verified — and this is the guard that keeps that true if it ever can.
+        """
+        self.assertIn(
+            "NOT VERIFIED",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": [],
+                 "fields_verified_equal": {}}
+            ),
+        )
+        self.assertIn(
+            "NOT VERIFIED",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": ["gold_steps"],
+                 "fields_verified_equal": {"gold_steps": 39}}
+            ),
+        )
+        self.assertIn(
+            "all 40 pairs verified",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": ["gold_steps"],
+                 "fields_verified_equal": {"gold_steps": 40}}
+            ),
+        )
+
+    def test_refusals_never_print_dataset_question_text(self) -> None:
+        """N3: v1 error messages identify a row by index + key hash, never by content.
+
+        Under `normalized_question` the alignment key *is* a dataset question, and error text
+        gets pasted into issues and PRs — which would move data into git (CLAUDE.md). All
+        three refusal paths that name ids are covered: id-set mismatch, duplicate key, and a
+        same-item mismatch.
+        """
+        a = self._synthetic_v1("leak_a", 5, with_question=True, with_gold=True)
+        short = self._synthetic_v1("leak_short", 5, with_question=True, with_gold=True, drop_last=True)
+        other_gold = self._synthetic_v1(
+            "leak_gold", 5, with_question=True, with_gold=True, gold_prefix="different"
+        )
+        duplicated = self.tmp / "v1syn_leak_dup.json"
+        rows = json.loads(a.read_text(encoding="utf-8"))
+        duplicated.write_text(
+            json.dumps(rows + [dict(rows[0])], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        cases = {
+            "id_mismatch": (a, short),
+            "duplicate_key": (duplicated, duplicated),
+            "same_item_mismatch": (a, other_gold),
+        }
+        for name, (left, right) in cases.items():
+            with self.subTest(refusal=name):
+                message = self._refuse(
+                    [
+                        "--compare", str(left), str(right), "--v1-per-item",
+                        "--v1-alignment", "normalized_question",
+                    ],
+                    f"v1_leak_{name}",
+                )
+                self.assertNotIn(self.FABRICATED_QUESTION, message)
+                self.assertIn("sha256:", message)
+                self.assertIn("row ", message)
+
+    def test_a_null_metric_field_is_refused_with_a_clear_message(self) -> None:
+        """N5: a JSON null in a compared column aborts at load, not inside the statistics."""
+        path = self._synthetic_v1(
+            "nullmetric", 40, with_question=True, with_gold=True, null_metric_row=7
+        )
+        message = self._refuse(
+            ["--compare", str(path), str(path), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_nullmetric",
+        )
+        self.assertIn("row 7", message)
+        self.assertIn("step_f1", message)
+        self.assertIn("non-numeric or non-finite", message)
+        self.assertNotIn("TypeError", message)
+
+    def test_prior_work_write_guard_is_not_gated_on_the_v1_flag(self) -> None:
+        """N1: ADR 0020 condition 1 is unconditional, so the guard cannot sit under the flag.
+
+        Checked on the source (the AST pattern of tests/test_generation_contract.py) rather
+        than by pointing a real --run-dir at the read-only repo: a regression in that test
+        would itself write into the tree the rule protects.
+        """
+        tree = ast.parse(EVALUATOR.read_text(encoding="utf-8"))
+        compare_fn = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_compare"
+        )
+        top_level_calls = {
+            sub.func.id
+            for stmt in compare_fn.body
+            for sub in ast.walk(stmt)
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+            # Only statements that are not conditional: an Expr call in the function body.
+            if isinstance(stmt, ast.Expr)
+        }
+        self.assertIn(
+            "_refuse_writing_into_prior_work",
+            top_level_calls,
+            "_refuse_writing_into_prior_work must be called unconditionally in _compare, "
+            "not inside the --v1-per-item branch",
+        )
 
     def test_configured_alignment_default_is_the_analysis_note_alignment(self) -> None:
         """The default reproduces the committed analysis note, whose Task A sorted on it."""

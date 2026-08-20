@@ -246,6 +246,14 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "sha256 and mtime (v1 runs carry no commit SHA), the alignment used, and the caveat "
         "that the result is citable prior work and not a v2 measurement"
     ),
+    "v1_same_item_check": (
+        "v1 rows carry no id, so the pairing rests on a reconstructed key and something must "
+        "witness that it paired the right rows. 'verification_fields' names the fields that "
+        "did (present on every row of both files, and not the alignment key itself — a "
+        "question matching the question it was keyed on witnesses nothing), and "
+        "'fields_verified_equal' counts the pairs each one matched on. With no usable witness "
+        "field the comparison is refused rather than reported"
+    ),
     "composite_score_weights_provenance": (
         "the per-item files stamp the weights and scale they were scored under; --compare "
         "refuses when the two files disagree with each other, and records "
@@ -669,8 +677,8 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
 #:   ``docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`` §3 (Task A).
 #: - ``position``: key = the row's position in the file, so the two files are paired in
 #:   file order. Needed for v1 artifacts whose question texts are not unique (that note's
-#:   Task B has one question appearing twice), and only sound because every paired row's
-#:   question and gold are then asserted equal.
+#:   Task B has one question appearing twice), and only sound because every paired row is
+#:   then verified to be the same item (:func:`_assert_v1_pairs_are_the_same_item`).
 V1_ALIGNMENTS = ("normalized_question", "position")
 
 #: Bound on ``position`` alignment: ids are zero-padded to this width so their sorted order
@@ -679,8 +687,16 @@ V1_ALIGNMENTS = ("normalized_question", "position")
 _V1_POSITION_ID_WIDTH = 6
 
 #: The per-item fields a v1 file must carry. v1 wrote every one of them except ``item_id``,
-#: which it had no concept of.
+#: which it had no concept of. Every one is numeric and every one is read through
+#: ``float()`` downstream, so the loader type-checks them rather than letting a JSON ``null``
+#: surface as a bare TypeError three functions later.
 _REQUIRED_V1_PER_ITEM_FIELDS = tuple(f for f in _REQUIRED_PER_ITEM_FIELDS if f != "item_id")
+
+#: Fields that can witness "this row of file A and that row of file B are the same
+#: evaluation item". v1 files carry no id, so the pairing rests on a reconstructed key and
+#: these are the only evidence that it paired the right rows — see
+#: :func:`_assert_v1_pairs_are_the_same_item`, which refuses to proceed without one.
+_V1_VERIFICATION_FIELDS = ("question", "gold_steps")
 
 #: Leads every v1 comparison's run note and travels in its metrics JSON, so a consumer of
 #: the output cannot mistake it for a v2 measurement (ADR 0020 conditions 5 and 2).
@@ -693,6 +709,41 @@ V1_PRIOR_WORK_CAVEAT = (
     "below are computed by committed v2 code, but they are statistics ABOUT v1 numbers and "
     "inherit v1's provenance gap (ADR 0005, ADR 0020)."
 )
+
+
+def _redacted_key(item_id: str) -> str:
+    """A short content hash of an alignment key, for error messages.
+
+    Under ``normalized_question`` the alignment key IS a dataset question, and error
+    messages get pasted into issues and PRs — which would move dataset content into git
+    (CLAUDE.md: data never enters git). Messages therefore identify a row by its index plus
+    this hash, which is enough to find the row in the file and carries no content.
+    """
+    return "key sha256:" + hashlib.sha256(item_id.encode("utf-8")).hexdigest()[:12]
+
+
+def _v1_id_labeller(
+    alignment: str,
+    rows_by_id_a: dict[str, dict[str, Any]],
+    rows_by_id_b: dict[str, dict[str, Any]],
+) -> Any:
+    """A callable turning a v1 item id into a message-safe label, or None if it is safe.
+
+    ``position`` ids are ``row_000123`` — an index, no content — so they need no redaction.
+    """
+    if alignment != "normalized_question":
+        return None
+
+    def label(item_id: str) -> str:
+        sides = [
+            f"{tag} row {rows[item_id]['v1_row_index']}"
+            for tag, rows in (("a:", rows_by_id_a), ("b:", rows_by_id_b))
+            if item_id in rows
+        ]
+        where = ", ".join(sides) if sides else "row unknown"
+        return f"{where} ({_redacted_key(item_id)})"
+
+    return label
 
 
 def _file_provenance(path: Path) -> dict[str, Any]:
@@ -714,6 +765,7 @@ def _load_v1_per_item(
     alignment: str,
     weights: dict[str, float],
     scale: float,
+    max_reported: int,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Load a v1 bare-list per-item file into ({item_id: row}, header, provenance).
 
@@ -751,6 +803,22 @@ def _load_v1_per_item(
                 f"{path}: row {i} is missing {missing}. --v1-per-item reads the bare-list "
                 f"per-item files v1's evaluator wrote; this file is not one of them."
             )
+        # Every compared field is read through float() downstream. A JSON null or a string
+        # there is a broken input, and saying so with the file, row and field beats a
+        # TypeError raised three functions away from the cause.
+        unusable = [
+            f"{f}={obj[f]!r}"
+            for f in _REQUIRED_V1_PER_ITEM_FIELDS
+            if isinstance(obj[f], bool)
+            or not isinstance(obj[f], (int, float))
+            or not math.isfinite(float(obj[f]))
+        ]
+        if unusable:
+            raise SystemExit(
+                f"{path}: row {i} has non-numeric or non-finite compared field(s): "
+                f"{unusable}. Every metric --compare reads must be a finite number; this "
+                f"file cannot be compared as it stands."
+            )
         if alignment == "normalized_question":
             question = obj.get("question")
             if not isinstance(question, str) or not question.strip():
@@ -762,18 +830,28 @@ def _load_v1_per_item(
         else:
             item_id = f"row_{i:0{_V1_POSITION_ID_WIDTH}d}"
         if item_id in by_id:
-            duplicates.append(item_id)
+            duplicates.append(
+                f"row {i} duplicates row {by_id[item_id]['v1_row_index']} "
+                f"({_redacted_key(item_id)})"
+            )
         row = dict(obj)
         row["item_id"] = item_id
+        # Which row of the file this came from: the only safe way to name a row in an error
+        # message once the alignment key is dataset text (see _redacted_key).
+        row["v1_row_index"] = i
         by_id[item_id] = row
 
     if duplicates:
+        shown = duplicates[:max_reported]
+        more = "" if len(duplicates) <= max_reported else f" ... (+{len(duplicates) - max_reported} more)"
         raise SystemExit(
             f"{path}: {len(duplicates)} duplicate alignment key(s) under --v1-alignment "
-            f"{alignment}: {sorted(set(duplicates))[:5]}\n"
+            f"{alignment}:\n  " + "\n  ".join(shown) + more + "\n"
             "Two rows with the same key cannot be paired unambiguously. If the duplicates "
             "are genuinely duplicated evaluation items, use --v1-alignment position (which "
-            "pairs the two files row by row and asserts each pair is the same item)."
+            "pairs the two files row by row and verifies each pair is the same item). Keys "
+            "are shown hashed: they are dataset question text, which does not go into an "
+            "error message (CLAUDE.md - data never enters git)."
         )
 
     header = {
@@ -793,34 +871,67 @@ def _assert_v1_pairs_are_the_same_item(
     path_b: Path,
     alignment: str,
     max_reported: int,
+    label: Any = None,
 ) -> dict[str, Any]:
-    """Check that each paired v1 row really is the same evaluation item on both sides.
+    """Verify that each paired v1 row really is the same evaluation item on both sides.
 
-    v1 files have no ids, so the pairing rests on a reconstructed key. Under ``position``
-    that key says nothing about the item, so the question text and the gold decomposition
-    are the evidence that row i of one file and row i of the other are the same question —
-    the check the analysis note performed by hand (§3) and the reason the positional
-    alignment is safe there. Fields absent on both sides are skipped, not assumed equal.
+    v1 files have no ids, so the pairing rests on a reconstructed key and something has to
+    witness that it paired the right rows: the question text and the gold decomposition, the
+    check the analysis note performed by hand (§3) and the reason its positional alignment is
+    sound.
+
+    **Every** witness field must be present on **every** aligned row of **both** files, or the
+    run is refused. Two reasons it is "every" and not "any": a verification that silently
+    checked zero fields would report "same item" having established nothing, and ADR 0020
+    condition 3(b) (as amended 2026-08-20 by PR #35) requires the alignment field **and** the
+    gold to be asserted equal wherever positional alignment is used. Under
+    ``normalized_question`` the question IS the alignment key, so its equality holds by
+    construction and cannot witness anything — there, the independent witness is the gold.
     """
-    checked = {"question": 0, "gold_steps": 0}
+    tautological = ("question",) if alignment == "normalized_question" else ()
+    candidates = [f for f in _V1_VERIFICATION_FIELDS if f not in tautological]
+    usable = [
+        f for f in candidates if all(f in row for row in rows_a) and all(f in row for row in rows_b)
+    ]
+    absent = [f for f in candidates if f not in usable]
+    if absent:
+        raise SystemExit(
+            f"--v1-per-item --v1-alignment {alignment}: refusing to compare, because "
+            f"{'nothing' if not usable else 'not enough'} can verify that the paired rows are "
+            f"the same evaluation item.\n"
+            f"  a: {path_a}\n  b: {path_b}\n"
+            f"  required on every row of both files: {list(candidates)}\n"
+            f"  missing: {absent}"
+            + (
+                f"\n  ('question' is the alignment key under {alignment}, so matching "
+                f"questions are true by construction and verify nothing)"
+                if tautological
+                else ""
+            )
+            + "\nv1 per-item rows carry no id, so without these fields this comparison could "
+            "pair unrelated rows and report a full battery over them (ADR 0020 condition 3). "
+            "Use the per-item files v1's evaluator wrote, which carry them, or re-score the "
+            "runs in v2."
+        )
+
+    checked = {f: 0 for f in usable}
     mismatches: list[str] = []
     for item_id, a, b in zip(ids, rows_a, rows_b):
-        if "question" in a or "question" in b:
-            qa, qb = a.get("question"), b.get("question")
-            same = (
-                isinstance(qa, str)
-                and isinstance(qb, str)
-                and _normalize_question(qa) == _normalize_question(qb)
-            )
+        shown_id = label(item_id) if label is not None else item_id
+        for field in usable:
+            if field == "question":
+                qa, qb = a.get("question"), b.get("question")
+                same = (
+                    isinstance(qa, str)
+                    and isinstance(qb, str)
+                    and _normalize_question(qa) == _normalize_question(qb)
+                )
+            else:
+                same = a.get(field) == b.get(field)
             if same:
-                checked["question"] += 1
+                checked[field] += 1
             else:
-                mismatches.append(f"{item_id} (question differs)")
-        if "gold_steps" in a or "gold_steps" in b:
-            if a.get("gold_steps") == b.get("gold_steps"):
-                checked["gold_steps"] += 1
-            else:
-                mismatches.append(f"{item_id} (gold_steps differ)")
+                mismatches.append(f"{shown_id}: {field} differs")
     if mismatches:
         shown = mismatches[:max_reported]
         more = "" if len(mismatches) <= max_reported else f" ... (+{len(mismatches) - max_reported} more)"
@@ -828,10 +939,41 @@ def _assert_v1_pairs_are_the_same_item(
             f"--v1-per-item --v1-alignment {alignment}: {len(mismatches)} paired row(s) are "
             f"not the same evaluation item on both sides.\n"
             f"  a: {path_a}\n  b: {path_b}\n  " + "\n  ".join(shown) + more + "\n"
-            "Pairing rows that hold different questions is not a paired comparison. Check "
-            "that the two files were scored on the same evaluation set in the same order."
+            "Pairing rows that hold different items is not a paired comparison. Check that "
+            "the two files were scored on the same evaluation set in the same order."
         )
-    return {"alignment": alignment, "pairs": len(ids), "fields_verified_equal": checked}
+    return {
+        "alignment": alignment,
+        "pairs": len(ids),
+        # Non-empty by construction: no witness field means the run was refused above.
+        "verification_fields": usable,
+        "fields_verified_equal": checked,
+        "fields_not_usable_as_witness": [f for f in candidates if f not in usable],
+        "tautological_fields": list(tautological),
+    }
+
+
+def _v1_verification_sentence(same_item_check: dict[str, Any]) -> str:
+    """State what the same-item verification actually established — or that it did not.
+
+    Never an unconditional "verified": the sentence is built from the counts, so a record
+    with nothing verified reads as nothing verified. ``_assert_v1_pairs_are_the_same_item``
+    refuses that case today, and this stays honest if that ever changes.
+    """
+    fields = same_item_check.get("verification_fields") or []
+    counts = same_item_check.get("fields_verified_equal") or {}
+    pairs = same_item_check.get("pairs", 0)
+    verified = [f for f in fields if counts.get(f, 0) == pairs and pairs > 0]
+    if not verified:
+        return (
+            "NOT VERIFIED: no field established that the paired rows are the same "
+            f"evaluation item (fields checked: {counts or 'none'})."
+        )
+    return (
+        f"all {pairs} pairs verified to be the same evaluation item on "
+        + ", ".join(f"`{f}`" for f in verified)
+        + "."
+    )
 
 
 def _refuse_writing_into_prior_work(run_dir: Path, read_only_root: str) -> None:
@@ -888,17 +1030,22 @@ def _aligned_ids(
     path_a: Path,
     path_b: Path,
     max_reported: int,
+    label: Any = None,
 ) -> list[str]:
     """Ids common to both files, or abort naming the offenders.
 
     A comparison across two different evaluation sets is not a comparison (CLAUDE.md,
     evidence discipline), so a mismatch is fatal rather than an intersection.
+
+    ``label`` renders an id for the error message. It exists for the v1 shim, whose
+    ``normalized_question`` ids are dataset question text: those are reported as a row index
+    plus a hash instead, so an error pasted into an issue carries no data (``_redacted_key``).
     """
     only_a = sorted(set(a_by_id) - set(b_by_id))
     only_b = sorted(set(b_by_id) - set(a_by_id))
     if only_a or only_b:
         def _fmt(ids: list[str]) -> str:
-            shown = ids[:max_reported]
+            shown = [label(i) if label is not None else i for i in ids[:max_reported]]
             more = "" if len(ids) <= max_reported else f" ... (+{len(ids) - max_reported} more)"
             return ", ".join(shown) + more
 
@@ -1080,16 +1227,25 @@ def _paired_t_test_row(
     """One two-sided paired t-test row over the per-item differences ``a - b``.
 
     ``scipy.stats.ttest_rel`` computes t and p (scipy is a pinned dependency of this repo).
-    The degenerate cases are handled here rather than passed through, because scipy returns
-    NaN or an infinite t for them and neither is representable in JSON: a row with an
-    undefined t makes no significance claim and says why in ``degenerate``.
+    The degenerate cases are caught here rather than passed through: scipy returns NaN or an
+    infinite t for them, and while Python's ``json`` writes those as the bare tokens ``NaN``
+    and ``Infinity``, they are **not valid JSON** — a strict reader rejects the file and a
+    lenient one silently turns them into a float no consumer can compare. A row with an
+    undefined t therefore carries nulls, makes no significance claim, and says why in
+    ``degenerate``.
     """
     differences = values_a - values_b
     n = int(differences.size)
+    mean_a = float(values_a.mean()) if n else 0.0
+    mean_b = float(values_b.mean()) if n else 0.0
+    mean_difference = float(differences.mean()) if n else 0.0
+    # Not just t and p: if the inputs are not all finite then the means are not either, and
+    # NaN in ANY field of this row would end up in the metrics JSON.
+    summary_is_finite = all(math.isfinite(x) for x in (mean_a, mean_b, mean_difference))
     row: dict[str, Any] = {
-        "system_a": float(values_a.mean()) if n else 0.0,
-        "system_b": float(values_b.mean()) if n else 0.0,
-        "difference": float(differences.mean()) if n else 0.0,
+        "system_a": mean_a if summary_is_finite else None,
+        "system_b": mean_b if summary_is_finite else None,
+        "difference": mean_difference if summary_is_finite else None,
         "n": n,
         "degrees_of_freedom": n - 1,
         "underpowered": underpowered,
@@ -1106,6 +1262,12 @@ def _paired_t_test_row(
 
     if n < 2:
         return degenerate(f"n = {n}: a paired t-test needs at least 2 items")
+    if not summary_is_finite:
+        return degenerate(
+            "the per-item values are not all finite, so no mean and no t statistic can be "
+            "reported for this metric (the compared columns should never contain NaN or "
+            "infinity; --v1-per-item type-checks them at load)"
+        )
     if float(differences.std(ddof=1)) == 0.0:
         return degenerate(
             "the standard deviation of the per-item differences is 0 (every item differs by "
@@ -1115,9 +1277,17 @@ def _paired_t_test_row(
 
     result = scipy_stats.ttest_rel(values_a, values_b)
     p_value = float(result.pvalue)
+    t_statistic = float(result.statistic)
+    # Belt and braces on the two guards above: anything non-finite coming out of the test is
+    # reported as degenerate rather than written into the metrics JSON as NaN/Infinity.
+    if not math.isfinite(t_statistic) or not math.isfinite(p_value):
+        return degenerate(
+            f"the test returned a non-finite result (t={t_statistic!r}, p={p_value!r}), so "
+            f"no p-value can be reported; the bootstrap CI for this metric still applies"
+        )
     return {
         **row,
-        "t_statistic": float(result.statistic),
+        "t_statistic": t_statistic,
         "p_value": p_value,
         "significant": bool(p_value < alpha),
         "degenerate": None,
@@ -1175,21 +1345,31 @@ def _compare(
     v1_cfg = require(compare_cfg, "v1_compat")
 
     run_dir = args.run_dir if args.run_dir is not None else runs_path(paths_cfg, require(cfg, "run_subdir"))
+    # Unconditional, and before any work: ADR 0020 condition 1 makes the prior-work repo
+    # read-only for this pipeline whatever the input format is.
+    _refuse_writing_into_prior_work(run_dir, require(v1_cfg, "read_only_prior_work_root"))
 
     path_a, path_b = args.compare
     v1_inputs: dict[str, Any] | None = None
+    v1_label: Any = None
     if args.v1_per_item:
-        # Checked before any work: the v1 inputs live in a tree this project treats as
-        # read-only, so an output directory pointing there must fail immediately.
-        _refuse_writing_into_prior_work(run_dir, require(v1_cfg, "read_only_prior_work_root"))
         alignment = args.v1_alignment or require(v1_cfg, "default_alignment")
-        a_by_id, header_a, prov_a = _load_v1_per_item(path_a, alignment, weights, scale)
-        b_by_id, header_b, prov_b = _load_v1_per_item(path_b, alignment, weights, scale)
+        a_by_id, header_a, prov_a = _load_v1_per_item(
+            path_a, alignment, weights, scale, max_reported
+        )
+        b_by_id, header_b, prov_b = _load_v1_per_item(
+            path_b, alignment, weights, scale, max_reported
+        )
+        v1_label = _v1_id_labeller(alignment, a_by_id, b_by_id)
+        # No _require_matching_weights here: on this path both headers were synthesized from
+        # the same config a few lines up, so the check could only ever pass. Calling it would
+        # read like a check that ran. What CAN be said about v1 weights is recorded instead,
+        # in v1_format_inputs.composite_score_weights_source.
     else:
         a_by_id, header_a = _load_per_item(path_a)
         b_by_id, header_b = _load_per_item(path_b)
-    _require_matching_weights(header_a, header_b, path_a, path_b)
-    ids = _aligned_ids(a_by_id, b_by_id, path_a, path_b, max_reported)
+        _require_matching_weights(header_a, header_b, path_a, path_b)
+    ids = _aligned_ids(a_by_id, b_by_id, path_a, path_b, max_reported, label=v1_label)
     if not ids:
         raise SystemExit("--compare: both files are empty, nothing to compare.")
 
@@ -1199,7 +1379,7 @@ def _compare(
 
     if args.v1_per_item:
         same_item_check = _assert_v1_pairs_are_the_same_item(
-            ids, rows_a, rows_b, path_a, path_b, alignment, max_reported
+            ids, rows_a, rows_b, path_a, path_b, alignment, max_reported, label=v1_label
         )
         v1_inputs = {
             "enabled": True,
@@ -1321,9 +1501,9 @@ def _compare(
                 f"mtime {rec['mtime_utc']} rows {rec['rows']}"
                 for side, rec in v1_inputs["inputs"].items()
             ),
-            f"- v1 alignment: `{v1_inputs['alignment']}` — {v1_inputs['alignment_definition']}; "
-            f"every pair verified to be the same item "
-            f"({v1_inputs['same_item_check']['fields_verified_equal']}).",
+            f"- v1 alignment: `{v1_inputs['alignment']}` — "
+            f"{v1_inputs['alignment_definition']}; "
+            f"{_v1_verification_sentence(v1_inputs['same_item_check'])}",
         ]
     note_lines += [
         f"- System a: `{path_a}`",
@@ -1333,7 +1513,7 @@ def _compare(
         f"{100 * (1 - alpha):.0f}% percentile CI of (a - b)",
         "",
         # The interval column carries a CI for the bootstrap rows and a p-value for the
-        # McNemar rows, so it is not labelled "CI".
+        # McNemar and t-test rows, so it is not labelled "CI".
         "| statistic | a | b | a - b | CI or p | test | significant | underpowered |",
         "|---|---|---|---|---|---|---|---|",
     ]

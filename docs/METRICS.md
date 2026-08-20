@@ -268,9 +268,11 @@ Compares two runs **on the same evaluation set**. Parameters live in
   rest. `composite_score` gets **no** t-test: its reference term is a micro rate and its
   step-count term a MAE, so there is no per-item composite difference to test — only its
   bootstrap CI, which recomputes it per resample. A row whose t is undefined (n < 2, or a
-  zero standard deviation of the differences, e.g. a file compared with itself) carries
-  `t_statistic: null`, `p_value: null`, `significant: false` and a `degenerate` reason
-  string, and makes no claim; its bootstrap CI still applies. The t-test is **additive**:
+  zero standard deviation of the differences, e.g. a file compared with itself, or a
+  non-finite result from the test) carries `t_statistic: null`, `p_value: null`,
+  `significant: false` and a `degenerate` reason string, and makes no claim; its bootstrap
+  CI still applies. Nothing non-finite is written to the metrics JSON: `NaN` and `Infinity`
+  are not valid JSON, so they are turned into a degenerate row instead. The t-test is **additive**:
   bootstrap + McNemar remain the headline protocol (ADR 0009), and this covers the
   supervisor's literal ask for "a t-test" (ADR
   [0017](adr/0017-triage-of-the-2026-08-12-transcript-cross-check.md) item 4, issue #30).
@@ -294,15 +296,31 @@ Compares two runs **on the same evaluation set**. Parameters live in
   `paired_comparison.v1_compat.default_alignment`, and the alignment of the committed
   analysis note `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`) or
   `position` (row i paired with row i, for v1 files whose question texts are not unique).
-  Either way every pair's question and `gold_steps` are asserted equal across the two
-  files, so a misordered file aborts instead of comparing different items. The output
+  Either way the pairing has to be **witnessed**, and the witness fields are **required, not
+  optional**: under `position` both `question` and `gold_steps` must be present on every row
+  of both files and equal on every pair (ADR
+  [0020](adr/0020-prior-work-re-analysis-convention.md) condition 3(b) — the alignment field
+  *and* the gold), and under `normalized_question` the question is the alignment key, so its
+  equality holds by construction and witnesses nothing while `gold_steps` is the required
+  independent witness. A missing witness field **refuses the comparison**: a verification
+  that checked nothing would report "same item" having established nothing (the case the
+  PR #36 Gate-1 review demonstrated). A mismatch on a present witness aborts too, so a
+  misordered file cannot be compared as if aligned. The output records which fields
+  witnessed the pairing and on how many pairs
+  (`v1_format_inputs.same_item_check.verification_fields` / `fields_verified_equal`), and
+  the run note's sentence is built from those counts rather than asserted. Refusal messages on this path name a row by its index
+  and a short hash of its key, never by the question text — an error pasted into an issue
+  must not move dataset content into git. The output
   records a `v1_format_inputs` block: the prior-work caveat (these inputs carry **no commit
   SHA**, Gate 2 is not satisfied, the result is citable prior work and not a v2
   measurement), each input's sha256, mtime and row count, the alignment used and its
   definition, and that the composite weights are the config's because the files stamp none
   (`config_weights_match_per_item_files` is then `null`, not a bool). The caveat leads the
-  run note and the stdout. `paired_comparison.v1_compat.read_only_prior_work_root` names
-  the v1 repo, and a `--run-dir` inside it is refused: v1 is read-only.
+  run note and the stdout. Every compared field is type-checked at load: a JSON `null`, a
+  string or a non-finite number in a metric column aborts naming the file, row and field,
+  rather than surfacing as a `TypeError` inside the statistics.
+  `paired_comparison.v1_compat.read_only_prior_work_root` names the v1 repo, and **any**
+  `--run-dir` inside it is refused, v1 or not: v1 is read-only (ADR 0020 condition 1).
 
 Output: `<out_prefix>_config.json`, `<out_prefix>_metrics.json` and `<out_prefix>_notes.md`
 in the run directory, with a Markdown table of every statistic, its difference, its
