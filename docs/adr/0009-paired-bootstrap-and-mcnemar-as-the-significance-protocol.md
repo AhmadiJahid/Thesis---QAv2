@@ -1,6 +1,7 @@
 # 0009 — Paired bootstrap + exact McNemar as the significance protocol (pending supervisor confirmation)
 
 - **Status:** accepted, **pending supervisor confirmation** of the t-test substitution
+- **Amended 2026-08-20** ([ADR 0017](./0017-triage-of-the-2026-08-12-transcript-cross-check.md), Jahid): a paired t-test is **added alongside** the bootstrap CIs + McNemar (issue #30), covering the supervisor's literal ask; this protocol remains the headline.
 - **Date:** 2026-08-17
 - **Context:** PR #17 (issue #11), independent review of 2026-08-17
 

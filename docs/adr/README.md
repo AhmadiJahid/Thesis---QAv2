@@ -42,6 +42,8 @@ When **not** to write one:
 | [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md) | The Guided-vs-Unguided Experiment Runs on the v1 Pool and Retrieval Artifact | Accepted (Jahid 2026-08-19, pending supervisor confirmation) |
 | [0015](./0015-admit-qwen3.5-9b-to-the-decomposer-despite-the-8b-ceiling.md) | Admit Qwen3.5-9B to the Decomposer Despite the ~8B Ceiling | Accepted (Jahid 2026-08-19, pending supervisor confirmation) |
 | [0016](./0016-real-run-only-invariants-get-source-level-guards.md) | Real-Run-Only Invariants Get Source-Level Guards | Accepted |
+| [0017](./0017-triage-of-the-2026-08-12-transcript-cross-check.md) | Triage of the 2026-08-12 Transcript Cross-Check | Accepted |
+| [0018](./0018-resolve-the-carried-v1-research-decisions.md) | Resolve the Carried v1 Research Decisions | Accepted (embedding model pending supervisor confirmation) |
 
 ---
 

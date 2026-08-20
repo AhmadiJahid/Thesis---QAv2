@@ -78,6 +78,13 @@ not macro averages: `reference_validity_micro` pools counts across all rows;
 | `predicted_hop_distribution`, `gold_hop_distribution` | counts of items per hop count |
 | `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics |
 
+When reading the two direction rates, note that the errors are **not equally bad**: the
+supervisor's judgment (2026-08-12 meeting, [33:23] — "a three-hop question, it's fine to
+make it a four-hop, but it's not fine to make it a two-hop"; recorded per ADR 0017) is that
+**over-decomposition is tolerable, under-decomposition is not**. So never collapse the two
+rates into a single "wrong-length" figure, and read `mean_signed_step_count_error`'s sign
+with this asymmetry in mind.
+
 Per item, the same quantities are written to `<prefix>_per_item.json`, plus
 `step_count_signed_error` (`len(pred) − len(gold)`), `pred_steps`, `gold_steps` and
 `item_id`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
