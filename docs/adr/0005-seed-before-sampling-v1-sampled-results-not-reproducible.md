@@ -3,6 +3,8 @@
 - **Status**: Accepted
 - **Date**: 2026-08-12
 
+*(Amended 2026-08-20 by [0020](./0020-prior-work-re-analysis-convention.md): v1 runs remain non-reproducible, but their surviving per-item artifacts may be re-analyzed as prior work under that ADR's conditions.)*
+
 ## Context
 
 During the v1→v2 port (PR #7, issue #3), the ml-engineer found and the independent review confirmed a v1 reproducibility bug: v1's router runners called `random.sample` on their evaluation questions **before** calling `set_seed`. All ten per-model copies of `router.py` carry the bug (verified in review); line numbers cited from `components/router/models/qwen2_5_0_5b/router.py` — sampling at lines 181–183, `set_seed` at line 217. Any v1 router result produced with `--sample_size` therefore used an unseeded draw — the sampled subset was never reproducible, in v1 or anywhere else. v2's operating contract (CLAUDE.md, Reproducibility) requires fixed seeds threaded through all randomness, and ADR [0001](./0001-v1-to-v2-migration-scope-and-method.md) governs how v1 results may be compared against.
