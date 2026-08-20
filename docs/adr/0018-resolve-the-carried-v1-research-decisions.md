@@ -42,9 +42,10 @@ supersedes this reopening.
 
 ## Consequences
 
-#6 narrows to two supervisor-facing items. The dataset pair and embedding model are now
-citable decisions for the November write-up. If the supervisor rejects e5-small, retrieval
-artifacts rebuild under a new ADR.
+#6 narrows to three supervisor-facing items: the masking default, the thesis-primary
+metric, and the cross-encoder re-ranker slot. The dataset pair and the bi-encoder embedding
+model are now citable decisions for the November write-up. If the supervisor rejects
+`intfloat/e5-small-v2`, retrieval artifacts rebuild under a new ADR.
 
 ## Alternatives considered
 

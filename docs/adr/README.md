@@ -74,6 +74,6 @@ Other options on the table and why they lost. This is what stops the next person
 
 Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number.
 
-**Amendments are marked on both ends.** An ADR that changes an earlier one carries an `Amends [NNNN]` line under its status, **and** the earlier ADR gets a dated in-place note at the changed clause pointing forward — never a silent rewrite, and never an unmarked contradiction. (Convention made explicit 2026-08-20; earlier ADRs follow it in varying shapes.)
+**Amendments are marked on both ends.** An ADR that changes an earlier one carries an `Amends [NNNN]` line under its status, **and** the earlier ADR gets a dated in-place note pointing forward — at the changed clause, or under the status block when the amendment touches the record as a whole — never a silent rewrite, and never an unmarked contradiction. (Convention made explicit 2026-08-20; earlier ADRs follow it in varying shapes.)
 
 Filenames are `NNNN-kebab-case-title.md`, and every new record is added to the index table above in the same commit.
