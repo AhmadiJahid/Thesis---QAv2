@@ -1,0 +1,463 @@
+{
+  "schema": "composite_score_bias_probe/1",
+  "created_utc": "2026-08-20T18:12:18.711895+00:00",
+  "note": "Companion statistics for docs/analysis/composite-score-literature-check.md (issue #29). Prior-work re-analysis under ADR 0020: inputs are v1 per-item artifacts carrying no commit SHA. Statistics only - no dataset content.",
+  "base_commit": "b0a9ce8ab0dc6ee83f377cd215c4c2be6677c791",
+  "harness": "session-local analyst harness; imports v2 evaluator functions (_step_prf, _ordered_step_accuracy, _reference_validity, _composite_score, _REF_RX). Not committed.",
+  "composite_construction": {
+    "formula": "w_f1*step_f1_macro + w_ord*ordered_step_accuracy_macro + w_ref*reference_validity_micro + w_sc*max(0, 1 - step_count_abs_error_mae/scale)",
+    "weights": {
+      "step_f1_macro": 0.4,
+      "ordered_step_accuracy_macro": 0.3,
+      "reference_validity_micro": 0.2,
+      "step_count_error": 0.1
+    },
+    "step_count_error_scale": 3.0,
+    "source_config": {
+      "path": "configs/musique_eval.json",
+      "path_note": "repo-relative and tracked; pinned by base_commit b0a9ce8, not by mtime. The sha256 below is the content hash and equals the git blob content at b0a9ce8 (verified). An earlier revision of this file recorded the throwaway worktree's absolute path and its checkout mtime, both of which pinned nothing.",
+      "sha256": "7b37a2e6fc7667f9e73c67b7b5271cdd537d155764ea931438a6c9dbb0c02c9c",
+      "bytes": 3107
+    },
+    "source_code": "scripts/musique_decompositions_evaluator.py::_composite_score"
+  },
+  "inputs": {
+    "eval_typed_unguided_per_item.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_typed_unguided_per_item.json",
+      "sha256": "53ab0a08f380db9ae29dc1b4212f7e9141b5da64f98c95fb506d1a524be0aeea",
+      "mtime_utc": "2026-04-13T10:07:57.464634+00:00",
+      "bytes": 632325
+    },
+    "eval_uniform_unguided_per_item.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_uniform_unguided_per_item.json",
+      "sha256": "a0348260dd4a7d737504dee86f5316e3c8ca50d86791200421499da62904650a",
+      "mtime_utc": "2026-04-13T10:08:14.772940+00:00",
+      "bytes": 635252
+    },
+    "eval_raw_unguided_per_item.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_raw_unguided_per_item.json",
+      "sha256": "80e64a38b7934c52afe52ff84ac6da3086f2938e5ebf836a366793ef9050f07f",
+      "mtime_utc": "2026-04-13T10:07:52.244542+00:00",
+      "bytes": 636752
+    },
+    "eval_typed_unguided_metrics.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_typed_unguided_metrics.json",
+      "sha256": "c4c9634b9287e35428c4f7034036959c8399648ac1940bade22c52e26d9b236c",
+      "mtime_utc": "2026-04-13T10:07:57.468634+00:00",
+      "bytes": 3714
+    },
+    "eval_uniform_unguided_metrics.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_uniform_unguided_metrics.json",
+      "sha256": "4cff2acebaa9eac23520c66be9d1a2804460a629c3aa01949aa486d1c82fe51c",
+      "mtime_utc": "2026-04-13T10:08:14.772940+00:00",
+      "bytes": 3807
+    },
+    "eval_raw_unguided_metrics.json": {
+      "path": "/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/eval_raw_unguided_metrics.json",
+      "sha256": "c4a4093bdd479aabfbbac5d45f28781cb5a278724ee519ac627807808c4d95bb",
+      "mtime_utc": "2026-04-13T10:07:52.244542+00:00",
+      "bytes": 3843
+    }
+  },
+  "alignment": "No cross-file pairing is used. Each run's aggregate is computed within its own per-item file; the degenerate systems in probe_D are constructed from the gold_steps column of eval_typed_unguided_per_item.json (n=600) and scored against that same gold, so every comparison is within one item set.",
+  "probe_A_recomputation": {
+    "typed": {
+      "step_f1_macro": 0.2006292596,
+      "ordered_step_accuracy_macro": 0.1793821734,
+      "reference_validity_micro": 0.75,
+      "step_count_abs_error_mae": 0.7033333333,
+      "composite_score": 0.3606219114,
+      "term_contributions": {
+        "step_f1_macro": 0.0802517039,
+        "ordered_step_accuracy_macro": 0.053814652,
+        "reference_validity_micro": 0.15,
+        "step_count_error": 0.0765555556
+      },
+      "references_valid": 6,
+      "references_total": 8,
+      "over_decomposition_rate": 0.2933333333,
+      "under_decomposition_rate": 0.185,
+      "step_count_exact_rate": 0.5216666667,
+      "n": 600,
+      "v1_published_composite_score": 0.3606219114,
+      "recompute_matches_published_to_1e-9": true
+    },
+    "uniform": {
+      "step_f1_macro": 0.1895677008,
+      "ordered_step_accuracy_macro": 0.1662103175,
+      "reference_validity_micro": 0.7777777778,
+      "step_count_abs_error_mae": 0.7766666667,
+      "composite_score": 0.3553568422,
+      "term_contributions": {
+        "step_f1_macro": 0.0758270803,
+        "ordered_step_accuracy_macro": 0.0498630952,
+        "reference_validity_micro": 0.1555555556,
+        "step_count_error": 0.0741111111
+      },
+      "references_valid": 7,
+      "references_total": 9,
+      "over_decomposition_rate": 0.3083333333,
+      "under_decomposition_rate": 0.1866666667,
+      "step_count_exact_rate": 0.505,
+      "n": 600,
+      "v1_published_composite_score": 0.3553568422,
+      "recompute_matches_published_to_1e-9": true
+    },
+    "raw": {
+      "step_f1_macro": 0.177474026,
+      "ordered_step_accuracy_macro": 0.1581172439,
+      "reference_validity_micro": 0.0,
+      "step_count_abs_error_mae": 0.8883333333,
+      "composite_score": 0.1888136724,
+      "term_contributions": {
+        "step_f1_macro": 0.0709896104,
+        "ordered_step_accuracy_macro": 0.0474351732,
+        "reference_validity_micro": 0.0,
+        "step_count_error": 0.0703888889
+      },
+      "references_valid": 0,
+      "references_total": 4,
+      "over_decomposition_rate": 0.3366666667,
+      "under_decomposition_rate": 0.1783333333,
+      "step_count_exact_rate": 0.485,
+      "n": 600,
+      "v1_published_composite_score": 0.1888136724,
+      "recompute_matches_published_to_1e-9": true
+    }
+  },
+  "probe_B_strip_references": {
+    "typed": {
+      "composite_before": 0.3606219114,
+      "composite_after_stripping": 0.4106219114,
+      "delta": 0.05,
+      "reference_validity_micro_before": 0.75,
+      "reference_validity_micro_after": 1.0
+    },
+    "uniform": {
+      "composite_before": 0.3553568422,
+      "composite_after_stripping": 0.39963462,
+      "delta": 0.0442777778,
+      "reference_validity_micro_before": 0.7777777778,
+      "reference_validity_micro_after": 1.0
+    },
+    "raw": {
+      "composite_before": 0.1888136724,
+      "composite_after_stripping": 0.3888136724,
+      "delta": 0.2,
+      "reference_validity_micro_before": 0.0,
+      "reference_validity_micro_after": 1.0
+    }
+  },
+  "probe_C_reference_emission": {
+    "typed": {
+      "items_emitting_at_least_one_reference": 3,
+      "items_total": 600,
+      "references_total": 8,
+      "references_valid": 6,
+      "reference_validity_macro": 0.9966666667,
+      "reference_validity_micro": 0.75
+    },
+    "uniform": {
+      "items_emitting_at_least_one_reference": 4,
+      "items_total": 600,
+      "references_total": 9,
+      "references_valid": 7,
+      "reference_validity_macro": 0.9966666667,
+      "reference_validity_micro": 0.7777777778
+    },
+    "raw": {
+      "items_emitting_at_least_one_reference": 1,
+      "items_total": 600,
+      "references_total": 4,
+      "references_valid": 0,
+      "reference_validity_macro": 0.9983333333,
+      "reference_validity_micro": 0.0
+    }
+  },
+  "probe_D_degenerate_systems": {
+    "oracle_gold_verbatim": {
+      "step_f1_macro": 1.0,
+      "ordered_step_accuracy_macro": 1.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.0,
+      "composite_score": 1.0,
+      "term_contributions": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 0.0,
+      "step_count_exact_rate": 1.0,
+      "n": 600
+    },
+    "gold_order_reversed": {
+      "step_f1_macro": 1.0,
+      "ordered_step_accuracy_macro": 0.1111111111,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.0,
+      "composite_score": 0.7333333333,
+      "term_contributions": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.0333333333,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 0.0,
+      "step_count_exact_rate": 1.0,
+      "n": 600
+    },
+    "gold_references_stripped": {
+      "step_f1_macro": 1.0,
+      "ordered_step_accuracy_macro": 1.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.0,
+      "composite_score": 1.0,
+      "term_contributions": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 0.0,
+      "step_count_exact_rate": 1.0,
+      "n": 600
+    },
+    "gold_plus_duplicate_of_last_step": {
+      "step_f1_macro": 1.0,
+      "ordered_step_accuracy_macro": 0.7388888889,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 1.0,
+      "composite_score": 0.8883333333,
+      "term_contributions": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.2216666667,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0666666667
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 1.0,
+      "under_decomposition_rate": 0.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    },
+    "gold_minus_last_step": {
+      "step_f1_macro": 0.7746031746,
+      "ordered_step_accuracy_macro": 0.6388888889,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 1.0,
+      "composite_score": 0.7681746032,
+      "term_contributions": {
+        "step_f1_macro": 0.3098412698,
+        "ordered_step_accuracy_macro": 0.1916666667,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0666666667
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 1.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    },
+    "gold_plus_one_junk_step": {
+      "step_f1_macro": 0.8486772487,
+      "ordered_step_accuracy_macro": 0.7388888889,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 1.0,
+      "composite_score": 0.8278042328,
+      "term_contributions": {
+        "step_f1_macro": 0.3394708995,
+        "ordered_step_accuracy_macro": 0.2216666667,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0666666667
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 1.0,
+      "under_decomposition_rate": 0.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    },
+    "empty_prediction": {
+      "step_f1_macro": 0.0,
+      "ordered_step_accuracy_macro": 0.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 3.0,
+      "composite_score": 0.2,
+      "term_contributions": {
+        "step_f1_macro": 0.0,
+        "ordered_step_accuracy_macro": 0.0,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 1.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    },
+    "single_junk_step": {
+      "step_f1_macro": 0.0,
+      "ordered_step_accuracy_macro": 0.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 2.0,
+      "composite_score": 0.2333333333,
+      "term_contributions": {
+        "step_f1_macro": 0.0,
+        "ordered_step_accuracy_macro": 0.0,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0333333333
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 1.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    },
+    "echo_the_question_as_one_step": {
+      "step_f1_macro": 0.0,
+      "ordered_step_accuracy_macro": 0.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 2.0,
+      "composite_score": 0.2333333333,
+      "term_contributions": {
+        "step_f1_macro": 0.0,
+        "ordered_step_accuracy_macro": 0.0,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.0333333333
+      },
+      "references_valid": 0,
+      "references_total": 0,
+      "over_decomposition_rate": 0.0,
+      "under_decomposition_rate": 1.0,
+      "step_count_exact_rate": 0.0,
+      "n": 600
+    }
+  },
+  "probe_E_direction_blindness": {
+    "over_decomposition": {
+      "system": "gold_plus_duplicate_of_last_step",
+      "step_count_abs_error_mae": 1.0,
+      "step_count_term_contribution": 0.0666666667,
+      "over_decomposition_rate": 1.0,
+      "composite": 0.8883333333
+    },
+    "under_decomposition": {
+      "system": "gold_minus_last_step",
+      "step_count_abs_error_mae": 1.0,
+      "step_count_term_contribution": 0.0666666667,
+      "under_decomposition_rate": 1.0,
+      "composite": 0.7681746032
+    },
+    "step_count_term_contributions_identical": true
+  },
+  "probe_F_headroom_at_v1_typed": {
+    "composite": 0.3606219114,
+    "terms": {
+      "step_f1_macro": {
+        "weight": 0.4,
+        "value": 0.2006292596,
+        "contribution": 0.0802517039,
+        "headroom": 0.3197482961
+      },
+      "ordered_step_accuracy_macro": {
+        "weight": 0.3,
+        "value": 0.1793821734,
+        "contribution": 0.053814652,
+        "headroom": 0.246185348
+      },
+      "reference_validity_micro": {
+        "weight": 0.2,
+        "value": 0.75,
+        "contribution": 0.15,
+        "headroom": 0.05
+      },
+      "step_count_error": {
+        "weight": 0.1,
+        "value": 0.7655555556,
+        "contribution": 0.0765555556,
+        "headroom": 0.0234444444
+      }
+    }
+  },
+  "probe_G_sensitivity": {
+    "composite_change_per_plus_0.01": {
+      "step_f1_macro": 0.004,
+      "ordered_step_accuracy_macro": 0.003,
+      "reference_validity_micro": 0.002
+    },
+    "composite_change_per_minus_1.0_step_count_mae": 0.0333333333,
+    "v1_typed_one_more_valid_reference": 0.0055555556,
+    "v1_typed_one_more_invalid_reference": -0.0166666667,
+    "v1_typed_reference_counts": {
+      "valid": 6,
+      "total": 8
+    },
+    "one_invalid_reference_on_one_item_of_600": {
+      "composite_reference_free_run": 0.4106219114,
+      "composite_after_injecting_one_invalid_reference": 0.2106219114,
+      "delta": -0.2,
+      "references_after": {
+        "valid": 0,
+        "total": 1
+      }
+    },
+    "exchange_rates": {
+      "loss_0.0167_one_more_invalid_ref_v1_typed": {
+        "step_f1_macro_equivalent": 0.0416666667,
+        "items_of_600_losing_perfect_step_f1": 25.0
+      },
+      "loss_0.2000_whole_reference_term": {
+        "step_f1_macro_equivalent": 0.5,
+        "items_of_600_losing_perfect_step_f1": 300.0
+      }
+    },
+    "v1_typed_vs_raw": {
+      "step_f1_macro_gap": 0.0231552337,
+      "step_f1_gap_in_composite_points": 0.0092620935,
+      "reference_term_swing_in_composite_points": 0.2,
+      "reference_swing_over_step_f1_gap_ratio": 21.5933903948
+    }
+  },
+  "probe_H_weight_simplex": {
+    "grid_step_0.1": {
+      "weightings_on_simplex": 286,
+      "orderings_that_hold": {
+        "typed>uniform": 206,
+        "typed>raw": 286,
+        "uniform>raw": 286
+      },
+      "fractions": {
+        "typed>uniform": 0.7202797203,
+        "typed>raw": 1.0,
+        "uniform>raw": 1.0
+      }
+    },
+    "grid_step_0.05": {
+      "weightings_on_simplex": 1771,
+      "orderings_that_hold": {
+        "typed>uniform": 1292,
+        "typed>raw": 1771,
+        "uniform>raw": 1771
+      },
+      "fractions": {
+        "typed>uniform": 0.7295313382,
+        "typed>raw": 1.0,
+        "uniform>raw": 1.0
+      }
+    }
+  }
+}
