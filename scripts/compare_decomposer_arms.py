@@ -5,7 +5,8 @@ Glue for the prompting-versus-fine-tuning comparison (issue #13). It does not co
 single metric of its own: quality comes from ``scripts/musique_decompositions_evaluator.py``
 (string-level metrics, no model in the loop, and never a commercial API rating a
 decomposition - CLAUDE.md standing constraint), significance from that script's
-``--compare`` (paired bootstrap + McNemar), and cost from the ``cost`` block each decomposer
+``--compare`` (paired bootstrap + McNemar, with the additive paired t-test of issue #30
+reported next to them), and cost from the ``cost`` block each decomposer
 run writes into its own ``metrics.json``. This script runs those in one pass and writes one
 table.
 
@@ -364,6 +365,10 @@ def main() -> None:
             "significance_floor": compare_metrics.get("significance_floor"),
             "bootstrap": compare_metrics.get("bootstrap"),
             "mcnemar": compare_metrics.get("mcnemar"),
+            # Added alongside the two above by issue #30 / ADR 0017; read with .get for the
+            # same reason 'underpowered' is - a comparison produced before it existed has no
+            # such block, and that is not this script's failure.
+            "t_test": compare_metrics.get("t_test"),
         }
 
     # ---- one table: quality columns, then cost columns ----
@@ -441,6 +446,23 @@ def main() -> None:
         for stat, row in (record["mcnemar"] or {}).items():
             note_lines.append(
                 f"  - McNemar {stat}: {row['difference']:+.4f} p={row['p_value']:.4g} "
+                f"significant={row['significant']} "
+                f"underpowered={_fmt(row.get('underpowered'))}"
+            )
+        for stat, row in (record["t_test"] or {}).items():
+            # A degenerate row has no t and no p (e.g. every per-item difference identical);
+            # the evaluator says why in 'degenerate' and makes no significance claim.
+            stat_cell = (
+                f"t={row['t_statistic']:+.4f} (dof={row['degrees_of_freedom']}) "
+                f"p={row['p_value']:.4g}"
+                if row.get("degenerate") is None
+                else (
+                    f"t=unmeasured (dof={row['degrees_of_freedom']}; t undefined, reason in "
+                    f"the comparison's metrics JSON)"
+                )
+            )
+            note_lines.append(
+                f"  - paired t-test {stat}: {row['difference']:+.4f} {stat_cell} "
                 f"significant={row['significant']} "
                 f"underpowered={_fmt(row.get('underpowered'))}"
             )

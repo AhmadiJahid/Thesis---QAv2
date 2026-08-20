@@ -27,7 +27,13 @@
     "alpha": 0.05,
     "min_items_for_significance_claim": 30,
     "max_reported_id_mismatches": 20,
-    "out_prefix": "compare"
+    "out_prefix": "compare",
+
+    "v1_compat": {
+      "_note": "Parameters of the --v1-per-item shim, which lets --compare read v1 prior-work per-item files (the bare-list format with no item_id that predates musique_decomposition_per_item/1) under ADR 0020. default_alignment is how the two files are paired when --v1-alignment is not passed: 'normalized_question' is the alignment docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md states for its Task A, and it is the default so that note's numbers reproduce from committed code; 'position' pairs the files row by row and exists for v1 artifacts whose question texts are not unique (that note's Task B). read_only_prior_work_root is the v1 repo, which nothing in this pipeline may write into (ADR 0020 condition 1) - the evaluator refuses a --run-dir inside it.",
+      "default_alignment": "normalized_question",
+      "read_only_prior_work_root": "/cta/users/fyilmaz/Thesis---QA"
+    }
   },
 
   "paths_config": "paths.json"
