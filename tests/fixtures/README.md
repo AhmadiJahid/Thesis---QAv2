@@ -20,7 +20,16 @@ data_root/                     # stands in for the real data_root (configs/smoke
   musique/
     musique_ans_v1.0_train.jsonl        # 8 rows: 4x 2hop, 4x 3hop1 (4 per stratum is the
                                         # minimum StratifiedKFold(n_splits=4) accepts)
-    musique_ans_v1.0_dev.jsonl          # gold decompositions keyed by id
+    musique_ans_v1.0_dev.jsonl          # 4 rows: the MuSiQue *item* file - gold
+                                        # decompositions keyed by id, plus what the answering
+                                        # backend needs (issue #16): `paragraphs`
+                                        # (idx/title/paragraph_text/is_supporting), `answer`
+                                        # and `answer_aliases`. 3-4 paragraphs per item, not
+                                        # the real setting's 20, so a prompt stays
+                                        # eyeballable - every fixture item therefore counts
+                                        # in the answerer's items_below_expected_paragraphs.
+                                        # Two rows carry a non-empty alias list, which is how
+                                        # the max-over-gold-answers path gets exercised.
     dev_data/
       musique_ans_v1.0_dev_clean.jsonl  # gold for the decomposition evaluator
       musique_ans_v1.0_dev_questions_*.jsonl   # per-hop dev question files
