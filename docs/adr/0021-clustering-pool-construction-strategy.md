@@ -130,7 +130,8 @@ rather than inventing a rationale.
    the embedding step and select different representatives, even at the same seed. The
    defensible statement is: the *selection rule* is deterministic given the embeddings, and the
    embeddings are only guaranteed reproducible on the machine and stack that produced them.
-   That is why the pool file itself is the artifact to keep, not the recipe alone.
+   That is why the pool file itself is the artifact to keep, not the recipe alone (kept on the
+   compute box / under the ignored `runs/`, never committed — data never enters git).
 
 8. **The pool file is shuffled with the trial's seeded RNG before it is written**, exactly as
    the balanced strategy already does, so file order does not encode distance-to-centroid rank
