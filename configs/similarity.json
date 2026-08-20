@@ -25,6 +25,16 @@
     "run_subdir": "musique_similarity"
   },
 
+  "hop_match": {
+    "_note": "Hop-matched few-shot retrieval (issue #15, ADR 0022), a candidate filter applied in check_question_similarity.py BEFORE top-k selection: the top-k is computed over the query's hop bucket only, so truncate/rerank/decomposer inherit it. 'enabled': false is the mixed condition and is the retrieval behaviour that predates the flag - the pool sweep passes no hop flag and is therefore unaffected. Toggle per run with --hop-match / --no-hop-match, --hop-source, --hop-predictions.",
+    "enabled": false,
+    "hop_source": "gold",
+    "predictions_file": null,
+    "predictions_id_field": "query_id",
+    "predictions_hop_field": "predicted_hop",
+    "min_candidates": "top_k"
+  },
+
   "truncate": {
     "k": 5,
     "run_subdir": "musique_truncate"

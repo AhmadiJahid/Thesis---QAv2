@@ -13,7 +13,10 @@ normal committed config but resolves data paths into the fixture tree. Output go
 What is NOT covered, and why:
 
 - NER masking, bi-encoder similarity, cross-encoder rerank and the two similarity probes
-  need model weights from the network; they are skipped here.
+  need model weights from the network; they are skipped here. The one exception is
+  ``check_question_similarity.py --dry-run``, which validates the inputs and the
+  hop-matched candidate filter (issue #15, ADR 0022) without loading the encoder — so the
+  filter is exercised end-to-end, the embedding and the top-k are not.
 - The router and decomposer runners are exercised with ``--dry-run``: prompts are
   assembled and artifacts written, but no weights are loaded, so the parameter-count
   assertion in ``src/model_size.py`` is *not* exercised by this test.
@@ -99,6 +102,7 @@ def _stages() -> list[Stage]:
     enriched = WORK / "enriched" / "pool_enriched.jsonl"
     pool_dir = WORK / "pool_sample"
     dev_out = WORK / "dev_sample" / "dev_sample.jsonl"
+    hop_match_dry = WORK / "hop_match_dry"
     truncated = WORK / "retrieval" / "top5_biencoder.jsonl"
     scored = WORK / "retrieval" / "top5_scored.jsonl"
     musique_eval_dir = WORK / "musique_eval"
@@ -293,6 +297,35 @@ def _stages() -> list[Stage]:
                 dev_out.parent / "sample_dev_metrics.json",
             ],
             note="per-hop dev draw across the 2/3/4-hop fixture files",
+        ),
+        Stage(
+            name="similarity_hop_match_dryrun",
+            cmd=[
+                sys.executable, MUSIQUE_SCRIPTS / "check_question_similarity.py",
+                "--pool-file", pool_dir / "pool.jsonl",
+                "--query-file", dev_out,
+                "--mode", "raw",
+                # The fixture pool holds one row per hop bucket, so top-k 1 is the largest
+                # value hop matching can satisfy here (min_candidates defaults to top_k).
+                "--top-k", "1",
+                "--n", "10",
+                "--hop-match",
+                "--no-cache",
+                "--run-dir", hop_match_dry,
+                "--dry-run",
+            ],
+            expect_files=[
+                hop_match_dry / "similarity_metrics.json",
+                hop_match_dry / "similarity_config.json",
+                hop_match_dry / "similarity_notes.md",
+            ],
+            expect_metrics=[
+                (hop_match_dry / "similarity_metrics.json", "pool_rows", 3),
+                (hop_match_dry / "similarity_metrics.json", "total_queries", 3),
+                (hop_match_dry / "similarity_metrics.json", "total_written", 0),
+            ],
+            note="hop-matched retrieval preflight over the sampled pool + dev draw "
+            "(--dry-run: the hop filter is built and validated, no bi-encoder is loaded)",
         ),
         Stage(
             name="truncate",
