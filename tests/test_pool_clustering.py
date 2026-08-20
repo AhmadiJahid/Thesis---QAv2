@@ -21,6 +21,15 @@ What it covers:
    changes the cluster count, an unknown ``representative_rule`` and a target larger than
    the candidate set are refused with a non-zero exit, and a missing ``text_field`` on any
    row is refused rather than silently dropping the row.
+5. **The bi-encoder registry is the one the caller passes** — ``--similarity-config`` (the
+   sweep's own ``configs.similarity``) wins over the prep config's reference and is recorded
+   as a resolved path, and the clustered-only flags are **refused** on a random strategy
+   rather than silently ignored while still appearing in that run's record.
+
+The ceiling-assertion order and the diagnostics-key contract are guarded separately, with no
+model loaded at all, in ``tests/test_pool_clustering_guards.py``: the checks here that
+exercise the real encoder self-skip without a local model cache, which is exactly the blind
+spot ADR 0016 asks for a source-level guard against.
 
 Run::
 
@@ -166,15 +175,27 @@ class TestKmeansSelection(unittest.TestCase):
         self.assertEqual(diag["empty_clusters"], 0)
         self.assertEqual(sorted(idx // 5 for idx in selected), [0, 1, 2, 3])
 
-    def test_rank_major_order_gives_every_cluster_one_pick_first(self) -> None:
-        """Quota 3 with a target that truncates mid-pass still covers all clusters."""
-        emb = _blobs([[0.0, 0.0], [30.0, 0.0], [0.0, 30.0]], 5, 0.02)  # 15 rows
+    def test_rank_major_order_covers_every_cluster_before_any_second_pick(self) -> None:
+        """The property the name claims, asserted: no cluster is starved by truncation.
+
+        ``clusters_represented`` is the count of distinct clusters the selection covers
+        (the diagnostic exists so this is observable in a real run's metrics too, PR #34
+        review N-4a). Whenever the target is at least the cluster count, rank-major order
+        means every cluster contributes before any cluster contributes twice — so the two
+        numbers must be equal, for every quota.
+        """
+        emb = _blobs([[0.0, 0.0], [30.0, 0.0], [0.0, 30.0], [30.0, 30.0]], 5, 0.02)  # 20 rows
+        for size, quota in ((4, 1), (8, 2), (9, 3), (12, 3), (20, 5)):
+            with self.subTest(size=size, quota=quota):
+                _, diag = self._select(emb, size, examples_per_cluster=quota)
+                self.assertGreaterEqual(size, diag["n_clusters"])
+                self.assertEqual(diag["clusters_represented"], diag["n_clusters"])
+
+        # And the truncating case: quota 3 with target 4 uses k=2 and still fills exactly 4.
         selected, diag = self._select(emb, 4, examples_per_cluster=3)
         self.assertEqual(diag["n_clusters"], 2)  # ceil(4 / 3)
         self.assertEqual(len(selected), 4)
-        emb2 = _blobs([[0.0, 0.0], [30.0, 0.0], [0.0, 30.0]], 5, 0.02)
-        selected2, _ = self._select(emb2, 3, examples_per_cluster=1)
-        self.assertEqual(sorted(idx // 5 for idx in selected2), [0, 1, 2])
+        self.assertEqual(diag["clusters_represented"], 2)
 
     def test_refusals(self) -> None:
         emb = _blobs([[0.0, 0.0], [9.0, 0.0]], 3, 0.05)  # 6 rows
@@ -207,7 +228,9 @@ class TestClusteredSampling(unittest.TestCase):
         }
         self.emb = _blobs([[0.0, 0.0], [7.0, 0.0], [0.0, 7.0]], 2, 0.03)
 
-    def _sample(self, size: int, seed: int = 42) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    def _sample(
+        self, size: int, seed: int = 42, similarity_config: str | None = None
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         import random
 
         return SP._sample_clustered(
@@ -217,9 +240,23 @@ class TestClusteredSampling(unittest.TestCase):
             clustering=self.clustering,
             embed_model_key=None,
             device=None,
+            similarity_config=similarity_config,
             seed=seed,
             embeddings=self.emb,
         )
+
+    def test_the_similarity_registry_is_the_one_passed_in(self) -> None:
+        """The sweep's registry wins over the prep config's, and is recorded (I-2)."""
+        _, from_config = self._sample(2)
+        self.assertEqual(from_config["similarity_config_source"], "clustering.similarity_config")
+        _, from_cli = self._sample(2, similarity_config="similarity.json")
+        self.assertEqual(from_cli["similarity_config_source"], "cli")
+        self.assertTrue(from_cli["similarity_config"].endswith("configs/similarity.json"))
+        self.assertEqual(from_cli["embedding"]["model_id"], "intfloat/e5-small-v2")
+
+    def test_an_unknown_similarity_registry_is_refused(self) -> None:
+        with self.assertRaises(SystemExit):
+            self._sample(2, similarity_config="no_such_similarity_config.json")
 
     def test_deterministic_including_the_shuffle(self) -> None:
         first, diag = self._sample(3)
@@ -311,6 +348,57 @@ class TestConfigWiring(unittest.TestCase):
         )
 
 
+class TestClusteredOnlyFlagsAreRefused(unittest.TestCase):
+    """Clustered-only flags on a random strategy are refused, not ignored (N-4b).
+
+    This class loads **no weights**: argparse rejects the combination before any model is
+    touched, so it runs everywhere the suite runs.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="qav2_clustered_flags_test_")
+        self.tmp = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _run(self, *extra: str, balance: str = "balanced") -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(SAMPLE_POOL),
+                "--config", "musique_prep.json",
+                "--size", "3",
+                "--balance", balance,
+                "--out-dir", str(self.tmp / balance),
+                "--overwrite",
+                *extra,
+            ],
+            cwd=str(REPO_ROOT),
+            env=dict(os.environ, QAV2_PATHS_CONFIG="smoke_paths.json"),
+            capture_output=True,
+            text=True,
+        )
+
+    def test_each_flag_is_refused_on_a_random_strategy(self) -> None:
+        for flag, value in (
+            ("--embed-model", "e5-small"),
+            ("--device", "cpu"),
+            ("--similarity-config", "similarity.json"),
+        ):
+            for balance in ("balanced", "imbalanced"):
+                with self.subTest(flag=flag, balance=balance):
+                    proc = self._run(flag, value, balance=balance)
+                    self.assertNotEqual(proc.returncode, 0)
+                    self.assertIn("applies to --balance clustered only", proc.stderr)
+
+    def test_a_random_strategy_without_those_flags_still_works(self) -> None:
+        proc = self._run()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        snapshot = json.loads((self.tmp / "balanced" / "config.json").read_text(encoding="utf-8"))
+        for key in ("embed_model_override", "device_override", "similarity_config_override"):
+            self.assertIsNone(snapshot[key])
+        self.assertIsNone(snapshot["clustering"])
+
+
 def _biencoder_available() -> bool:
     """True when e5-small-v2 can be loaded from the local cache without the network."""
     env = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
@@ -354,6 +442,7 @@ class TestClusteredCli(unittest.TestCase):
                 "--balance", "clustered",
                 "--device", "cpu",
                 "--embed-model", "e5-small",
+                "--similarity-config", "similarity.json",
                 "--out-dir", str(out_dir),
                 "--overwrite",
             ],
@@ -389,7 +478,10 @@ class TestClusteredCli(unittest.TestCase):
         self.assertEqual(stats["size_written"], 3)
         clustering = stats["clustering"]
         self.assertEqual(clustering["n_clusters"], 3)
+        self.assertEqual(clustering["clusters_represented"], 3)
         self.assertEqual(clustering["representative_rule"], "nearest_to_centroid")
+        self.assertEqual(clustering["similarity_config_source"], "cli")
+        self.assertTrue(clustering["similarity_config"].endswith("configs/similarity.json"))
         self.assertEqual(clustering["kmeans_params"]["random_state"], stats["seed"])
         self.assertEqual(clustering["embedding"]["model_id"], "intfloat/e5-small-v2")
         self.assertEqual(clustering["embedding"]["prefix_applied"], "passage")

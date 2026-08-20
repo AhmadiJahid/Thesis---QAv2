@@ -42,8 +42,9 @@ from typing import Any
 from _prep_common import dataset_path, load_prep, require
 
 from model_size import assert_within_ceiling, load_limits
+from pool_embeddings import needs_e5_prefix
 from run_artifacts import now_iso, write_run_artifacts
-from run_config import load_config
+from run_config import load_config, resolve_config_path
 from seeding import set_global_seed
 
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
@@ -151,11 +152,6 @@ def _clustering_texts(rows: list[dict[str, Any]], field: str) -> list[str]:
     return texts
 
 
-def _needs_e5_prefix(model_id: str) -> bool:
-    """E5 models expect ``query:`` / ``passage:`` prefixes (same rule as the retrieval stage)."""
-    return "e5" in model_id.lower()
-
-
 def _embed_texts(
     texts: list[str],
     *,
@@ -173,7 +169,7 @@ def _embed_texts(
     size_record = assert_within_ceiling(
         model, component="retrieval", model_id=model_id, limits=limits
     )
-    prepared = [f"{prefix}: {t}" for t in texts] if _needs_e5_prefix(model_id) else list(texts)
+    prepared = [f"{prefix}: {t}" for t in texts] if needs_e5_prefix(model_id) else list(texts)
     t0 = time.time()
     emb = model.encode(
         prepared,
@@ -186,7 +182,7 @@ def _embed_texts(
         "model_id": model_id,
         "device": device,
         "batch_size": batch_size,
-        "prefix_applied": prefix if _needs_e5_prefix(model_id) else None,
+        "prefix_applied": prefix if needs_e5_prefix(model_id) else None,
         "num_texts": len(texts),
         "dim": int(emb.shape[1]) if emb.ndim == 2 else None,
         "embed_seconds": round(time.time() - t0, 1),
@@ -325,6 +321,11 @@ def _kmeans_select(
         "cluster_size_max": int(max(cluster_sizes)),
         "selected_from_clusters": from_clusters,
         "selected_from_topup": size - from_clusters,
+        # How many distinct clusters the selection actually covers. This is the rank-major
+        # property made observable: while size >= n_clusters it must equal n_clusters, so a
+        # regression that starves clusters shows up in every run's metrics, not only in a
+        # test (PR #34 review, N-4a).
+        "clusters_represented": len({int(labels[i]) for i in selected}),
         "mean_distance_to_centroid_selected": float(
             np.mean(distances[np.asarray(selected, dtype=int)])
         ),
@@ -341,10 +342,18 @@ def _sample_clustered(
     clustering: dict[str, Any],
     embed_model_key: str | None,
     device: str | None,
+    similarity_config: str | None,
     seed: int,
     embeddings: Any | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cluster the input rows and return ``size`` representatives plus diagnostics.
+
+    ``similarity_config`` is the bi-encoder **alias registry** this run resolves through.
+    The sweep passes its own ``configs.similarity`` (``--similarity-config``) so that one
+    sweep genuinely uses one embedding model: without it, the pool stage read the registry
+    named in ``musique_prep.json`` while every retrieval stage read the one named in
+    ``pool_sweep.json``, and the two agreeing was a coincidence rather than a guarantee
+    (PR #34 review, I-2).
 
     ``embeddings`` is a test seam: pass a precomputed array to exercise the selection
     without loading an encoder. Production always passes ``None`` and embeds here.
@@ -352,7 +361,8 @@ def _sample_clustered(
     field = str(require(clustering, "text_field"))
     texts = _clustering_texts(rows, field)
 
-    similarity_cfg = load_config(str(require(clustering, "similarity_config")))
+    similarity_ref = similarity_config or str(require(clustering, "similarity_config"))
+    similarity_cfg = load_config(similarity_ref)
     embed_key = embed_model_key or str(require(clustering, "embed_model"))
     model_id = str(require(similarity_cfg, f"bi_encoder.embed_models.{embed_key}"))
     embed_device = device or str(require(clustering, "device"))
@@ -382,6 +392,12 @@ def _sample_clustered(
     diagnostics["text_field"] = field
     diagnostics["embedding"] = embed_record
     diagnostics["embed_model_key"] = embed_key
+    # The registry this run resolved the alias through, recorded as a resolved path: "one
+    # sweep, one embedding model" has to be checkable after the fact, not just intended.
+    diagnostics["similarity_config"] = str(resolve_config_path(similarity_ref))
+    diagnostics["similarity_config_source"] = (
+        "cli" if similarity_config else "clustering.similarity_config"
+    )
 
     out = [rows[i] for i in selected]
     # Shuffle for the same reason the balanced draw does: pool order should not encode the
@@ -413,14 +429,41 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--embed-model",
         default=None,
-        help="Bi-encoder key from configs/similarity.json (clustered only; default: config).",
+        help="Bi-encoder key from the similarity config's registry (clustered only).",
     )
     p.add_argument(
         "--device",
         default=None,
         help="Device for the bi-encoder (clustered only; default: config).",
     )
-    return p.parse_args()
+    p.add_argument(
+        "--similarity-config",
+        default=None,
+        help="Committed config holding bi_encoder.embed_models, the alias registry to "
+             "resolve --embed-model through (clustered only). The sweep passes its own "
+             "configs.similarity so one sweep uses one embedding model.",
+    )
+    args = p.parse_args()
+    # Clustered-only flags are refused, not ignored, on the random strategies: they were
+    # being recorded in the config snapshot as if they had applied, which would read later
+    # as "this pool was built with that encoder" (PR #34 review, N-4b).
+    if args.balance != "clustered":
+        passed = [
+            name
+            for name, value in (
+                ("--embed-model", args.embed_model),
+                ("--device", args.device),
+                ("--similarity-config", args.similarity_config),
+            )
+            if value is not None
+        ]
+        if passed:
+            p.error(
+                f"{', '.join(passed)} applies to --balance clustered only; "
+                f"--balance {args.balance} embeds nothing. Drop the flag, or the run "
+                f"record would name an encoder that never ran."
+            )
+    return args
 
 
 def main() -> None:
@@ -461,6 +504,7 @@ def main() -> None:
             clustering=require(section, "clustering"),
             embed_model_key=args.embed_model,
             device=args.device,
+            similarity_config=args.similarity_config,
             seed=seed,
         )
 
@@ -506,8 +550,11 @@ def main() -> None:
             "clustering": (
                 require(section, "clustering") if args.balance == "clustered" else None
             ),
+            # Only recorded for the strategy they can affect; _parse_args refuses them
+            # elsewhere, so a null here means "not passed", never "passed and ignored".
             "embed_model_override": args.embed_model,
             "device_override": args.device,
+            "similarity_config_override": args.similarity_config,
         },
         metrics=metrics,
         note_title=f"Pool sample ({args.balance}, size {args.size}, seed {seed})",

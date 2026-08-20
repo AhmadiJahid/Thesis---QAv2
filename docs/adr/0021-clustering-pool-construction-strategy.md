@@ -98,21 +98,39 @@ rather than inventing a rationale.
    pointing it at a masked field is a one-line config change and needs no code.
 
 6. **The bi-encoder is the one the sweep already uses**, `intfloat/e5-small-v2` via the
-   `e5-small` alias, resolved through `bi_encoder.embed_models` in `configs/similarity.json`
-   so the alias registry stays single-sourced (ADR 0018). The orchestrator passes its own
-   `embed_model` and `device` to the pool stage for a clustered cell, so one sweep uses one
-   embedding model everywhere. Texts get the `passage:` prefix, the same prefix the retrieval
-   stage gives pool text, and the vectors are L2-normalised. The parameter count is printed
-   and asserted at load like every other model in this repo (`src/model_size.py`, component
-   `retrieval`; measured 33,360,000 parameters).
+   `e5-small` alias (ADR 0018). "One sweep, one embedding model" is **threaded, not assumed**:
+   for a clustered cell the orchestrator passes its own `embed_model`, `device` *and*
+   `configs.similarity` (as `--similarity-config`) to the pool stage, and the run's metrics
+   record the registry it resolved through as an absolute path. Before that, the pool stage
+   resolved the alias through the registry named in `configs/musique_prep.json` while every
+   retrieval stage used the one named in `configs/pool_sweep.json`; both pointed at
+   `similarity.json`, so the claim was true by coincidence (PR #34 review, I-2). Texts get the
+   `passage:` prefix — from `needs_e5_prefix` in `src/pool_embeddings.py`, now the single
+   definition the retrieval stage shares, so "the same prefix as retrieval" is enforced by one
+   function rather than by two identical copies — and the vectors are L2-normalised. The
+   parameter count is printed and asserted at load like every other model in this repo
+   (`src/model_size.py`, component `retrieval`; measured 33,360,000 parameters), and that the
+   assertion brackets the encoder construction is itself guarded at source level
+   (`tests/test_pool_clustering_guards.py`, ADR 0016), because no run without weights reaches it.
 
-7. **Determinism is bought explicitly.** `kmeans.num_threads` defaults to **1** and the fit
-   runs inside `threadpool_limits`, because sklearn's Lloyd loop reduces over OpenMP chunks
-   and the thread count is therefore part of the floating-point result. At one thread the fit
-   is bit-reproducible under the seed; raising the knob is faster and no longer exactly
-   reproducible, and that trade is stated in the config rather than discovered later.
-   `n_init = 1` with seeded `k-means++` init is the default because `k = 2000` makes repeated
-   restarts expensive; it is a cost choice, not a quality claim.
+7. **Determinism is bought explicitly, and it covers the clustering — not the embedding.**
+   `kmeans.num_threads` defaults to **1** and the fit runs inside `threadpool_limits`, because
+   sklearn's Lloyd loop reduces over OpenMP chunks and the thread count is therefore part of
+   the floating-point result. At one thread the fit is bit-reproducible under the seed; raising
+   the knob is faster and no longer exactly reproducible, and that trade is stated in the config
+   rather than discovered later. `n_init = 1` with seeded `k-means++` init is the default
+   because `k = 2000` makes repeated restarts expensive; it is a cost choice, not a quality
+   claim.
+
+   **The reproducibility that has been *verified* is CPU-only.** The byte-identical-pool check
+   runs the encoder on CPU over six fixture rows; the sweep drives the same code with
+   `--device cuda`, and this repo sets no torch determinism flags anywhere, so GPU embedding is
+   **not** verified to be bit-reproducible. A pool rebuilt later on different hardware — or on
+   the same GPU after a driver, torch or sentence-transformers change — may therefore differ at
+   the embedding step and select different representatives, even at the same seed. The
+   defensible statement is: the *selection rule* is deterministic given the embeddings, and the
+   embeddings are only guaranteed reproducible on the machine and stack that produced them.
+   That is why the pool file itself is the artifact to keep, not the recipe alone.
 
 8. **The pool file is shuffled with the trial's seeded RNG before it is written**, exactly as
    the balanced strategy already does, so file order does not encode distance-to-centroid rank
@@ -152,6 +170,25 @@ rather than inventing a rationale.
   six-row fixture has been run.
 - The clustered arm's *quality* is unmeasured. Nothing in this record supports a claim that
   clustering helps, and no such claim may be made until the run is in `experiments/log.md`.
+- **Confound 1 — one trial per arm makes the arms asymmetric in variance.** The sweep config
+  carries `num_trials: 1` (`pool_trial_seeds: [42]`). At one trial the clustered arm is
+  effectively deterministic — reseeding moves only the k-means init, over the same candidate
+  set — while `balanced` and `imbalanced` are each a *single random draw* from a distribution
+  of possible pools. A one-trial clustered-minus-random delta therefore mixes the effect of
+  the construction strategy with the draw noise of the random arms, and the two cannot be
+  separated from the numbers the sweep produces. Whether to raise `num_trials` (which
+  multiplies the sweep's decomposer cost by the trial count) is **Jahid's decision**; this
+  record states the confound and changes no config. Until it is raised, the honest reading of
+  a clustered-versus-random difference is "consistent with", not "caused by", the strategy.
+- **Confound 2 — the clustered pool is built in the retriever's own embedding space.** Pool
+  construction and retrieval share one encoder (item 6), which is what makes the arms
+  comparable on retrieval settings, but it also means the clustered pool is a coverage-optimal
+  cover of exactly the space the bi-encoder ranks in. The random arms have no such alignment.
+  Any retrieval-mediated metric (top-k neighbour quality, and therefore the decomposition
+  metrics downstream of it) is measured under that coupling, so a clustered advantage cannot be
+  attributed to "better examples" as distinct from "examples spread out in the retriever's
+  metric". Decoupling would need a different encoder for construction than for retrieval, which
+  is a design change nobody has asked for; no mitigation is claimed here.
 - If the supervisor settles the masking default (ADR 0018), item 5 should be revisited: a
   settled typed-masking default is a reason to consider clustering on the masked field, and
   that would be a config change plus a new sweep, not a code change.

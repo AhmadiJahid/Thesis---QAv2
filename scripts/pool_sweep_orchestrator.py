@@ -253,11 +253,15 @@ def stage_sample_pool(
     ]
     if balance == "clustered":
         # The clustered strategy embeds the input pool, so it takes the sweep's own
-        # bi-encoder and device rather than the prep config's defaults — one sweep, one
-        # embedding model (ADR 0021).
+        # bi-encoder, device AND alias registry rather than the prep config's defaults —
+        # one sweep, one embedding model (ADR 0021). The registry is threaded explicitly
+        # because every retrieval stage below resolves --embed-model through
+        # configs.similarity: without this the pool stage resolved the same alias through
+        # a config named somewhere else, and the two agreeing was luck (PR #34 review).
         cmd += [
             "--embed-model", require(cfg, "embed_model"),
             "--device", require(cfg, "device"),
+            "--similarity-config", require(cfg, "configs.similarity"),
         ]
     if overwrite:
         cmd.append("--overwrite")
