@@ -79,6 +79,8 @@ FINDINGS' conclusions: typed masking is the best average retrieval mode in this 
 
 **Significance check (2026-08-20):** over the 15 matched cell pairs, +CE raises ROUGE-L F1 in 15/15 (5 survive Holm) and shows no significant effect on exact match (0/15 by any test, signs split 7/8) — see `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`.
 
+**Pool-size significance check (2026-08-20):** the per-size mean composites above recompute exactly from the per-item files, but the "8000 drops vs 4000" reading is **104% the reference-validity term** (13 vs 37 references) and across the six matched 4000-vs-8000 pairs no metric is CI- or McNemar-significant and none survives Holm (smallest adjusted p 0.2855; one cell is t-significant uncorrected at p = 0.0476). Over 27 matched pool-size pairs, 1000 is measurably worse than 8000 on step-level metrics (6/6 pairs, 4 Holm-surviving) while no adjacent doubling above 1000 is significant — see `docs/analysis/2026-08-20-v1-pool-size-significance.md` before citing any pool-size number here.
+
 ## 5. MetaQA KG compile/execute charts (FINDINGS §6)
 
 `Thesis---QA/handoff/results_analysis/metaqa_kg_decomposition/` holds charts on whether decompositions execute on the MetaQA KG, split into compile fail / exec fail / success (taxonomy in §7 below). FINDINGS marks the chart counts as run-specific and says to read the PNGs rather than quote totals — so no numbers are carried here.

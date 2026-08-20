@@ -164,6 +164,43 @@ term is direction-blind (it uses the MAE, so over- and under-decomposition are p
 identically). The directional metrics in §2 are reported separately precisely because the
 composite cannot express that difference.
 
+### 4.1 Non-house diagnostics — `composite_no_ref_renorm`
+
+Analysis notes sometimes need to ask *"how much of this composite difference is the
+reference term?"*. The quantity they use for it is the composite with the
+`reference_validity_micro` term **dropped** and the remaining weights **renormalized to sum
+to 1**:
+
+| term | house weight | renormalized weight |
+|---|---|---|
+| `step_f1_macro` | 0.4 | **0.5** |
+| `ordered_step_accuracy_macro` | 0.3 | **0.375** |
+| `step_count_error` (same `max(0, 1 - mae/scale)`, scale 3.0) | 0.1 | **0.125** |
+| `reference_validity_micro` | 0.2 | **dropped** |
+
+Rules, because this has now been used by two notes and it changes a headline in both:
+
+- It is a **diagnostic, not a house metric.** The evaluator does not compute it; it is not in
+  `configs/musique_eval.json`; it never appears in a run's `eval_metrics.json`. A note that
+  reports it says so at the point of use.
+- **No thesis claim may rest on it alone.** Its job is to show what the 0.2-weighted micro rate
+  is doing to a comparison, so it is reported *beside* the house composite and the directional
+  metrics in §2, never instead of them. Where it and the house composite disagree, that
+  disagreement is the finding — not a licence to pick the friendlier number.
+- Like the house composite it is built from **aggregate** values, so it has **no per-item
+  value**: bootstrap only, no paired t-test and no McNemar.
+
+Its two instances, both prior-work re-analyses under
+[ADR 0020](adr/0020-prior-work-re-analysis-convention.md):
+[`docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`](analysis/2026-08-20-v1-masking-and-retrieval-significance.md)
+§4, "the typed-vs-raw composite gap is almost entirely one term" (house composite not
+significant, CI [−0.1842, +0.2259]; diagnostic +0.0273, CI [+0.0107, +0.0440], significant) and
+[`docs/analysis/2026-08-20-v1-pool-size-significance.md`](analysis/2026-08-20-v1-pool-size-significance.md)
+§4.4 (the pool-size trend **reverses direction** between the two). Both are input to issue #29.
+
+Like the rest of this section's conventions, these rules are agent-side reporting documentation
+(recorded 2026-08-20, PR #35) — Jahid's and his supervisor's to revise, not settled methodology.
+
 ## 5. Paired comparison (`--compare A_per_item.json B_per_item.json`)
 
 Compares two runs **on the same evaluation set**. Parameters live in
@@ -231,6 +268,20 @@ Output: `<out_prefix>_config.json`, `<out_prefix>_metrics.json` and `<out_prefix
 in the run directory, with a Markdown table of every statistic, its difference, its
 interval **or** p-value (the column is headed `CI or p`, because the bootstrap rows carry an
 interval and the McNemar rows a p-value), and its significant/underpowered annotations.
+
+### 5.1 Reporting power alongside a null result
+
+When a comparison reports **no significant difference**, the note states the **minimum
+detectable difference** at that n (paired, α = 0.05 two-sided, 80% power, from the observed
+per-item difference SD: `MDE = 2.8016 * sd(diff) / sqrt(n)`, the constant being
+z₀.₉₇₅ + z₀.₈ = 2.80158 rounded) and, where the observed difference is non-zero, the **n it
+would need** for 80% power: `n = (2.8016 * sd(diff) / diff)^2`. The reason is that "not
+significant" and "equal" are different claims, and only the first is supported — the two v1
+notes cited in §4.1 both had to say so about a tie the reader would otherwise read as a null
+result.
+These are report-time figures computed from the same per-item differences as the tests; they
+are not produced by `--compare` today. Like §4.1, this is an agent-side reporting convention
+(recorded 2026-08-20, PR #35) — Jahid's and his supervisor's to revise, not settled methodology.
 
 ## 6. "Composite score" names two different things — proposed fix
 
