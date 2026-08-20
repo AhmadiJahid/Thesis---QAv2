@@ -198,6 +198,9 @@ significant, CI [−0.1842, +0.2259]; diagnostic +0.0273, CI [+0.0107, +0.0440],
 [`docs/analysis/2026-08-20-v1-pool-size-significance.md`](analysis/2026-08-20-v1-pool-size-significance.md)
 §4.4 (the pool-size trend **reverses direction** between the two). Both are input to issue #29.
 
+Like the rest of this section's conventions, these rules are agent-side reporting documentation
+(recorded 2026-08-20, PR #35) — Jahid's and his supervisor's to revise, not settled methodology.
+
 ## 5. Paired comparison (`--compare A_per_item.json B_per_item.json`)
 
 Compares two runs **on the same evaluation set**. Parameters live in
@@ -277,7 +280,8 @@ significant" and "equal" are different claims, and only the first is supported �
 notes cited in §4.1 both had to say so about a tie the reader would otherwise read as a null
 result.
 These are report-time figures computed from the same per-item differences as the tests; they
-are not produced by `--compare` today.
+are not produced by `--compare` today. Like §4.1, this is an agent-side reporting convention
+(recorded 2026-08-20, PR #35) — Jahid's and his supervisor's to revise, not settled methodology.
 
 ## 6. "Composite score" names two different things — proposed fix
 

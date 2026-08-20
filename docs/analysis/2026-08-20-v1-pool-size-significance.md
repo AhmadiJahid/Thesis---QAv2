@@ -282,7 +282,7 @@ p = 0.0005**).
 
 **Why these near-misses matter for reading the tables.** `significant` in the bootstrap column is
 `ci_low > 0 or ci_high < 0` — a strict inequality, so a CI endpoint that lands on exactly 0.0 reads
-as *not* significant. Three of the seven disagreements above are that knife-edge (endpoint exactly
+as *not* significant. Four of the seven disagreements above are that knife-edge (endpoint exactly
 0.0), including the one 4000-vs-8000 cell §4.4 and §7 name explicitly. Where a claim below turns on
 this, the test basis is stated rather than the word "significant" alone.
 
