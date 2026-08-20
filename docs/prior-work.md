@@ -77,7 +77,7 @@ Aggregate mean composite_score: mode typed 0.267, uniform 0.259, raw 0.243; bien
 
 FINDINGS' conclusions: typed masking is the best average retrieval mode in this sweep; larger pool is not always better (8000 drops vs 4000); cross-encoder rerank is not a free win on mean composite (it helps some metrics, especially hop-count EM / step F1 at larger pools — consult the delta plots per metric); exact match stays ~3–5% across the board — pool size alone does not solve gold-plan matching.
 
-**Significance check (2026-08-20):** over the 15 matched cell pairs, +CE raises ROUGE-L F1 in 15/15 (5 survive Holm) and never moves exact match — see `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`.
+**Significance check (2026-08-20):** over the 15 matched cell pairs, +CE raises ROUGE-L F1 in 15/15 (5 survive Holm) and shows no significant effect on exact match (0/15 by any test, signs split 7/8) — see `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`.
 
 ## 5. MetaQA KG compile/execute charts (FINDINGS §6)
 

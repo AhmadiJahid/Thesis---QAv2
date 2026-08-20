@@ -22,6 +22,14 @@ no `experiments/log.md` entry.
 - What *is* new and reproducible here is the **statistics**: the significance battery was computed
   in this session from the v1 per-item scores, using v2's committed protocol code (§1). The
   significance verdicts are properties of v1's numbers; they inherit v1's provenance gap.
+- **The harness that produced these figures is not committed** (analyst output is analysis, not
+  code). The figures were **verified by independent recomputation in the PR #33 delta review**, so
+  they are not unchecked — but they are **not re-derivable from committed code** until the
+  `--compare` shim in recommendation 6(b) lands. Every statistic reported below is also emitted
+  machine-readably beside this note, in
+  [`2026-08-20-v1-masking-and-retrieval-significance.json`](2026-08-20-v1-masking-and-retrieval-significance.json)
+  (statistics only — no dataset content), which additionally carries the input sha256s, the
+  alignment order, the seed/resample/chunk parameters and the Holm-adjusted p-values.
 
 ---
 
@@ -64,7 +72,7 @@ are exactly what `--compare` would print.
 **Reproducibility gap, stated plainly:** the harness is not committed (analyst output is analysis,
 not code). The four house statistics are re-derivable today by re-stamping the v1 per-item files
 into v2's schema and running `--compare`; the EM / hop-EM bootstrap columns and the diagnostic in §4
-are not, until such a shim exists. See recommendation R5.
+are not, until such a shim exists. See recommendation 6(b).
 
 ## 2. Inputs — paths and content hashes
 
@@ -105,9 +113,12 @@ inventory; **no statistic in this note is computed from aggregates**).
 
 **Task A (ran; observed).** All three files hold **600 rows each, 600 distinct normalized questions
 each, 0 duplicates**. The three question sets are **identical** (`typed == uniform == raw`, True), so
-the comparison is on the full 600 — **no intersection fallback was needed**. Gold is identical
-across the three files for every item (`gold_steps` and `gold_hop_count`, 600/600 match). Gold hop
-distribution: **200 / 200 / 200** for hops 2 / 3 / 4 — the ADR 0007 pinned shape.
+the comparison is on the full 600 — **no intersection fallback was needed**. **Alignment is by
+normalized question text (strip, lowercase, collapse whitespace), and the aligned rows are processed
+in sorted order of that key** — matching v2's `--compare`, which sorts its aligned ids so the
+bootstrap is reproducible. (v1's per-item files have no `item_id`, hence the question text as key.)
+Gold is identical across the three files for every item (`gold_steps` and `gold_hop_count`, 600/600
+match). Gold hop distribution: **200 / 200 / 200** for hops 2 / 3 / 4 — the ADR 0007 pinned shape.
 
 **Aggregate cross-check.** Re-aggregating the per-item rows reproduced each variant's committed
 `_metrics.json` to a maximum absolute delta of **3.3e-16** (typed), **2.2e-16** (uniform),
@@ -124,6 +135,16 @@ these files. Alignment is therefore **positional**, and for every matched pair e
 question **and** `gold_steps` were asserted equal between the two cells (verified True for all 15
 pairs). This is a documented deviation from v2's id-based alignment, forced by v1's file format; it
 is safe here only because the sequences are literally identical.
+
+**Read the CI bounds to three significant figures, not to the last digit.** The bootstrap resamples
+*row indices*, so the CI endpoints depend on the order the aligned matrices were built in. Ran the
+Task-A typed-vs-raw battery in both orders and observed: **every point estimate agrees to ≤ 2.8e-17**
+(floating-point summation order) and **every significance verdict is identical**, while CI endpoints
+move in the third or fourth decimal — step F1 [+0.0053, +0.0412] in the reported sorted order vs
+[+0.0054, +0.0414] in v1 file order; exact match [+0.0033, +0.0400] vs [+0.0050, +0.0400]. The
+low-order digits of a CI in this note are therefore alignment- and harness-dependent; the intervals'
+signs, widths and verdicts are not. Both orders are recorded in the companion JSON under
+`task_a_masking.row_order_sensitivity`.
 
 ## 4. Task A — masking (typed / uniform / raw), n = 600, all three pairwise
 
@@ -209,7 +230,8 @@ Three consequences, all measured:
    ([−0.1841, +0.1868]). **No composite comparison among the three masking variants is significant
    at n = 600.**
 2. **The step-level gap does survive.** With the reference term removed and the remaining weights
-   renormalized (a diagnostic quantity constructed for this note, **not** a house metric), typed vs
+   renormalized to sum to 1 — **0.5 step F1 / 0.375 ordered accuracy / 0.125 step-count term**, a
+   diagnostic quantity constructed for this note and **not** a house metric — typed vs
    raw is **+0.0273, CI [+0.0107, +0.0440] — significant**, and it stays significant within hop 2
    (+0.0372) and hop 3 (+0.0289) separately. uniform vs raw on the same diagnostic is +0.0137,
    CI [−0.0015, +0.0289] — **not** significant.
@@ -224,15 +246,15 @@ Three consequences, all measured:
 Minimum detectable difference (paired, α = 0.05 two-sided, 80% power, from the observed
 per-item difference SDs), and the n the observed difference would need:
 
-| pair | metric | observed diff | sd(diff) | MDE at n=600 | n needed for observed diff |
+| pair | metric | observed diff | sd(diff) | MDE at n=600 | n needed for observed diff (ceil) |
 |---|---|---|---|---|---|
 | typed − raw | step F1 | +0.0232 | 0.2228 | 0.0255 | 727 |
 | typed − raw | ord acc | +0.0213 | 0.2184 | 0.0250 | 828 |
 | typed − raw | EM | +0.0217 | 0.2190 | 0.0250 | 802 |
-| typed − raw | hop EM | +0.0367 | 0.5650 | 0.0646 | 1,863 |
-| typed − uniform | step F1 | +0.0111 | 0.2212 | 0.0253 | 3,139 |
-| typed − uniform | ord acc | +0.0132 | 0.2129 | 0.0244 | 2,051 |
-| uniform − raw | step F1 | +0.0121 | 0.1996 | 0.0228 | 2,137 |
+| typed − raw | hop EM | +0.0367 | 0.5650 | 0.0646 | 1,864 |
+| typed − uniform | step F1 | +0.0111 | 0.2212 | 0.0253 | 3,140 |
+| typed − uniform | ord acc | +0.0132 | 0.2129 | 0.0244 | 2,052 |
+| uniform − raw | step F1 | +0.0121 | 0.1996 | 0.0228 | 2,138 |
 
 Read: n = 600 buys ~2.5 points of step F1 / ordered accuracy. The typed-vs-raw effects sit **right
 at** that threshold — they are significant, and they are marginal. **typed vs uniform would need
@@ -300,9 +322,9 @@ and `size4000_imbalanced__typed` hop 2 ordered accuracy (CI [+0.0003, +0.0683], 
 The 15 pairs are **not independent** (identical 750 eval items; nested pools), so the sign counts
 above are descriptive; no across-pair test was run and none is claimed. The strongest statement the
 data supports: **+CE raises ROUGE-L F1 in 15/15 pairs, significantly in 8 uncorrected and 5 after
-Holm, at a magnitude of +0.005 to +0.020**, and **never moves exact match** (0/15 by any test, with
-signs split 7/8). Composite is uninformative for the same reason as §4 — **14 of its 15 CIs straddle 0**,
-with widths from 0.2111 to 0.4083.
+Holm, at a magnitude of +0.005 to +0.020**, and **shows no significant effect on exact match**
+(0/15 by any test, with signs split 7/8). Composite is uninformative for the same reason as §4 — **14 of its 15 CIs straddle 0**,
+with widths from 0.2111 to 0.4083 (`across_pair_summary.composite_score` in the companion JSON).
 
 ## 6. What contradicts, and what confirms, `docs/prior-work.md`
 
@@ -325,10 +347,11 @@ with widths from 0.2111 to 0.4083.
 Ranked by how much each would change the decision. These are options and evidence, **not** a chosen
 direction — the call is Jahid's with his supervisor.
 
-1. **Do not default to typed on the strength of the composite.** The composite typed-vs-raw gap is
-   not significant (CI [−0.1842, +0.2259]) and is 87.3% one 0.2-weighted micro rate decided by four
-   predictions. Any masking default justified by "0.3606 vs 0.1888" is justified by an artifact.
-   This is the highest-impact item because it is the number most likely to be quoted.
+1. **A typed default justified by the composite would rest on an artifact.** The composite
+   typed-vs-raw gap is not significant (CI [−0.1842, +0.2259]) and is 87.3% one 0.2-weighted micro
+   rate decided by four predictions, so "0.3606 vs 0.1888" does not carry the weight it appears to.
+   This ranks first because it is the number most likely to be quoted, not because the ranking
+   settles what to do about it.
 2. **Typed over raw is defensible on the step-level metrics, and only just.** step F1 +0.0232
    (CI [+0.0053, +0.0412], t p=0.0112), ordered accuracy +0.0213, EM +0.0217 (McNemar p=0.0241),
    ROUGE-L +0.0126 (CI lower bound +0.0001 — the weakest of the four). All four sit at the n = 600
@@ -337,14 +360,16 @@ direction — the call is Jahid's with his supervisor.
    five-metric family alone the smallest is 0.0559. So: significant as ADR 0009 reports it
    (uncorrected), fragile under correction. Whether to correct is a supervisor question and is
    already flagged in ADR 0009.
-3. **typed vs uniform is undecidable at n = 600 — do not record a winner.** Nothing is significant
-   in either direction on any metric (largest effect: ordered accuracy +0.0132, t p=0.13). Resolving
-   it at the observed effect size needs ~2,000–3,000 items. If the choice between typed and uniform
-   matters to the thesis, the honest options are (a) enlarge the eval set, or (b) record the choice
-   as made on non-statistical grounds (e.g. masking-pipeline simplicity) and say so.
+3. **The data cannot name a winner between typed and uniform at n = 600.** Nothing is significant
+   in either direction on any metric (largest effect: ordered accuracy +0.0132, t p=0.13), so a
+   recorded winner would not be supported by these runs. Resolving it at the observed effect size
+   needs ~2,000–3,000 items. If the choice matters to the thesis, the options the evidence leaves
+   open are (a) enlarge the eval set, or (b) make the choice on non-statistical grounds
+   (e.g. masking-pipeline simplicity) and record that this is what happened.
 4. **Cross-encoder rerank: adopt-or-not turns on which metric is primary.** +CE is the most
    consistent effect anywhere in this note on **ROUGE-L F1** (15/15 pairs positive, 8 uncorrected /
-   5 Holm-surviving) and is **flat on exact match** (0/15, signs 7/8). That makes it a decision that
+   5 Holm-surviving) and shows **no significant effect on exact match** (0/15 by any test, signs
+   split 7/8). That makes it a decision that
    cannot be taken before #6 item 5 (thesis-primary metric) — worth surfacing as a dependency rather
    than deciding twice.
 5. **The reference-validity term needs a decision before the composite is used anywhere.** At v1's
