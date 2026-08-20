@@ -28,6 +28,16 @@ loader, quantization, decoding block and `post_process` block the decomposer use
 is asserted against `configs/model_limits.json` like every other model load
 (`src/model_size.py`, component `answerer`).
 
+**The reader's ceiling is 8e9 — the standing ~8B constraint — under its own
+`answerer_max_params` key.** ADR [0015](./0015-admit-qwen3.5-9b-to-the-decomposer-despite-the-8b-ceiling.md)
+raised `default_max_params` to 1e10 for **one role**, Qwen3.5-9B as a *decomposer*; letting
+the reader inherit that key would have extended the exception to a role no ADR admits. The
+default reader (Mistral-7B-Instruct-v0.3, ~7.25B) passes; a 9B reader is refused at load time
+until Jahid records an extension for it, and swapping `reader_model` to `qwen3_5_9b` for a
+real run is therefore a decision, not a flag. (`--dry-run` loads no weights, so a dry run with
+any folder reports `ceiling_asserted: false` and asserts nothing — including the smoke stage
+that exercises the chat-template rendering path with `qwen3_5_9b`.)
+
 Only the *prompt* is the answerer's own (`components/answerer/prompts/reader.md`): a
 decomposition prompt cannot answer a question. It is one committed file for the whole
 registry, and the runner refuses a reader prompt that lacks `{context}` or `{question}`.
@@ -56,6 +66,37 @@ Aliases are not decoration: measured 2026-08-20, 680 of 2417 dev rows carry a no
 list, and 136 of the pinned 600 evaluation items do (51 at 2-hop, 53 at 3-hop, 32 at 4-hop).
 Scoring against `answer` alone would understate every arm.
 
+## Implementation conventions (agent-authored)
+
+Everything above is Jahid's. The following came with the implementation (PR #32) and is
+recorded here so the write-up does not later mistake it for a research decision. None of it
+was reviewed as methodology by the supervisor; all of it is changeable without touching the
+three decisions.
+
+- **The reader prompt** `components/answerer/prompts/reader.md`. Its wording is the
+  implementer's, including the **no-abstention line** — "If the context does not state the
+  answer, answer with the most likely span from the context" (line 8), which forces a guess
+  rather than allowing an empty answer. That is a scoring-relevant choice: MuSiQue's
+  answerable setting has an answer for every item, and an abstention would score 0 on EM and
+  F1 anyway, but a forced guess can also pick up partial F1 credit. **Jahid read the prompt
+  and approved the wording as-is on 2026-08-20 in session** (pending supervisor confirmation,
+  like the rest of this record).
+- **One reader prompt for the whole registry**, not one per model folder: a reader prompt is
+  not model-specific the way the decomposition prompts are (those are byte-identical to v1 and
+  must stay so). The single file is split on `chat_split_marker` (`<<<USER>>>`) into
+  system/user messages for a `chat_template` folder and joined with a blank line for a `plain`
+  one, so both styles see the same text. `reader_prompt_file` in the config is where a
+  per-model prompt would go if one is ever needed.
+- **Answer cleanup**: the first non-empty line of the generation, a leading `Answer:`-style
+  prefix dropped, and a truncation at `max_answer_chars` (200) that is counted rather than
+  silent. Mechanical, and configured in `answer_post_process`.
+- **A 64-token completion budget** for a sub-question (`generation_overrides.max_new_tokens`),
+  against the model folders' decomposition-sized default. A MuSiQue answer is a short span;
+  rows that reach the budget are reported as `rows_at_max_new_tokens`, so the choice is
+  observable rather than assumed.
+- **Both step-reference grammars are executed**, and a malformed reference (`[#1` with no
+  closing bracket) is left verbatim and counted unresolved rather than guessed at.
+
 ## Consequences
 
 - End-to-end answer accuracy is measurable for any decomposition run, and the same code path
@@ -78,6 +119,20 @@ Scoring against `answer` alone would understate every arm.
   [0012](./0012-fine-tuning-arm-conventions-for-the-decomposer.md) — the fine-tuned arm's
   `as_is` targets). Measured 2026-08-20: all 3,987 references across the 2,417 gold dev rows
   are bare, so without the bare form the oracle ceiling could not be executed at all.
+- **A shared assertion now carries its caller's voice.** `assert_pinned_eval_set` lives in
+  `run_decomposer.py` and is used by both runners, so its refusal takes a `remedy` sentence
+  and its warning a `component` tag from the caller. The convention for any further sharing
+  out of that module: parameterize the caller-specific text rather than duplicating the
+  assertion, because two copies of "what the pinned set is" would be two things to keep in
+  step — and a refusal that names the wrong flag sends the reader to the wrong script.
+- **The upstream metric definitions are verified, not assumed.** `src/answer_metrics.py`
+  carries the provenance: a 20,000-pair differential test against the official SQuAD script
+  (0 mismatches) and a direct read of MuSiQue's `metrics/answer.py` + `evaluate_v1.0.py`
+  (fetched from `github.com/StonyBrookNLP/musique` @ `main` on 2026-08-20, archived outside
+  git with sha256s). Two upstream details are recorded rather than mirrored blindly: the
+  argument-order wart in `metric_max_over_ground_truths` (no numeric effect — both metrics are
+  symmetric) and this repo's defensive de-duplication of the gold set (unreachable on this
+  dataset: 0 blank, 0 non-string, 0 duplicate aliases over 2417 dev rows).
 - Status is **pending supervisor confirmation**, like ADRs 0014 and 0015. If the supervisor
   prefers a different reader, a gold-only context or a different answer metric, that
   supersedes this record and the runs made under it are re-run rather than reinterpreted.

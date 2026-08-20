@@ -31,11 +31,16 @@ Everything else lives in `configs/answer_musique.json`.
 ## Files here
 
 - `run_answerer.py` — the runner. Loads its model through `run_decomposer.load_model` and
-  asserts the parameter ceiling (`src/model_size.py`, component `answerer`).
-- `prompts/reader.md` — the reader prompt, one file for the whole registry. `{context}` and
-  `{question}` are required (the runner refuses a prompt missing either). A
-  `chat_template` model folder gets the halves either side of `<<<USER>>>` as
-  system/user messages; a `plain` folder gets them concatenated.
+  asserts the parameter ceiling (`src/model_size.py`, component `answerer`) against
+  `answerer_max_params` = **8e9**: the reader keeps the standing ~8B ceiling and does not
+  inherit the decomposer's ADR 0015 raise, so a 9B *reader* is refused at load time until
+  Jahid records an extension (ADR 0019).
+- `prompts/reader.md` — the reader prompt, one file for the whole registry. A
+  `chat_template` model folder gets the halves either side of `<<<USER>>>` as system/user
+  messages; a `plain` folder gets them concatenated. `{context}` and `{question}` are
+  required **in the half that gets filled** — for a chat folder, the user half: a
+  placeholder above the marker is passed through as literal text, so putting `{context}`
+  there would run the reader closed-book, and the runner refuses that.
 
 There are no per-model folders here: a reader prompt is not model-specific the way a
 decomposition prompt is (those are byte-identical to v1 and must stay so). If a model ever

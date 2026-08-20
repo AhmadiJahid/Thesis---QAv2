@@ -46,13 +46,20 @@ needs no lock.
 Guarantees, all of them hard:
 
 - the reader's parameter count is printed and asserted against ``configs/model_limits.json``
-  (``src/model_size.py``) before a single answer is generated;
+  before a single answer is generated — against ``answerer_max_params`` (8e9, the standing
+  ceiling), **not** the decomposer's ADR 0015 raise to 1e10, which was granted for one role;
+- the reader prompt must carry ``{context}`` and ``{question}`` **in the half that actually
+  gets filled**: for a chat-template folder that is the user half, since a placeholder above
+  the split marker is passed through as literal text and would leave the reader closed-book;
 - the evaluation set is asserted to be the pinned ADR 0007 set **by id**, not only by count
   (the shared assertion in ``run_decomposer.py``), because an end-to-end number on a
   different set is not comparable to anything (ADR 0011). ``--allow-unpinned-eval-set`` is
   the recorded opt-out for fixture runs, which are not experiment arms;
 - every item's context is checked to exist **before** the model is loaded, so a scored item
   can never be a silently closed-book one;
+- every config value the generation call reads — decoding, answer cleanup, and a
+  chat-template folder's ``enable_thinking`` — is read up front, so a missing key fails with
+  no weights loaded rather than mid-run on the GPU;
 - the run leaves a config snapshot, a metrics JSON and a run note; the metrics JSON carries
   aggregates and counts only (no dataset text), and the per-item file — which does carry
   questions and answers — stays under the gitignored runs root, because data never enters
@@ -209,22 +216,51 @@ def render_reader_template(template: str, *, prompt_style: str, marker: str) -> 
     return template
 
 
-def assert_reader_template(template: str, *, prompt_path: Path) -> None:
-    """Refuse a reader prompt that cannot carry the context or the sub-question.
+def reader_filled_text(template: str, *, prompt_style: str, marker: str) -> str:
+    """The part of the reader prompt that placeholders are actually filled into.
+
+    For a ``plain`` folder that is the whole prompt (the halves joined). For a
+    ``chat_template`` folder it is the **user** half only: :func:`build_reader_messages`
+    passes the system half through verbatim, so a placeholder written above the marker is
+    never filled.
+    """
+    if prompt_style == "chat_template":
+        _, user_part = rd.split_chat_template(template, marker)
+        return user_part
+    return render_reader_template(template, prompt_style=prompt_style, marker=marker) or template
+
+
+def assert_reader_template(
+    template: str, *, prompt_path: Path, prompt_style: str, marker: str
+) -> None:
+    """Refuse a reader prompt whose *filled* half cannot carry context and sub-question.
 
     A prompt with no ``{context}`` would score the reader closed-book while the run reported
     the full-paragraph setting, and a prompt with no ``{question}`` would ask nothing at all.
     Both are refusals rather than warnings: either produces numbers that answer a different
     question than the one the run claims.
+
+    Checking the *filled* half rather than the file is the point (PR #32 review, I-1): with
+    a ``chat_template`` folder, ``{context}`` written above ``<<<USER>>>`` is passed through
+    as literal text in the system message and never filled, so a whole-file check would pass
+    a prompt that runs closed-book. What gets filled is what gets checked
+    (:func:`reader_filled_text`).
     """
-    missing = [slot for slot in ("{context}", "{question}") if slot not in template]
+    filled = reader_filled_text(template, prompt_style=prompt_style, marker=marker)
+    missing = [slot for slot in ("{context}", "{question}") if slot not in filled]
     if missing:
+        where = (
+            f"the half after {marker!r} (the only half that is filled for a "
+            "chat_template model folder)"
+            if prompt_style == "chat_template"
+            else "the prompt"
+        )
         raise SystemExit(
-            f"reader prompt {prompt_path} is missing {', '.join(missing)}.\n"
+            f"reader prompt {prompt_path} is missing {', '.join(missing)} in {where}.\n"
             "The reader answers one sub-question over the MuSiQue item's full paragraph "
-            "list (ADR 0019 decision 2), so both placeholders are required: without "
-            "{context} the run would be closed-book while reporting the full-paragraph "
-            "setting."
+            "list (ADR 0019 decision 2), so both placeholders are required where they are "
+            "filled: without {context} there the run would be closed-book while reporting "
+            "the full-paragraph setting."
         )
 
 
@@ -316,13 +352,30 @@ def per_gold_hop_metrics(items: list[dict[str, Any]]) -> dict[str, dict[str, Any
 GENERATION_KEYS = ("max_new_tokens", "temperature", "top_p", "do_sample")
 ANSWER_POST_PROCESS_KEYS = ("take_first_line", "strip_prefixes", "max_answer_chars")
 
+#: Model-folder keys read only on the **real** chat-template branch of the loop
+#: (``tokenizer.apply_chat_template(..., enable_thinking=...)``); a dry run renders the
+#: messages as JSON and never touches them. Same blind spot, so the same treatment: read up
+#: front when the folder is a chat-template one (PR #32 review, I-2).
+CHAT_TEMPLATE_KEYS = ("chat_template.enable_thinking",)
 
-def assert_generation_preflight(generation: dict, answer_cfg: dict) -> None:
+
+def assert_generation_preflight(
+    generation: dict, answer_cfg: dict, *, model_cfg: dict | None = None, prompt_style: str = "plain"
+) -> None:
     """Read every key the generation call will need, now, with no model loaded."""
     for key in GENERATION_KEYS:
         require(generation, key)
     for key in ANSWER_POST_PROCESS_KEYS:
         require(answer_cfg, key)
+    if prompt_style == "chat_template":
+        if model_cfg is None:
+            raise SystemExit(
+                "[answerer] internal: prompt_style='chat_template' needs model_cfg in the "
+                "generation preflight, so the chat-template keys can be read before the "
+                "model loads"
+            )
+        for key in CHAT_TEMPLATE_KEYS:
+            require(model_cfg, key)
 
 
 def cost_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -647,20 +700,27 @@ def main() -> None:
     generation = rd.apply_generation_overrides(
         dict(require(model_cfg, "generation")), generation_overrides, config_src
     )
-    assert_generation_preflight(generation, answer_cfg)
+    assert_generation_preflight(
+        generation, answer_cfg, model_cfg=model_cfg, prompt_style=prompt_style
+    )
 
     # ---- reader prompt
     prompt_path = resolve_path(require(cfg, "reader_prompt_file"), _REPO_ROOT)
     if not prompt_path.exists():
         raise SystemExit(f"reader prompt not found: {prompt_path}")
     prompt_template = prompt_path.read_text(encoding="utf-8")
-    assert_reader_template(prompt_template, prompt_path=prompt_path)
     chat_marker = require(cfg, "chat_split_marker")
+    # Splits the prompt itself (so a chat folder with no marker fails here) and checks the
+    # half that actually gets filled.
+    assert_reader_template(
+        prompt_template,
+        prompt_path=prompt_path,
+        prompt_style=prompt_style,
+        marker=chat_marker,
+    )
     plain_template = render_reader_template(
         prompt_template, prompt_style=prompt_style, marker=chat_marker
     )
-    if prompt_style == "chat_template":
-        rd.split_chat_template(prompt_template, chat_marker)  # fail fast on a bad prompt
     prompt_sha256 = rd.sha256_file(prompt_path)
 
     device = "cpu"
@@ -802,10 +862,31 @@ def main() -> None:
             "--gold-decompositions, which restricts itself to them), or pass "
             "--allow-unpinned-eval-set for a fixture run that is not an experiment arm."
         ),
+        component="answerer",
     )
     eval_set_record["rows_loaded_total"] = len(eval_rows)
     eval_set_record["rows_loaded_per_hop"] = rows_per_hop
     eval_set_record["distinct_item_ids"] = len(loaded_ids)
+
+    # The assertion above ran on everything that loaded, which is the point of a dry run as
+    # a preflight: "would a real launch be on the pinned set?". But this run then processes
+    # only --dry-run-limit rows, and `pinned: true` next to 5 processed items would read as
+    # a claim about the run. So the flag is downgraded and the preflight result kept beside
+    # it under its own name (PR #32 review, N-4).
+    rows_to_process = (
+        min(len(eval_rows), max(0, args.dry_run_limit)) if args.dry_run else len(eval_rows)
+    )
+    eval_set_record["rows_processed"] = rows_to_process
+    eval_set_record["truncated_by_dry_run_limit"] = rows_to_process < len(eval_rows)
+    if eval_set_record["truncated_by_dry_run_limit"]:
+        eval_set_record["pinned_on_full_load"] = eval_set_record["pinned"]
+        eval_set_record["pinned"] = False
+        eval_set_record["pinned_downgraded_reason"] = (
+            f"--dry-run-limit cut the run to {rows_to_process} of {len(eval_rows)} loaded "
+            "item(s), so this run did not process the pinned evaluation set even though the "
+            "assertion above was applied to everything that loaded "
+            f"(pinned_on_full_load={eval_set_record['pinned_on_full_load']})"
+        )
 
     output_root = (
         Path(args.output_root)
@@ -1177,7 +1258,12 @@ def main() -> None:
             f"(unmatched: {len(missing_items)}; per gold hop: {gold_hop_distribution})",
             f"- Evaluation set pinned: {eval_set_record['pinned']} "
             f"(ids checked: {eval_set_record['id_identity_checked']}; "
-            f"source: {eval_set_record['rows_source']})",
+            f"source: {eval_set_record['rows_source']})"
+            + (
+                f" — downgraded: {eval_set_record['pinned_downgraded_reason']}"
+                if eval_set_record.get("pinned_downgraded_reason")
+                else ""
+            ),
             (
                 f"- Answer EM: {overall['answer_em']:.4f} / F1: {overall['answer_f1']:.4f} "
                 f"over {overall['num_items']} item(s)"

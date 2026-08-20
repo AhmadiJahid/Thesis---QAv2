@@ -44,6 +44,7 @@ from answer_metrics import (  # noqa: E402
     normalize_answer,
     score_answer,
 )
+from model_size import assert_within_ceiling, ceiling_for, load_limits  # noqa: E402
 from run_config import PATHS_CONFIG_ENV, load_config, require  # noqa: E402
 from step_lines import substitute_step_references  # noqa: E402
 
@@ -116,6 +117,67 @@ class TestStepReferenceSubstitution(unittest.TestCase):
     def test_a_step_with_no_reference_is_unchanged(self) -> None:
         text, resolved, unresolved = substitute_step_references("Who won?", {1: "Ada"})
         self.assertEqual((text, resolved, unresolved), ("Who won?", [], []))
+
+    def test_a_malformed_reference_is_counted_not_ignored(self) -> None:
+        """PR #32 review, N-1: '[#1' matched neither alternative, so a truncated reference
+        was silently neither substituted nor reported. It is now left verbatim and counted
+        unresolved even though step 1 has an answer: the intent is legible, the extent of
+        the reference is not."""
+        text, resolved, unresolved = substitute_step_references(
+            "Who leads [#1?", {1: "Harbour Union"}
+        )
+        self.assertEqual(text, "Who leads [#1?")
+        self.assertEqual((resolved, unresolved), ([], [1]))
+
+    def test_a_malformed_reference_is_caught_in_bracketed_only_mode_too(self) -> None:
+        _, resolved, unresolved = substitute_step_references(
+            "Who leads [#1?", {1: "Harbour Union"}, accept_bare=False
+        )
+        self.assertEqual((resolved, unresolved), ([], [1]))
+
+    def test_a_well_formed_bracketed_reference_is_not_read_as_malformed(self) -> None:
+        """Alternative order matters: '[#1]' must match the bracketed form, not '[#1' + ']'."""
+        text, resolved, unresolved = substitute_step_references("Who leads [#1]?", {1: "HU"})
+        self.assertEqual((text, resolved, unresolved), ("Who leads HU?", [1], []))
+
+    def test_a_reference_glued_to_a_word_is_not_a_reference(self) -> None:
+        """PR #32 review, N-2: '#1st' parsed as a reference to step 1 followed by 'st'.
+        The bare form now requires standalone digits, so it is left alone entirely."""
+        text, resolved, unresolved = substitute_step_references(
+            "Which #1st edition?", {1: "Harbour Union"}
+        )
+        self.assertEqual((text, resolved, unresolved), ("Which #1st edition?", [], []))
+
+    def test_a_hash_inside_a_word_is_not_a_reference(self) -> None:
+        text, resolved, unresolved = substitute_step_references("Model X#1 sold?", {1: "HU"})
+        self.assertEqual((text, resolved, unresolved), ("Model X#1 sold?", [], []))
+
+    def test_a_road_number_is_reported_never_rewritten(self) -> None:
+        """The honest limit of the grammar (N-2): 'Route #66' still parses as a reference to
+        step 66. There is no step 66, so it is left verbatim and counted unresolved - visible
+        in the metrics, never a silent edit. Telling a step reference from a road number needs
+        meaning, not a regex; every one of the 3,987 references in MuSiQue's 2,417 gold dev
+        decompositions is a well-formed bare '#k' (measured 2026-08-20), so real-data
+        behaviour is unchanged by this tightening."""
+        text, resolved, unresolved = substitute_step_references(
+            "What is on Route #66?", {1: "HU"}
+        )
+        self.assertEqual(text, "What is on Route #66?")
+        self.assertEqual((resolved, unresolved), ([], [66]))
+
+    def test_the_real_gold_grammar_still_resolves(self) -> None:
+        """The tightened bare form must still match MuSiQue's own gold shapes, which is all
+        the oracle ceiling relies on."""
+        for step, expected in (
+            ("Who leads #1?", "Who leads HU?"),
+            ("Which country contains #1", "Which country contains HU"),
+            ("What is the capital of #1 in 1970?", "What is the capital of HU in 1970?"),
+            ("#1 was founded by whom?", "HU was founded by whom?"),
+        ):
+            with self.subTest(step=step):
+                text, resolved, _ = substitute_step_references(step, {1: "HU"})
+                self.assertEqual(text, expected)
+                self.assertEqual(resolved, [1])
 
 
 class TestAnswerNormalization(unittest.TestCase):
@@ -317,12 +379,66 @@ class TestContextAndPromptGuards(unittest.TestCase):
 
     def test_a_reader_prompt_without_context_is_refused(self) -> None:
         with self.assertRaises(SystemExit) as caught:
-            ans.assert_reader_template("Question: {question}", prompt_path=Path("x.md"))
+            ans.assert_reader_template(
+                "Question: {question}",
+                prompt_path=Path("x.md"),
+                prompt_style="plain",
+                marker="<<<USER>>>",
+            )
         self.assertIn("{context}", str(caught.exception))
 
-    def test_the_shipped_reader_prompt_passes(self) -> None:
+    def test_context_only_in_the_system_half_is_refused_for_a_chat_reader(self) -> None:
+        """The reviewer's repro (PR #32 review, I-1). build_reader_messages fills the USER
+        half only, so '{context}' above the marker is passed through as literal text: the
+        reader would run closed-book while the run reported the full-paragraph policy. A
+        whole-file check passed this; the filled-half check refuses it."""
+        template = "Context:\n{context}\n<<<USER>>>\nQuestion: {question}\nAnswer:"
+        # The file does contain both placeholders, which is exactly why the old check passed.
+        self.assertIn("{context}", template)
+        with self.assertRaises(SystemExit) as caught:
+            ans.assert_reader_template(
+                template,
+                prompt_path=Path("x.md"),
+                prompt_style="chat_template",
+                marker="<<<USER>>>",
+            )
+        message = str(caught.exception)
+        self.assertIn("{context}", message)
+        self.assertIn("<<<USER>>>", message)
+        # And the literal proof of the hazard: filling that template leaves the user message
+        # with no context at all.
+        messages = ans.build_reader_messages(
+            template, marker="<<<USER>>>", context="CTX", question="Q?"
+        )
+        self.assertNotIn("CTX", messages[1]["content"])
+
+    def test_the_same_template_is_fine_for_a_plain_reader(self) -> None:
+        """Both halves are joined and filled for a plain folder, so placement is harmless
+        there - which is why the guard is per-style, not per-file."""
+        ans.assert_reader_template(
+            "Context:\n{context}\n<<<USER>>>\nQuestion: {question}",
+            prompt_path=Path("x.md"),
+            prompt_style="plain",
+            marker="<<<USER>>>",
+        )
+
+    def test_the_shipped_reader_prompt_passes_in_both_styles(self) -> None:
         prompt = REPO_ROOT / "components" / "answerer" / "prompts" / "reader.md"
-        ans.assert_reader_template(prompt.read_text(encoding="utf-8"), prompt_path=prompt)
+        text = prompt.read_text(encoding="utf-8")
+        for style in ("plain", "chat_template"):
+            with self.subTest(style=style):
+                ans.assert_reader_template(
+                    text, prompt_path=prompt, prompt_style=style, marker="<<<USER>>>"
+                )
+
+    def test_a_chat_reader_prompt_without_the_marker_is_refused(self) -> None:
+        with self.assertRaises(SystemExit):
+            ans.assert_reader_template(
+                "Context: {context}\nQuestion: {question}",
+                prompt_path=Path("x.md"),
+                prompt_style="chat_template",
+                marker="<<<USER>>>",
+            )
 
     def test_plain_rendering_drops_the_chat_marker(self) -> None:
         rendered = ans.render_reader_template(
@@ -413,6 +529,98 @@ class TestGenerationPreflight(unittest.TestCase):
         broken = {k: v for k, v in self.ANSWER.items() if k != "max_answer_chars"}
         with self.assertRaises(SystemExit):
             ans.assert_generation_preflight(dict(self.GENERATION), broken)
+
+    def test_a_chat_folder_missing_enable_thinking_is_caught(self) -> None:
+        """PR #32 review, I-2: enable_thinking is read only on the real chat branch, which
+        no dry run reaches - the exp-002/003 crash shape in config form."""
+        with self.assertRaises(SystemExit):
+            ans.assert_generation_preflight(
+                dict(self.GENERATION),
+                dict(self.ANSWER),
+                model_cfg={"_config_path": "probe", "chat_template": {}},
+                prompt_style="chat_template",
+            )
+
+    def test_a_chat_folder_with_enable_thinking_passes(self) -> None:
+        ans.assert_generation_preflight(
+            dict(self.GENERATION),
+            dict(self.ANSWER),
+            model_cfg={"chat_template": {"enable_thinking": False}},
+            prompt_style="chat_template",
+        )
+
+    def test_a_plain_folder_does_not_need_the_chat_keys(self) -> None:
+        ans.assert_generation_preflight(
+            dict(self.GENERATION), dict(self.ANSWER), model_cfg={}, prompt_style="plain"
+        )
+
+    def test_every_chat_template_model_folder_in_the_registry_passes(self) -> None:
+        """Any folder the reader can be swapped to must survive the preflight, or --model
+        would be a flag that only fails after weights load."""
+        models_dir = REPO_ROOT / "components" / "decomposer" / "models"
+        checked = 0
+        for folder in sorted(p for p in models_dir.iterdir() if p.is_dir()):
+            model_cfg = load_config(folder / "config.json")
+            style = require(model_cfg, "prompt_style")
+            generation = ans.rd.apply_generation_overrides(
+                dict(require(model_cfg, "generation")), {"max_new_tokens": 64}, "test"
+            )
+            ans.assert_generation_preflight(
+                generation, dict(self.ANSWER), model_cfg=model_cfg, prompt_style=style
+            )
+            checked += 1
+        self.assertGreaterEqual(checked, 4, "the model registry was not found")
+
+
+class TestReaderCeiling(unittest.TestCase):
+    """The reader's ceiling is the standing ~8B one, not the decomposer's ADR 0015 raise."""
+
+    def test_the_answerer_has_its_own_ceiling_key(self) -> None:
+        limits = load_limits()
+        self.assertEqual(ceiling_for("answerer", limits), 8_000_000_000)
+
+    def test_it_is_tighter_than_the_decomposers(self) -> None:
+        """PR #32 review, I-3: ADR 0015 raised default_max_params to 1e10 for ONE role, so
+        the reader must not inherit that key."""
+        limits = load_limits()
+        self.assertEqual(ceiling_for("decomposer", limits), 10_000_000_000)
+        self.assertLess(ceiling_for("answerer", limits), ceiling_for("decomposer", limits))
+
+    def test_a_nine_billion_reader_is_refused(self) -> None:
+        class _Model:
+            def num_parameters(self) -> int:
+                return 9_000_000_000
+
+        with self.assertRaises(SystemExit) as caught:
+            assert_within_ceiling(
+                _Model(), component="answerer", model_id="stub/9b", limits=load_limits()
+            )
+        self.assertIn("REFUSING TO RUN", str(caught.exception))
+
+    def test_the_default_reader_size_would_pass(self) -> None:
+        """Mistral-7B-Instruct-v0.3 is ~7.25B; no weights are loaded to check that here, so
+        the ceiling is exercised with the count rather than the model."""
+
+        class _Model:
+            def num_parameters(self) -> int:
+                return 7_248_023_552
+
+        record = assert_within_ceiling(
+            _Model(), component="answerer", model_id="stub/7b", limits=load_limits()
+        )
+        self.assertTrue(record["ceiling_asserted"])
+        self.assertEqual(record["parameter_ceiling"], 8_000_000_000)
+
+    def test_load_limits_requires_every_component_key(self) -> None:
+        """A limits config missing a key would otherwise crash only after weights load."""
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT / "configs") as tmp:
+            probe = Path(tmp) / "limits_probe.json"
+            probe.write_text(
+                json.dumps({"router_max_params": 1, "default_max_params": 2}), encoding="utf-8"
+            )
+            with self.assertRaises(SystemExit) as caught:
+                load_limits(probe)
+        self.assertIn("answerer_max_params", str(caught.exception))
 
     def test_the_declared_keys_are_the_keys_generate_answer_reads(self) -> None:
         """The lists are only as good as their agreement with the source: parse it.
