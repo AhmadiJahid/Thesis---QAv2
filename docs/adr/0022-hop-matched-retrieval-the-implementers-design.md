@@ -62,7 +62,10 @@ mixed being the literal absence of the filter. Knobs live in `hop_match` in
    accepts an integer instead, which deliberately admits a smaller in-bucket candidate set
    for someone who wants it; nothing in the repo sets it that way. **The default is a
    comparability argument, not a measured one** — no evidence says 20 in-bucket candidates
-   beats 12.
+   beats 12. The *effective* floor is never below 1 whatever the config says: a query with
+   an empty candidate set is not a hop-matched query but a broken one, so `min_candidates: 0`
+   still refuses a hop the pool cannot serve (PR #39 review finding 1, which found that
+   combination raising a bare `KeyError` instead).
 
 5. **The hop source is pluggable, and the router's side of it is an interface, not a
    router.** `gold` parses the coarse hop depth from the query id (`2hop__…` / `3hop1__…` /
@@ -84,14 +87,26 @@ mixed being the literal absence of the filter. Knobs live in `hop_match` in
    `MusiQue/scripts/score_similarity_results.py`,
    `components/decomposer/run_decomposer.py`); `src/hop_matching.py` is the fourth.
    Consolidating them would mean editing `run_decomposer.py`, which was **frozen** for the
-   queued exp-004/exp-005 launch at the time of writing. The regexes agree today; the
-   duplication is a real (small) drift risk and the obvious cleanup once the freeze lifts.
+   queued exp-004/exp-005 launch at the time of writing. The four agree **on well-formed
+   ids only**: `score_similarity_results.py` additionally requires the `__` separator
+   (`^(\d+)hop(?:\d+)?__`), so it returns None for a malformed id like `2hopfoo` where the
+   other three return 2. No such id exists in MuSiQue, so the copies agree on every id the
+   pipeline has actually seen — but they are not the same rule, which is the drift risk, and
+   consolidating them is the obvious cleanup once the freeze lifts.
 
 7. **A matched row carries its own provenance**: when the filter is on, each output row gets
    `hop_match = {hop_source, query_hop, pool_candidates}`, so a later reader can tell which
    condition produced a file from the file itself. The field is **absent** when matching is
-   off, which is what keeps the mixed output byte-identical. Downstream stages pass it
-   through untouched.
+   off, which is what keeps the mixed **retrieval JSONL** byte-identical. Downstream stages
+   pass it through untouched.
+
+   To be precise about the scope of that guarantee: byte-identity holds for the retrieval
+   output — the artifact the rest of the pipeline consumes. The **run trail does gain a
+   key**: `similarity_metrics.json` and `similarity_config.json` now carry
+   `hop_match: {"enabled": false}` (plus `hop_match_per_query_file: []`) on a mixed run. That
+   is deliberate — a run record should state which condition produced it rather than leave a
+   reader to infer "mixed" from silence — but it means a diff of two trails across this
+   commit is not empty, and nothing downstream reads those keys.
 
 8. **`--dry-run` is the preflight, and it is the only part a machine without weights can
    run.** It loads the pool and the queries, resolves and validates the whole hop side, and
@@ -125,12 +140,13 @@ mixed being the literal absence of the filter. Knobs live in `hop_match` in
 
 ## What was verified (and what was not)
 
-Ran on 2026-08-21, CPU only, on this branch:
+Ran on 2026-08-21, CPU only, on this branch (counts as of the PR #39 review fix pass):
 
-- `tests/test_hop_matching.py` — **33 tests, all passing**: the three hop buckets, both hop
+- `tests/test_hop_matching.py` — **38 tests, all passing**: the three hop buckets, both hop
   sources, a prediction that disagrees with gold, and every failure mode in item 3.
-- Full suite `python -m unittest discover -s tests` and `scripts/smoke_test.py`
-  (**37/37 stages**, including the new `similarity_hop_match_dryrun`).
+- Full suite `python -m unittest discover -s tests` (**310 tests, OK**) and
+  `scripts/smoke_test.py` (**37/37 stages**, including the new
+  `similarity_hop_match_dryrun`).
 - **Mixed-condition regression, byte level.** The same 9 queries × 45-row throwaway pool
   through the real bi-encoder (`intfloat/e5-small-v2`, CPU, top-k 20, mode `raw`) at
   `origin/main` and on this branch with the feature off (both by config default and by an
@@ -176,6 +192,33 @@ step (this repo sets no torch determinism flags; same caveat as ADR 0021 item 7)
 - `configs/similarity.json` now requires a `hop_match` block: a config without it is refused
   loudly by `require()`, in this repo's no-silent-default style. `configs/similarity_probe.json`
   does **not** need one — the probes never call this script.
+
+### Two conventions this establishes, reusable beyond hop matching
+
+Recorded here at the PR #39 review's request (2026-08-21): both were written as facts about
+this one script, and both are general rules the next change of the same shape should reuse.
+
+- **A behaviour-preserving change proves it against a verbatim copy of the pre-change
+  function.** When a feature is added *inside* an existing function and the old behaviour has
+  to survive untouched under a flag, the guard is: copy the pre-change function body verbatim
+  into the test file, marked as the frozen reference, and assert the live function equals it on
+  input designed to expose ordering and tie-breaking (here a seeded score matrix rounded to two
+  decimals, so ties actually occur). It is stronger than a golden output file — it re-derives
+  the expectation, so it also covers inputs no fixture happens to contain — and it works with
+  no model weights, which is what let this guard live in the ordinary suite. It is *weaker*
+  than an end-to-end byte comparison against the previous commit, so do both when weights are
+  available: the byte check catches everything the test's input space does not reach.
+  First instance: `tests/test_hop_matching.py::TestMixedConditionRegressionGuard` against
+  `_top_k_from_scores`.
+- **Validate every input before opening the single output handle.** A stage that opens one
+  output file and then loops over inputs must complete all validation in a pre-pass. Otherwise a
+  refusal triggered by the *n*-th input leaves a truncated file at the output path — and in this
+  repo that path is exactly what the sweep's skip-if-exists logic reads as finished work, so a
+  loud failure becomes a silent wrong result on the next run. Two observations, unfixed here
+  because they are outside issue #15's scope: `truncate_top20.py` streams input to output line
+  by line (a malformed later line leaves a partial file), and `rerank_similarity_results.py`
+  parses all input up front but writes incrementally (a cross-encoder failure mid-loop leaves a
+  partial file). Neither is a new regression, and both would be a small, separate change.
 
 ## Alternatives considered
 

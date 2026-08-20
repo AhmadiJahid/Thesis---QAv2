@@ -10,9 +10,11 @@ What it covers:
    id, ``predictions`` from an external JSONL), and that a prediction which *disagrees* with
    the gold hop moves the candidate set, which is the whole point of the router condition.
 2. **Every failure mode is a hard error with counts** — an unparseable pool id, an
-   unparseable query id, a query with no prediction, a hop bucket too small for ``top_k``,
-   a malformed / duplicated / empty predictions file, and a ``predictions`` source with no
-   file. None of them may fall back to the mixed condition.
+   unparseable query id, a query with no prediction, a predicted hop that is not a hop
+   depth, a hop bucket too small for ``top_k``, a queried hop the pool has no bucket for at
+   all (including at ``min_candidates: 0``, PR #39 finding 1), a malformed / duplicated /
+   empty predictions file, and a ``predictions`` source with no file. None of them may fall
+   back to the mixed condition, and none may surface as an uncaught exception.
 3. **The regression guard for the mixed condition** — with the feature off,
    ``_top_k_from_scores`` returns exactly what the pre-change implementation returned
    (re-implemented verbatim in this file), on a seeded score matrix that contains ties; the
@@ -312,7 +314,7 @@ class TestFilterGoldSource(unittest.TestCase):
             )
         message = str(ctx.exception)
         self.assertIn("hop 4: 2 pool candidates for 2 queries", message)
-        self.assertIn("5 candidates", message)
+        self.assertIn("required candidates per query: 5", message)
 
     def test_a_queried_hop_absent_from_the_pool_is_refused(self) -> None:
         with self.assertRaises(SystemExit) as ctx:
@@ -323,6 +325,41 @@ class TestFilterGoldSource(unittest.TestCase):
                 top_k=1,
             )
         self.assertIn("hop 4: 0 pool candidates", str(ctx.exception))
+
+    def test_a_missing_bucket_is_refused_even_at_min_candidates_zero(self) -> None:
+        """PR #39 review finding 1: this used to pass the size test and raise KeyError.
+
+        ``0 < 0`` is false, so a hop with no bucket at all slipped through the feasibility
+        guard and hit a bare ``pool_buckets[hop]``. It must be the documented hard error
+        with counts, at every ``min_candidates`` value.
+        """
+        with self.assertRaises(SystemExit) as ctx:
+            HM.build_hop_filter(
+                query_rows=[{"id": "4hop1__a_b_c_d"}],
+                pool_buckets={2: [0, 1, 2]},
+                settings=_settings(min_candidates=0),
+                top_k=5,
+            )
+        message = str(ctx.exception)
+        self.assertIn("hop 4: 0 pool candidates for 1 query", message)
+        self.assertIn("no such bucket in the pool", message)
+        self.assertIn("min_candidates=0", message)
+
+    def test_an_empty_bucket_is_refused_even_at_min_candidates_zero(self) -> None:
+        """Same guard from the other side: a present-but-empty bucket serves nobody."""
+        with self.assertRaises(SystemExit) as ctx:
+            HM.build_hop_filter(
+                query_rows=[{"id": "4hop1__a_b_c_d"}],
+                pool_buckets={2: [0, 1], 4: []},
+                settings=_settings(min_candidates=0),
+                top_k=5,
+            )
+        self.assertIn("hop 4: 0 pool candidates", str(ctx.exception))
+
+    def test_min_candidates_never_resolves_below_one(self) -> None:
+        self.assertEqual(_settings(min_candidates=0).resolve_min_candidates(20), 1)
+        self.assertEqual(_settings(min_candidates=0).resolve_min_candidates(0), 1)
+        self.assertEqual(_settings().resolve_min_candidates(0), 1)
 
     def test_min_candidates_as_an_int_relaxes_the_requirement(self) -> None:
         pool = _pool({2: 6, 4: 2})
@@ -378,6 +415,33 @@ class TestFilterPredictionsSource(unittest.TestCase):
         self.assertIn("2 of 3 queries have no prediction", message)
         self.assertIn(queries[1]["id"], message)
 
+    def test_a_predicted_hop_that_is_not_a_depth_is_refused(self) -> None:
+        """PR #39 review finding 2: 0 and -1 are not hop depths, and must say so.
+
+        Caught here rather than surfacing later as a bucket-size complaint about a hop
+        that could never exist.
+        """
+        pool = _pool({2: 6, 3: 6, 4: 6})
+        queries = _queries([2, 3])
+        for bad in (0, -1):
+            with self.assertRaises(SystemExit, msg=repr(bad)) as ctx:
+                HM.build_hop_filter(
+                    query_rows=queries,
+                    pool_buckets=HM.group_pool_by_hop(pool),
+                    settings=_settings(hop_source="predictions", predictions_file=Path("p.jsonl")),
+                    top_k=3,
+                    predicted_hops={queries[0]["id"]: 2, queries[1]["id"]: bad},
+                )
+            message = str(ctx.exception)
+            self.assertIn("not a hop depth", message)
+            self.assertIn("1 of 2 queries", message)
+
+    def test_is_hop_depth_domain(self) -> None:
+        for good in (1, 2, 3, 4, 17):
+            self.assertTrue(HM.is_hop_depth(good), msg=repr(good))
+        for bad in (0, -1, True, False, 2.0, "2", None):
+            self.assertFalse(HM.is_hop_depth(bad), msg=repr(bad))
+
     def test_predictions_file_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = self._predictions_file(
@@ -401,6 +465,9 @@ class TestFilterPredictionsSource(unittest.TestCase):
             tmpdir = Path(tmp)
             cases = {
                 "not an int": [{"query_id": "2hop__a", "predicted_hop": "three"}],
+                "zero hops": [{"query_id": "2hop__a", "predicted_hop": 0}],
+                "negative hops": [{"query_id": "2hop__a", "predicted_hop": -1}],
+                "boolean": [{"query_id": "2hop__a", "predicted_hop": True}],
                 "missing id": [{"predicted_hop": 3}],
                 "duplicate": [
                     {"query_id": "2hop__a", "predicted_hop": 3},

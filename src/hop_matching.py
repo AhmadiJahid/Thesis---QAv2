@@ -66,6 +66,17 @@ def _sample(items: list[str]) -> str:
     return ", ".join(repr(s) for s in shown) + suffix
 
 
+def is_hop_depth(value: Any) -> bool:
+    """A hop depth is a positive int. ``0`` and negatives are not depths, they are bugs.
+
+    The tighter domain is the pool's own bucket keys, and that is where an out-of-pool
+    depth is caught (:func:`build_hop_filter`, with the bucket sizes printed). This
+    predicate is the cheap first gate, so a predictions file carrying ``0`` or ``-1`` is
+    refused as *not a hop depth* instead of surfacing later as a bucket-size complaint.
+    """
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
+
+
 @dataclass(frozen=True)
 class HopMatchSettings:
     """The knobs, resolved from config + CLI. Held frozen so no stage mutates them."""
@@ -78,9 +89,16 @@ class HopMatchSettings:
     min_candidates: int | str
 
     def resolve_min_candidates(self, top_k: int) -> int:
-        if self.min_candidates == MIN_CANDIDATES_TOP_K:
-            return int(top_k)
-        return int(self.min_candidates)
+        """The per-query candidate floor, never below 1.
+
+        ``min_candidates: 0`` is accepted by the config validator (it reads as "no
+        constraint") but it cannot mean "retrieve zero examples for this query" — a query
+        with an empty candidate set is not a hop-matched query, it is a broken one. So the
+        effective floor is 1, and the configured value is still reported verbatim in the
+        run record and in the refusal message.
+        """
+        resolved = int(top_k) if self.min_candidates == MIN_CANDIDATES_TOP_K else int(self.min_candidates)
+        return max(1, resolved)
 
     def as_record(self, top_k: int | None = None) -> dict[str, Any]:
         """The settings as they belong in a metrics JSON / config snapshot."""
@@ -179,8 +197,8 @@ def load_predicted_hops(
             if not isinstance(qid, str) or not qid.strip():
                 bad_rows.append(f"line {lineno}: {id_field!r} missing or not a string")
                 continue
-            if isinstance(hop, bool) or not isinstance(hop, int):
-                bad_rows.append(f"line {lineno}: {hop_field!r}={hop!r} is not an int")
+            if not is_hop_depth(hop):
+                bad_rows.append(f"line {lineno}: {hop_field!r}={hop!r} is not a hop depth")
                 continue
             qid = qid.strip()
             if qid in hops:
@@ -191,7 +209,7 @@ def load_predicted_hops(
         raise SystemExit(
             f"hop predictions file {path} has {len(bad_rows)} unusable row(s): "
             f"{_sample(bad_rows)}. Expected one JSON object per line with "
-            f"{id_field!r} (string) and {hop_field!r} (int)."
+            f"{id_field!r} (string) and {hop_field!r} (a positive int hop depth)."
         )
     if duplicates:
         raise SystemExit(
@@ -275,6 +293,7 @@ def build_hop_filter(
     query_hops: list[int] = []
     unparseable: list[str] = []
     missing_prediction: list[str] = []
+    not_a_depth: list[str] = []
 
     for idx, row in enumerate(query_rows):
         qid = row.get(query_id_field)
@@ -290,6 +309,11 @@ def build_hop_filter(
             hop = (predicted_hops or {}).get(qid.strip())
             if hop is None:
                 missing_prediction.append(qid.strip())
+                continue
+            # load_predicted_hops() already gates a *file*; this gates a dict handed in
+            # programmatically, so no caller can inject a non-depth.
+            if not is_hop_depth(hop):
+                not_a_depth.append(f"{qid.strip()}: {hop!r}")
                 continue
         query_hops.append(hop)
 
@@ -310,28 +334,41 @@ def build_hop_filter(
             f"{settings.predictions_file}: {_sample(missing_prediction)}. The predictions "
             f"file must cover every query; a missing one is not a mixed-condition query."
         )
+    if not_a_depth:
+        raise SystemExit(
+            f"hop-matched retrieval (predictions): {len(not_a_depth)} of {len(query_rows)} "
+            f"queries carry a predicted hop that is not a hop depth (a positive int): "
+            f"{_sample(not_a_depth)}."
+        )
 
     query_hop_counts: dict[int, int] = {}
     for hop in query_hops:
         query_hop_counts[hop] = query_hop_counts.get(hop, 0) + 1
 
+    # ``hop not in pool_buckets`` is folded in rather than left to the size comparison: at
+    # min_candidates=0 a bucket that does not exist would otherwise pass the size test
+    # (0 < 0 is false) and then raise a bare KeyError below. A queried hop the pool cannot
+    # serve at all is the documented hard error, at every min_candidates value.
     infeasible = [
         f"hop {hop}: {len(pool_buckets.get(hop, []))} pool candidates for "
         f"{query_hop_counts[hop]} quer{'y' if query_hop_counts[hop] == 1 else 'ies'}"
+        f"{' (no such bucket in the pool)' if hop not in pool_buckets else ''}"
         for hop in sorted(query_hop_counts)
-        if len(pool_buckets.get(hop, [])) < min_candidates
+        if hop not in pool_buckets or len(pool_buckets[hop]) < min_candidates
     ]
     if infeasible:
         raise SystemExit(
-            f"hop-matched retrieval: a hop bucket cannot supply the required "
-            f"{min_candidates} candidates (top_k={top_k}, "
+            f"hop-matched retrieval: the pool cannot serve a queried hop depth "
+            f"(required candidates per query: {min_candidates}; top_k={top_k}, "
             f"min_candidates={settings.min_candidates!r}):\n  "
             + "\n  ".join(infeasible)
             + "\n  pool buckets: "
             + str({h: len(v) for h, v in sorted(pool_buckets.items())})
             + "\nBuild a pool that covers every queried hop depth, or lower "
             "hop_match.min_candidates deliberately — retrieving fewer than k in-bucket "
-            "examples is a different method, not this one."
+            "examples is a different method, not this one. A hop the pool has no rows for "
+            "at all cannot be fixed by lowering the knob (the floor is 1): the pool has to "
+            "cover it."
         )
 
     allowed = [list(pool_buckets[hop]) for hop in query_hops]
@@ -353,6 +390,7 @@ __all__ = [
     "HopMatchSettings",
     "build_hop_filter",
     "group_pool_by_hop",
+    "is_hop_depth",
     "load_predicted_hops",
     "parse_hop_from_id",
     "settings_from_config",
