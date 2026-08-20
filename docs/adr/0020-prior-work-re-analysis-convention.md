@@ -61,7 +61,10 @@ re-derivable from committed code**: the four bootstrap statistics (`rouge_l_f1`,
 `ordered_step_accuracy`, `composite_score`) with their CIs, both exact McNemar tests, and
 the five paired t-tests added by issue #30. Verified against the committed masking note's
 JSON at seed 42 under its stated alignment: 43/43 values bit-identical on each of Task A
-typed-vs-raw, Task A uniform-vs-raw and one Task B pair.
+typed-vs-raw, Task A uniform-vs-raw and one Task B pair. (43 is the acceptance harness's
+compared-field count per pair — the bootstrap, McNemar and t-test fields it checks; the
+PR #36 review compared a broader per-pair field set, 56–57 fields including `dof` and the
+`significant` flags, with the same all-equal result.)
 
 **Five families of numbers in that note remain harness-only** — computed by a session-local
 analyst harness, not reproducible by committed code, and still resting on the PR #33

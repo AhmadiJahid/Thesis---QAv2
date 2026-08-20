@@ -654,6 +654,22 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
                 f"'<prefix>_per_item.json' files written by this script; re-run the "
                 f"evaluation to regenerate them."
             )
+        # Same contract as the v1 loader: every compared field is read through float()
+        # downstream, so a null/string/NaN here gets the file, row and field named now
+        # rather than a TypeError three functions away from the cause.
+        unusable = [
+            f"{f}={obj[f]!r}"
+            for f in _REQUIRED_V1_PER_ITEM_FIELDS
+            if isinstance(obj[f], bool)
+            or not isinstance(obj[f], (int, float))
+            or not math.isfinite(float(obj[f]))
+        ]
+        if unusable:
+            raise SystemExit(
+                f"{path}: row {i} has non-numeric or non-finite compared field(s): "
+                f"{unusable}. Every metric --compare reads must be a finite number; this "
+                f"file cannot be compared as it stands."
+            )
         item_id = str(obj["item_id"])
         if item_id in by_id:
             duplicates.append(item_id)
