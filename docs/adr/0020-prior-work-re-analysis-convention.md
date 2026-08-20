@@ -94,6 +94,19 @@ The shim's other conventions — the explicit opt-in, the two alignments, the pr
 provenance block — are documented in `docs/METRICS.md` §5, not here; this note records only
 what changed about re-derivability.
 
+**Note added 2026-08-20 (PR #37, issue #6): the verification-addendum format.** Re-checking a
+claim that already cites one of these notes produces a recurring artifact, and this paragraph is
+its shape, so the next one does not reinvent it. When the claim survives, its sentence is left
+**untouched**; a dated note in the host file's own style (`**Label (date):** …`) goes beside it,
+stating which quantities were re-derived from committed code and at which SHA, and labelling every
+remaining quantity with the harness-only family above (1–5) that covers it — a "verified from
+committed code" banner may not blanket numbers a harness produced. A verification that only
+recomputes committed artifacts is not an experiment, so condition 5 applies unchanged: no
+`experiments/log.md` entry, and the addendum is prior work, not v2 evidence. When the claim does
+**not** survive, the sentence is corrected and the addendum says what changed — retiring a claim is
+never a silent edit. First instance: `docs/prior-work.md` §4's cross-encoder exact-match claim,
+which held at 0/15 under McNemar and the paired t-test from committed code at b0a9ce8.
+
 ## Alternatives considered
 
 - Forbidding any use of v1 numbers — loses real, per-item-verifiable evidence that directly
