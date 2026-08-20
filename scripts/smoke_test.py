@@ -109,6 +109,7 @@ def _stages() -> list[Stage]:
     decomposer_dry = WORK / "decomposer_dry"
     decomposer_musique = WORK / "decomposer_musique"
     finetune_dry = WORK / "finetune_dry"
+    answer_musique = WORK / "answer_musique"
     arms_dir = WORK / "decomposer_arms"
     arms_out = WORK / "arms_comparison"
     smoke_runner_out = WORK / "qwen_smoke"
@@ -531,6 +532,64 @@ def _stages() -> list[Stage]:
             ],
             expect_dir_globs=[(decomposer_musique / "unguided_capped", "*/results.json")],
             note="MuSiQue conditions: step-line cap configured (no generation in a dry run)",
+        ),
+        # The MuSiQue answering backend of issue #16: execute a decomposition and score the
+        # answer it leads to. Dry runs, so the join, the context assembly and the [#k]
+        # substitution chain all run with no weights loaded; EM/F1 are therefore null (a dry
+        # run measures nothing), which is why these stages carry no expect_metrics: there is
+        # no metric to pin, and a run directory is timestamped so a fixed path could not
+        # address it anyway. The counts these runs produce ARE pinned, through the same CLI,
+        # by tests/test_answer_musique.py::TestDryRunEndToEnd (run by the
+        # decomposition_metric_tests stage), and the metric arithmetic by the hand-computed
+        # vectors in that file. --allow-unpinned-eval-set for the same reason as the
+        # decomposer stages: the fixtures hold 3 ids per hop, not the pinned 200 of ADR 0007.
+        Stage(
+            name="answer_musique_predictions_dry_run",
+            cmd=[
+                sys.executable, COMPONENTS / "answerer" / "run_answerer.py",
+                "--predictions", FIXTURES / "predictions" / "decomposer_results_musique.json",
+                "--dry-run", "--dry-run-limit", "9", "--allow-unpinned-eval-set",
+                "--output-root", answer_musique / "predictions",
+            ],
+            expect_dir_globs=[
+                (answer_musique / "predictions", "*/answer_metrics.json"),
+                (answer_musique / "predictions", "*/answer_config.json"),
+                (answer_musique / "predictions", "*/answer_notes.md"),
+                (answer_musique / "predictions", "*/answer_per_item.json"),
+                (answer_musique / "predictions", "*/prompts_log/prompt_item0001_step1.txt"),
+            ],
+            note="execute a decomposer run's predictions: join to the MuSiQue items, build "
+            "the full-paragraph context, chain [#k] substitutions (no weights loaded)",
+        ),
+        Stage(
+            name="answer_musique_oracle_dry_run",
+            cmd=[
+                sys.executable, COMPONENTS / "answerer" / "run_answerer.py",
+                "--gold-decompositions",
+                "--dry-run", "--dry-run-limit", "9", "--allow-unpinned-eval-set",
+                "--output-root", answer_musique / "oracle",
+            ],
+            expect_dir_globs=[
+                (answer_musique / "oracle", "*/answer_metrics.json"),
+                (answer_musique / "oracle", "*/answer_per_item.json"),
+            ],
+            note="oracle-decomposition ceiling: gold plans, restricted to the pinned ids",
+        ),
+        Stage(
+            name="answer_musique_chat_template_dry_run",
+            cmd=[
+                sys.executable, COMPONENTS / "answerer" / "run_answerer.py",
+                "--predictions", FIXTURES / "predictions" / "decomposer_results_musique.json",
+                "--model", "qwen3_5_9b",
+                "--dry-run", "--dry-run-limit", "2", "--allow-unpinned-eval-set",
+                "--output-root", answer_musique / "chat",
+            ],
+            expect_dir_globs=[
+                (answer_musique / "chat", "*/answer_metrics.json"),
+                (answer_musique / "chat", "*/prompts_log/prompt_item0001_step1.txt"),
+            ],
+            note="reader swapped to a chat_template model folder: the reader prompt is split "
+            "on <<<USER>>> into system/user messages",
         ),
         # The fine-tuning arm of issue #13.
         Stage(
