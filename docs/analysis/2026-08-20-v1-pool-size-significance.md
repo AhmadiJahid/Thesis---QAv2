@@ -37,9 +37,13 @@ entry.
 
 ## 1. Method — what was run
 
-House protocol is ADR 0009 as amended 2026-08-20 (paired bootstrap + exact McNemar, with a paired
-t-test alongside per issue #30), implemented in `scripts/musique_decompositions_evaluator.py`
-`--compare` and documented in `docs/METRICS.md` §5. Parameters are v2's own
+House protocol is ADR 0009 as amended 2026-08-20: **paired bootstrap + exact McNemar**, implemented
+in `scripts/musique_decompositions_evaluator.py` `--compare` and documented in `docs/METRICS.md` §5,
+**plus a paired t-test reported alongside** per the ADR 0009 amendment (issue #30). Be precise about
+the second one: at this note's base SHA `50daea7` the t-test is **not** in the committed evaluator and
+is not in `docs/METRICS.md` — its implementation was in progress in a separate lane at the time of
+writing, and every t-test figure below comes from `scipy.stats.ttest_rel` in this session's harness
+(§1, last paragraph). Parameters are v2's own
 (`configs/musique_eval.json`): **10,000 bootstrap resamples, chunk size 1,000, α = 0.05, seed 42**,
 `numpy.random.default_rng`, one index matrix applied to both systems, percentile CI of (A − B),
 composite recomputed on every resample with weights 0.4 / 0.3 / 0.2 / 0.1 and step-count scale 3.0.
@@ -82,8 +86,13 @@ does not perturb the RNG stream, so those four columns are exactly what `--compa
 All paths under `/cta/users/fyilmaz/Thesis---QA` (read-only; not modified). v1 HEAD is `a020fd6` with
 a clean tree, but the run files are untracked, so that SHA does **not** pin them.
 
-**Statistics are computed only from the 33 `runs/pool_sweep/eval/<cell>/eval_per_item.json` files**
-below (sha256 first 12 hex; full hashes in the JSON companion):
+**Every statistic in §4, §5 and §7 is computed from the 33
+`runs/pool_sweep/eval/<cell>/eval_per_item.json` files** below (sha256 first 12 hex; full hashes in
+the JSON companion). **§6 is the one exception:** its nesting overlaps come from the six
+`runs/pool_sweep/pools/*/pool.jsonl` files (pool item ids) and its exemplar counts from the six
+`stats.json` beside them — all twelve hashed in the companion under
+`inputs.pool_jsonl_files_used_for_nesting_only` and
+`inputs.pool_stats_files_used_for_composition_only`.
 
 | cell | sha256[:12] | mtime (UTC) |
 |---|---|---|
@@ -122,10 +131,11 @@ below (sha256 first 12 hex; full hashes in the JSON companion):
 | `size8000_imbalanced_trial0__biencoder_plus_ce__uniform` | `c5ccdb504f23` | 2026-04-20T11:44:19Z |
 
 The 33 `eval_metrics.json` and 33 `eval_config.json` files beside them are used **only** for
-provenance and cross-checking; their hashes are in the JSON companion. Also hashed there: the eval
+provenance and cross-checking; their hashes are in the JSON companion. Also hashed there: the six
+`pool.jsonl` files and the six pool `stats.json` files behind §6; the eval
 sample `runs/pool_sweep/dev_sample/dev_sample_250per_hop_seed42.jsonl`
-(sha256 `3ec876260e74c274…`, mtime 2026-04-20T01:37:46Z) and its stats file; the six pool
-`stats.json` files; and both copies of the aggregate CSV — `runs/pool_sweep/summary/all_runs.csv` and
+(sha256 `3ec876260e74c274…`, mtime 2026-04-20T01:37:46Z) and its stats file; and both copies of the
+aggregate CSV — `runs/pool_sweep/summary/all_runs.csv` and
 `handoff/results_analysis/pool_sweep_summary/all_runs.csv`, which are **byte-identical** (sha256
 `89c5e923ddbb…`, verified) and are used **only as a cross-check**. **No statistic in this note is
 computed from an aggregate CSV.**
@@ -228,6 +238,11 @@ five real per-item metrics (EM, step F1, ordered accuracy, ROUGE-L, hop EM):
 | 4000 vs 8000 | 6 | **0** | 5 / 1 | 0 | 0 |
 | 1000 vs 8000 | 6 | **6** | **6 / 0** | 4 | **4** |
 
+The third column counts **CI-significance only**, as its heading says. Read with the t-test the one
+change is 4000 vs 8000, where 1 of the 30 metric-cells is t-significant uncorrected (hop EM,
+p = 0.0476) on a CI whose lower bound is exactly 0.0 — §4.2 and §4.4. It survives no correction, and
+no 4000-vs-8000 cell is McNemar-significant.
+
 Across all 27 size pairs: step F1 favours the larger pool in **21/27** (6 CI-significant, 6
 t-significant), ordered accuracy in **20/27** (6/6), EM in **19/27** (5 CI-sig, 6 t-sig, 3
 McNemar-sig), ROUGE-L in **15/27** (3/3), hop EM in **14/27** (3 CI-sig, 4 t-sig, 3 McNemar-sig).
@@ -261,8 +276,15 @@ p = 0.0005**).
   `size2000_balanced_BE_uniform` vs `size2000_imbalanced` step F1 (CI [−0.0312, −0.0000], t p = 0.0566).
 - **Overall rows, CI vs exact McNemar:** 72 comparisons, **3 disagreements**, all EM with McNemar
   p just above α (0.0501, 0.0614, 0.0522 on 32 / 29 / 27 discordant pairs).
-- **Per-hop rows, CI vs t:** 540 comparisons, **4 disagreements**, all with a p between 0.045 and
-  0.051 or a CI endpoint within 1e-4 of 0.
+- **Per-hop rows, CI vs t:** 540 comparisons, **4 disagreements**, each with a t-test p between
+  **0.0453 and 0.0508**; two of the four have a CI endpoint of **exactly 0.0** and the other two have
+  an endpoint **7.6e-05** and **2.6e-04** from 0.
+
+**Why these near-misses matter for reading the tables.** `significant` in the bootstrap column is
+`ci_low > 0 or ci_high < 0` — a strict inequality, so a CI endpoint that lands on exactly 0.0 reads
+as *not* significant. Three of the seven disagreements above are that knife-edge (endpoint exactly
+0.0), including the one 4000-vs-8000 cell §4.4 and §7 name explicitly. Where a claim below turns on
+this, the test basis is stated rather than the word "significant" alone.
 
 None of these disagreements changes a conclusion in §9; each is a cell that should not be leaned on.
 Full lists are in the JSON under `verdict_agreement`.
@@ -314,8 +336,12 @@ Consequences, all measured:
   Decomposing that 4000→8000 cell-mean drop of **−0.0810** (imbalanced-only, 6 cells each side):
   reference term **−0.0844 = 104.2% of it**, step F1 **+0.0022**, ordered accuracy **+0.0011**,
   step-count term **+0.0000**. Mean `reference_validity_micro` falls 0.5833 → 0.1615 between those
-  size groups — on **13 total references at 4000 and 37 at 8000**. Per-item, **no metric in any of the
-  six 4000-vs-8000 pairs is significant by any test**, and step F1 favours 8000 in 5 of 6.
+  size groups — on **13 total references at 4000 and 37 at 8000**. Per-item, across the six
+  4000-vs-8000 pairs, **0 of 30 metric-cells are CI-significant, 0 of 12 are McNemar-significant, and
+  nothing survives Holm** (smallest Holm-adjusted p **0.2855**); **1 of 30 is t-significant
+  uncorrected** — `biencoder_only` / `uniform` hop EM, **+0.0413**, t = 1.984, **p = 0.0476**, whose CI
+  **[0.0000, +0.0827]** misses only on the strict knife-edge of §4.2 and whose McNemar is 138/107,
+  p = 0.0551. Step F1 favours 8000 in 5 of 6.
 - Reading the same size axis on the reference-free diagnostic **reverses the direction**: cell means
   rise monotonically 0.2312 → 0.2402 → 0.2423 → 0.2465 from 1000 to 8000 (§4.1).
 
@@ -341,7 +367,9 @@ structural", but three significant cells out of 81 do not establish it.
 ### 4.6 Power at n = 750
 
 Minimum detectable difference (paired, α = 0.05 two-sided, 80% power, from the observed per-item
-difference SDs), median over the 27 size pairs:
+difference SDs), median over the 27 size pairs. The constant used is **2.8016**, a rounding of
+z₀.₉₇₅ + z₀.₈ = 1.95996 + 0.84162 = 2.80158 (also disclosed in the companion under `power.formula`);
+at these SDs the rounding moves an MDE by less than 1e-5.
 
 | metric | median sd(diff) | median MDE at n = 750 |
 |---|---|---|
@@ -422,9 +450,10 @@ the same masked MuSiQue **train** file, with input buckets 2hop 14376 / 3hop 438
 - **Confirmed as arithmetic:** the per-size mean composites (0.232 / 0.271 / 0.311 / 0.230) and the
   best-cell table recompute exactly from the per-item files (§3).
 - **Not supported as an interpretation:** FINDINGS' "larger pool is not always better (8000 drops vs
-  4000)". That drop is **104.2% the reference-validity term** on 13 vs 37 references (§4.4); no
-  4000-vs-8000 metric is significant by any test in any of the 6 matched pairs; and on the
-  reference-free diagnostic the size trend is monotone **upward** through 8000. The "8000 drops"
+  4000)". That drop is **104.2% the reference-validity term** on 13 vs 37 references (§4.4); across
+  the 6 matched 4000-vs-8000 pairs no metric is CI- or McNemar-significant and none survives Holm
+  (smallest adjusted p 0.2855, with one cell t-significant uncorrected at p = 0.0476 — §4.4); and on
+  the reference-free diagnostic the size trend is monotone **upward** through 8000. The "8000 drops"
   reading is an artifact of the composite, not a pool-size finding.
 - **Confirmed, and now with a significance verdict:** "exact match stays ~3–5% across the board — pool
   size alone does not solve gold-plan matching." EM ranges 0.0267–0.0533 across the 33 cells, and the
@@ -433,8 +462,9 @@ the same masked MuSiQue **train** file, with input buckets 2hop 14376 / 3hop 438
 - **Newly measured (the §6 gap of the masking/retrieval note):** the pool-size axis. **1000 is
   measurably worse than 8000** on step-level metrics (6/6 pairs positive on step F1, 4 CI-significant,
   4 Holm-surviving), and worse than 2000 in the imbalanced/typed cell (Holm-surviving on 4 of 5
-  metrics). **Above 1000, no adjacent doubling is significant on anything** (2000 vs 4000: 1 of 30
-  metric-cells; 4000 vs 8000: 0 of 30).
+  metrics). **Above 1000, no adjacent doubling survives correction on anything** — 2000 vs 4000:
+  1 of 30 metric-cells CI-significant, 0 Holm survivors; 4000 vs 8000: **0 of 30 CI-significant,
+  1 of 30 t-significant uncorrected** (p = 0.0476), 0 Holm survivors.
 - **Also newly measured:** balanced vs imbalanced (§5), which `docs/prior-work.md` does not discuss.
 
 ## 8. Unmeasured / out of scope
@@ -454,9 +484,10 @@ is Jahid's call with his supervisor.
 
 1. **If the thesis states a pool-size conclusion from v1, the defensible one is "1000 is too small;
    2000 and above are indistinguishable at n = 750" — not "4000 is best".** Measured: 6/6 pairs
-   favour 8000 over 1000 on step F1 with 4 CI-significant and 4 Holm-surviving; 0 of 6 pairs show any
-   significant 4000-vs-8000 difference; 1 of 6 shows any significant 2000-vs-4000 difference (hop EM,
-   CE + raw). This ranks first because "4000 was best, 8000 dropped" is the sentence most likely to be
+   favour 8000 over 1000 on step F1 with 4 CI-significant and 4 Holm-surviving; **0 of 6 pairs show a
+   CI- or McNemar-significant 4000-vs-8000 difference and none survives Holm** (one cell is
+   t-significant uncorrected, p = 0.0476 — §4.4); 1 of 6 shows a CI-significant 2000-vs-4000
+   difference, which does not survive Holm either (hop EM, CE + raw). This ranks first because "4000 was best, 8000 dropped" is the sentence most likely to be
    carried into the thesis from `docs/prior-work.md` §4, and §4.4 shows it is the reference term.
 2. **If any composite number is quoted on the size axis, it needs the §4.4 caveat attached or it
    should not be quoted.** The reference term produces a median **100.1%** of |Δcomposite| across the

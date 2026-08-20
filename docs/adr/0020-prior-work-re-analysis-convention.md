@@ -26,6 +26,17 @@ v1 per-item artifacts **may** be re-analyzed with v2's committed statistical pro
    the note, since v1 artifacts carry no commit SHA.
 3. **Alignment is stated**: how per-item rows of the compared runs were paired (key and
    order), because bootstrap CI digits are alignment-dependent in the 3rd–4th decimal.
+
+   *Note 2026-08-20 (from `docs/analysis/2026-08-20-v1-pool-size-significance.md`, PR #35):*
+   an id or question-text key is preferred, but where a v1 artifact has neither — no
+   `item_id`, and question texts that are not unique — **positional alignment in v1 file
+   order is the accepted fallback**, under both preconditions, both verified and reported:
+   (a) the per-item sequences of *every* compared file are identical **including order**, and
+   (b) for every matched row, the alignment field (normalized question) **and** the gold
+   (`gold_steps`) are asserted equal between the two files. Without (a) and (b) positional
+   alignment silently compares different items, so a note that uses it states that it did and
+   states the check. (The pool-size note hit exactly this: one eval question appears twice
+   with identical gold, so a text key is not unique across its 750 rows.)
 4. **A machine-readable JSON companion** sits beside the note carrying every reported
    statistic and the inputs' hashes — statistics only, never dataset content.
 5. **The no-SHA caveat leads the note**: results are citable *prior work*, never v2

@@ -40,7 +40,7 @@
   "v1_repo": "/cta/users/fyilmaz/Thesis---QA",
   "v1_head_commit": "a020fd6",
   "v1_head_does_not_pin_these_files": "runs/ is gitignored and untracked in v1; git ls-files runs/ returns 0 files",
-  "statistics_computed_from": "the 33 eval_per_item.json files listed below; no statistic in this file is computed from any aggregate CSV",
+  "statistics_computed_from": "the 33 eval_per_item.json files listed below, for every statistic in the note's sections 4, 5 and 7; section 6's pool-composition figures are the one exception - its nesting overlaps come from the six pool.jsonl files and its exemplar counts from the six pool stats.json files, both hashed here. No statistic is computed from any aggregate CSV.",
   "per_item_files": {
    "size1000_balanced_trial0__biencoder_only__raw": {
     "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/eval/size1000_balanced_trial0__biencoder_only__raw/eval_per_item.json",
@@ -571,6 +571,38 @@
    "size8000_imbalanced_trial0_poolseed42": {
     "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size8000_imbalanced_trial0_poolseed42/stats.json",
     "sha256": "6bfa4d2f6affa00f1009b7a1cbd3881ef89516eb6cff503646cf3340fa4759f5",
+    "mtime_utc": "2026-04-20T09:12:47Z"
+   }
+  },
+  "pool_jsonl_files_used_for_nesting_only": {
+   "size1000_balanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size1000_balanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "11f4b75ff560963a345bb942b8f66a989de9d597197eafd164b44f3e88b4246b",
+    "mtime_utc": "2026-04-20T17:56:47Z"
+   },
+   "size1000_imbalanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size1000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "c450adc74ae43f3a7a04f45eb34886003934f327cde06ba878442dfa3f3ef9f4",
+    "mtime_utc": "2026-04-20T01:37:46Z"
+   },
+   "size2000_balanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size2000_balanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "8d28780cc8b0e5fc24b1600b7e7227edb972f6ed93bed46752fb1a02e9ed34e7",
+    "mtime_utc": "2026-04-20T20:30:46Z"
+   },
+   "size2000_imbalanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+    "mtime_utc": "2026-04-20T04:12:07Z"
+   },
+   "size4000_imbalanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size4000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "9c594903a034ceb5fd1e5c7a82cb3db9e080d33a4a4ea39e9d7f4639e935be44",
+    "mtime_utc": "2026-04-20T06:42:23Z"
+   },
+   "size8000_imbalanced_trial0_poolseed42": {
+    "path": "/cta/users/fyilmaz/Thesis---QA/runs/pool_sweep/pools/size8000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "sha256": "cca90df030e4e5aa7748b41a1426a6a3c9444a2d439d4e6403208fa3f11d2e77",
     "mtime_utc": "2026-04-20T09:12:47Z"
    }
   },
