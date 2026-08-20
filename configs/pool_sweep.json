@@ -3,6 +3,8 @@
 
   "imbalanced_sizes": [1000, 2000, 4000, 8000],
   "balanced_sizes": [1000, 2000, 3000],
+  "_clustered_sizes_note": "The clustering strategy (issue #14) is swept at 2000 only: ADR 0006 fixes the pool size at 2000, so the question this strategy is in the sweep to answer is construction-vs-construction at that size. Its knobs live in sample_pool.clustering (configs/musique_prep.json); the design is recorded as implementer defaults in ADR 0021.",
+  "clustered_sizes": [2000],
 
   "retrieval_modes": ["raw", "typed", "uniform"],
   "retriever_variants": ["biencoder_only", "biencoder_plus_ce"],

@@ -54,7 +54,26 @@
 
   "sample_pool": {
     "coarse_buckets": ["2hop", "3hop", "4hop"],
-    "run_subdir": "musique_sample_pool"
+    "run_subdir": "musique_sample_pool",
+    "_clustering_note": "Knobs for the clustered pool-construction strategy (--balance clustered, issue #14). The design is the implementer's, not a research decision: ADR 0021 records which parts are arbitrary and how to change them. text_field is read off the row as stored - no masker runs here (ADR 0003). embed_model is a key into bi_encoder.embed_models in similarity_config, so the alias registry stays single-sourced (ADR 0018). kmeans.num_threads=1 keeps the fit bit-reproducible under the seed; raising it is faster and no longer exactly reproducible.",
+    "clustering": {
+      "text_field": "question",
+      "similarity_config": "similarity.json",
+      "embed_model": "e5-small",
+      "embed_prefix": "passage",
+      "embed_batch_size": 64,
+      "device": "cpu",
+      "examples_per_cluster": 1,
+      "representative_rule": "nearest_to_centroid",
+      "kmeans": {
+        "init": "k-means++",
+        "n_init": 1,
+        "max_iter": 300,
+        "tol": 0.0001,
+        "algorithm": "lloyd",
+        "num_threads": 1
+      }
+    }
   },
 
   "sample_dev": {
