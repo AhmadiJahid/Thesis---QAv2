@@ -40,7 +40,8 @@ that exercises the chat-template rendering path with `qwen3_5_9b`.)
 
 Only the *prompt* is the answerer's own (`components/answerer/prompts/reader.md`): a
 decomposition prompt cannot answer a question. It is one committed file for the whole
-registry, and the runner refuses a reader prompt that lacks `{context}` or `{question}`.
+registry, and the runner refuses a reader prompt whose *filled half* (the user part, for a
+chat-template model) lacks `{context}` or `{question}`.
 
 **2. The context is the MuSiQue item's full paragraph list — the standard answerable
 setting.** Every paragraph of the item, in the item's own order, with `is_supporting`
@@ -78,9 +79,11 @@ three decisions.
   answer, answer with the most likely span from the context" (line 8), which forces a guess
   rather than allowing an empty answer. That is a scoring-relevant choice: MuSiQue's
   answerable setting has an answer for every item, and an abstention would score 0 on EM and
-  F1 anyway, but a forced guess can also pick up partial F1 credit. **Jahid read the prompt
-  and approved the wording as-is on 2026-08-20 in session** (pending supervisor confirmation,
-  like the rest of this record).
+  F1 anyway, but a forced guess can also pick up partial F1 credit. **Jahid approved the
+  wording as-is on 2026-08-20 in session, on the lead's description of the prompt**; the
+  no-abstention implication was then explicitly surfaced to him (Gate-1 review finding I-4)
+  and he accepted the keep-as-is recommendation the same day (pending supervisor
+  confirmation, like the rest of this record).
 - **One reader prompt for the whole registry**, not one per model folder: a reader prompt is
   not model-specific the way the decomposition prompts are (those are byte-identical to v1 and
   must stay so). The single file is split on `chat_split_marker` (`<<<USER>>>`) into
