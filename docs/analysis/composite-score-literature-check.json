@@ -14,9 +14,9 @@
     },
     "step_count_error_scale": 3.0,
     "source_config": {
-      "path": "/tmp/claude-1005/wt-29/configs/musique_eval.json",
+      "path": "configs/musique_eval.json",
+      "path_note": "repo-relative and tracked; pinned by base_commit b0a9ce8, not by mtime. The sha256 below is the content hash and equals the git blob content at b0a9ce8 (verified). An earlier revision of this file recorded the throwaway worktree's absolute path and its checkout mtime, both of which pinned nothing.",
       "sha256": "7b37a2e6fc7667f9e73c67b7b5271cdd537d155764ea931438a6c9dbb0c02c9c",
-      "mtime_utc": "2026-08-20T18:03:02.671447+00:00",
       "bytes": 3107
     },
     "source_code": "scripts/musique_decompositions_evaluator.py::_composite_score"

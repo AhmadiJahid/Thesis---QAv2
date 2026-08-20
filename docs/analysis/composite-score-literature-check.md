@@ -15,14 +15,17 @@ item 4, triaged into #29 by [ADR 0017](../adr/0017-triage-of-the-2026-08-12-tran
 
 ## Read this before quoting any number below
 
-- **This note decides nothing.** The thesis-primary-metric choice is issue #6 item 5 and is
-  **explicitly deferred to Jahid and his supervisor**. §5 is a *ranked list of options with
-  expected impact*, not a recommendation to adopt one. Every finding in §4 is a property of the
-  metric's formula and of v1's numbers; none of it authorises a change to the pipeline.
+- **This note recommends; it does not decide.** §5 is a *ranked* list of options with expected
+  impact, and it does take positions — it ranks answer EM/F1 plus a no-blend panel highest, and it
+  recommends **against** keeping the composite unchanged as thesis-primary. What it does not do is
+  settle anything: the thesis-primary-metric choice is issue #6 item 5 and is **explicitly deferred
+  to Jahid and his supervisor**, whose call overrides every ranking here. Every finding in §4 is a
+  property of the metric's formula and of v1's numbers; none of it authorises a change to the
+  pipeline.
 - **Every measured input is a v1 artifact** from `/cta/users/fyilmaz/Thesis---QA` (read-only
   here, unmodified). Those files carry **no commit SHA**; Gate 2 is not satisfied; they are
-  citable *prior work*, never v2 measurements. Content hashes and mtimes of all six input files
-  are in the JSON companion.
+  citable *prior work*, never v2 measurements. All six are pinned by content in §0.1 below (ADR
+  0020 condition 2).
 - **What is new here is the arithmetic**, computed in this session by a session-local harness
   that **imports the v2 evaluator's own functions** (`_step_prf`, `_ordered_step_accuracy`,
   `_reference_validity`, `_composite_score`, `_REF_RX`) so no formula is re-implemented. The
@@ -37,6 +40,31 @@ item 4, triaged into #29 by [ADR 0017](../adr/0017-triage-of-the-2026-08-12-tran
   = true, 3/3). So the numbers below describe the metric v1 actually reported.
 - **Every literature claim in §3 was fetched in this session**, and the URL fetched is quoted
   next to it. §6 separates verified-fetched citations from recalled-but-unverified ones.
+
+### 0.1 Inputs, pinned by content (ADR 0020 condition 2)
+
+All six live in `Thesis---QA/runs/musique_decomposition_eval/` — untracked in v1, hence no commit
+SHA. sha256 shown to the first 16 hex; **mtimes are UTC** (the masking note's table gives the same
+instants in local time, +03:00).
+
+| role | file | sha256[:16] | mtime (UTC) | bytes |
+|---|---|---|---|---|
+| per-item, typed | `eval_typed_unguided_per_item.json` | `53ab0a08f380db9a` | 2026-04-13 10:07:57 | 632325 |
+| per-item, uniform | `eval_uniform_unguided_per_item.json` | `a0348260dd4a7d73` | 2026-04-13 10:08:14 | 635252 |
+| per-item, raw | `eval_raw_unguided_per_item.json` | `80e64a38b7934c52` | 2026-04-13 10:07:52 | 636752 |
+| metrics, typed | `eval_typed_unguided_metrics.json` | `c4c9634b9287e354` | 2026-04-13 10:07:57 | 3714 |
+| metrics, uniform | `eval_uniform_unguided_metrics.json` | `4cff2acebaa9eac2` | 2026-04-13 10:08:14 | 3807 |
+| metrics, raw | `eval_raw_unguided_metrics.json` | `c4a4093bdd479aab` | 2026-04-13 10:07:52 | 3843 |
+
+The three per-item and three metrics hashes are **identical to the ones tabulated in**
+[`2026-08-20-v1-masking-and-retrieval-significance.md`](2026-08-20-v1-masking-and-retrieval-significance.md)
+§2 — the two notes analyse byte-identical inputs, so §4's figures and that note's significance
+verdicts describe the same three runs. The metrics files are used only for the §0 cross-check, not
+as a source of any statistic.
+
+The one v2 input is **`configs/musique_eval.json`**, from which the weights and scale are read:
+sha256 `7b37a2e6fc7667f9e73c67b7b5271cdd537d155764ea931438a6c9dbb0c02c9c`, pinned by the base
+commit `b0a9ce8` (verified equal to the git blob content at that commit), not by an mtime.
 
 ---
 
@@ -155,8 +183,8 @@ Two different questions get conflated in "is it defensible":
   LF-EM and **validate it against human judgment**: *"We manually evaluate the metrics normalized
   EM and LF-EM on 50 random development set examples … both (binary) metrics have perfect
   precision … LF-EM on this sample is 52.0, while normalized EM is 40.0."* Their canonicalization
-  explicitly neutralises benign step reordering — *"there are multiple ways to order the steps …
-  We then re-order steps by layer and then lexicographically"*. That is the literature's answer to
+  explicitly neutralises benign step reordering — *"there are multiply [sic] ways to order the
+  steps … We then re-order steps by layer and then lexicographically"*. That is the literature's answer to
   the ordering problem: **canonicalize, then match — not add an ordering term with a weight.**
 
 ### 3.3 Prompted decomposition methods: the reported number is downstream accuracy
@@ -401,7 +429,9 @@ constraint; `docs/prior-work.md` §8). It is not an option and is not costed her
    and per-item, so McNemar applies directly. *Costs:* real implementation work — MuSiQue steps are
    free-form natural language, not QDMR logical forms, so the canonicalizer (step reordering by
    dependency layer, `[#k]` normalisation, lexical normalisation) has to be built and its own
-   validity argued; and v1's raw exact match is 0.037–0.058, so a floor effect is likely, which
+   validity argued; and v1's **unadjusted exact-match metric is 0.037–0.058 across the three retrieval
+   variants** (`docs/prior-work.md` §3 — not to be confused with the variant *named* `raw`, whose
+   exact match alone is 0.0367), so a floor effect is likely, which
    suppresses the very comparisons the thesis needs to make.
 
 5. **Replace the weighted sum with a multiplicative per-example joint score**, in HotpotQA's form:
@@ -480,10 +510,11 @@ The harness is session-local and uncommitted, so — following
 [`2026-08-20-v1-pool-size-significance.md`](2026-08-20-v1-pool-size-significance.md) — the
 verifiable artifact is [`composite-score-literature-check.json`](composite-score-literature-check.json).
 It records the base commit, the composite construction actually used (weights + scale read from
-`configs/musique_eval.json`), the sha256 / mtime / size of all six v1 input files, the alignment
-statement, and every number quoted in §4 under the probe key it came from
+`configs/musique_eval.json`, pinned by that commit), the sha256 / mtime / size of all six v1 input
+files — also inlined in §0.1 per ADR 0020 condition 2 — the alignment statement, and every number quoted in §4 under the probe key it came from
 (`probe_A_recomputation` … `probe_H_weight_simplex`). Independent recomputation is the check, as it
 was for the two earlier v1 notes; §0's bit-identical reproduction of v1's three published
 composites is the harness's own validation. Deriving §4 from committed code would need the
 evaluator to accept a synthetic prediction file constructed from gold — which is a pipeline change
-and therefore not this lane's to make.
+and therefore not this lane's to make. This probe family is recorded as the sixth harness-only
+family in [ADR 0020](../adr/0020-prior-work-re-analysis-convention.md)'s Consequences.

@@ -107,6 +107,33 @@ recomputes committed artifacts is not an experiment, so condition 5 applies unch
 never a silent edit. First instance: `docs/prior-work.md` §4's cross-encoder exact-match claim,
 which held at 0/15 under McNemar and the paired t-test from committed code at b0a9ce8.
 
+**Note added 2026-08-20 (PR #38, issue #29): a sixth harness-only family — synthetic-prediction
+probes.** The five families above are enumerated *for the masking note*; the enumeration is
+per-note, and `docs/analysis/composite-score-literature-check.md` adds one the list does not
+cover. Its §4 constructs **synthetic prediction sets from the `gold_steps` column** of a v1
+per-item file and scores them against that same gold — an oracle, a reversed oracle, a
+reference-stripped oracle, over- and under-decomposed oracles, an empty prediction, a fixed junk
+step, an echo of the question, and the three real runs with every `[#k]` stripped or one invalid
+`[#k]` injected. Two adjacent quantities in the same note share the family: the **weight-simplex
+sweep** (the committed `_composite_score` evaluated at 286 and 1771 weightings that
+`configs/musique_eval.json` does not hold) and the **term-contribution / headroom / exchange-rate
+decompositions** of the composite.
+
+6. the **synthetic-prediction probes** just described. They are harness-only for a structural
+   reason, stated in that note's §7: the committed evaluator scores a *predictions file against
+   gold*, so deriving them from committed code would require it to accept a synthetic predictions
+   input constructed from the gold column — a shared-pipeline change, and therefore not an
+   analyst lane's to make. `--compare --v1-per-item` does not help here, because these probes
+   compare a *constructed* system against gold rather than two existing runs against each other.
+
+What the probes do **not** rest on is faith in the harness: it imports the evaluator's own
+`_step_prf`, `_ordered_step_accuracy`, `_reference_validity`, `_composite_score` and `_REF_RX`
+rather than re-implementing any formula, and it is validated by reproducing v1's three published
+`composite_score` values **bit-identically** (3/3, < 1e-9) before any probe is run — a
+self-check any future note in this family should carry. Conditions 2, 4 and 5 apply unchanged:
+the inputs are pinned by content in the note itself, the JSON companion carries every reported
+number, and no `experiments/log.md` entry exists because nothing was run.
+
 ## Alternatives considered
 
 - Forbidding any use of v1 numbers — loses real, per-item-verifiable evidence that directly
