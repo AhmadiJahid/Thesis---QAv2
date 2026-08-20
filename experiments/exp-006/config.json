@@ -1,0 +1,78 @@
+{
+  "_note": "Config snapshot for exp-006 (issue #14 / ADR 0021): CPU-feasible precompute half of the pool sweep at size 2000 for all three construction strategies. Committed config files were not edited; the child scripts were invoked directly (not through scripts/pool_sweep_orchestrator.py) so that --device could be pinned to cpu instead of the orchestrator's forced pool_sweep.json 'device': 'cuda'. Every other value used is the committed default already present in the named config (verified equal to pool_sweep.json's own values). The decomposer/eval half of the sweep is not covered here; it is deferred behind exp-004/exp-005's hold on runs/run.lock.",
+
+  "pool_sweep_json_relevant_fields": {
+    "imbalanced_sizes": [1000, 2000, 4000, 8000],
+    "balanced_sizes": [1000, 2000, 3000],
+    "clustered_sizes": [2000],
+    "retrieval_modes": ["raw", "typed", "uniform"],
+    "retriever_variants": ["biencoder_only", "biencoder_plus_ce"],
+    "num_trials": 1,
+    "base_pool_seed": 42,
+    "pool_trial_seeds": [42],
+    "dev_seed": 42,
+    "dev_per_hop": 250,
+    "embed_model": "e5-small",
+    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    "similarity_top_k": 20,
+    "rerank_k": 5,
+    "retrieval_k": 5,
+    "device_in_committed_config": "cuda",
+    "device_actually_used_this_run": "cpu",
+    "device_override_rationale": "pool_sweep_orchestrator.py's stage_similarity and stage_rerank pass --device unconditionally from this cfg key, and stage_sample_pool passes it for the clustered balance only -- confirmed live via 'pool_sweep_orchestrator.py --dry-run --only size2000_imbalanced,size2000_balanced,size2000_clustered', which printed --device cuda on every similarity/rerank command and on the clustered sample_pool command. Running any of those on cuda now would compete for the ~3 GiB of GPU headroom that exp-004/exp-005's waiter (runs/rearmed_wait_and_launch.sh) is watching for, which the brief for this run forbids. CPU is not an invented value: configs/similarity.json's own top-level 'device' key already defaults to cpu, and configs/musique_prep.json's sample_pool.clustering.device also already defaults to cpu -- this run reached those defaults by omitting --device (or passing it explicitly as cpu) when calling the child scripts directly, rather than through the orchestrator which overrides them."
+  },
+
+  "musique_prep_json_clustering_knobs": {
+    "text_field": "question",
+    "similarity_config": "similarity.json",
+    "embed_model": "e5-small",
+    "embed_prefix": "passage",
+    "embed_batch_size": 64,
+    "device": "cpu",
+    "examples_per_cluster": 1,
+    "representative_rule": "nearest_to_centroid",
+    "kmeans": {
+      "init": "k-means++",
+      "n_init": 1,
+      "max_iter": 300,
+      "tol": 0.0001,
+      "algorithm": "lloyd",
+      "num_threads": 1
+    }
+  },
+
+  "similarity_json_relevant_fields": {
+    "seed": 42,
+    "device": "cpu",
+    "bi_encoder": {"embed_model": "e5-small", "top_k": 20},
+    "truncate": {"k": 5},
+    "rerank": {"cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2", "rerank_k": 5}
+  },
+
+  "commands_run": [
+    "MusiQue/scripts/sample_dev.py --config musique_prep.json --per-hop 250 --seed 42 --out runs/pool_sweep/dev_sample/dev_sample_250per_hop_seed42.jsonl",
+    "MusiQue/scripts/sample_pool.py --config musique_prep.json --size 2000 --balance imbalanced --seed 42 --out-dir runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42",
+    "MusiQue/scripts/sample_pool.py --config musique_prep.json --size 2000 --balance balanced --seed 42 --out-dir runs/pool_sweep/pools/size2000_balanced_trial0_poolseed42",
+    "MusiQue/scripts/sample_pool.py --config musique_prep.json --size 2000 --balance clustered --seed 42 --out-dir runs/pool_sweep/pools/size2000_clustered_trial0_poolseed42 --embed-model e5-small --device cpu --similarity-config similarity.json",
+    "MusiQue/scripts/check_question_similarity.py --config similarity.json --query-file <dev_sample> --pool-file <pool.jsonl> --mode all --top-k 20 --n 750 --device cpu --embed-model e5-small --run-dir <sim_dir> --out <sim_dir>/top20.jsonl   (x3, one per balance)",
+    "MusiQue/scripts/truncate_top20.py --config similarity.json --input <top20.jsonl> --out <bi_dir>/top5_biencoder.jsonl --k 5 --run-dir <bi_dir>   (x3, one per balance)",
+    "MusiQue/scripts/rerank_similarity_results.py --config similarity.json --input <top20.jsonl> --out <ce_dir>/top5_ce.jsonl --cross-encoder cross-encoder/ms-marco-MiniLM-L-12-v2 --rerank-k 5 --device cpu --run-dir <ce_dir>   (x3, one per balance)"
+  ],
+
+  "output_paths_match_orchestrator_helpers": {
+    "verified_against": "pool_sweep_orchestrator.py --dry-run --only size2000_imbalanced,size2000_balanced,size2000_clustered (printed paths compared byte-for-byte against this run's actual output paths)",
+    "dev_sample": "runs/pool_sweep/dev_sample/dev_sample_250per_hop_seed42.jsonl",
+    "pools": "runs/pool_sweep/pools/size2000_<balance>_trial0_poolseed42/pool.jsonl",
+    "similarity": "runs/pool_sweep/similarity/size2000_<balance>_trial0/top20.jsonl",
+    "biencoder_top5": "runs/pool_sweep/biencoder_top5/size2000_<balance>_trial0/top5_biencoder.jsonl",
+    "rerank": "runs/pool_sweep/rerank/size2000_<balance>_trial0/top5_ce.jsonl",
+    "purpose": "a later 'pool_sweep_orchestrator.py --stage decompose' (or --stage all) run finds these already present and skips them via its existing skip-if-exists logic, going straight to the GPU decomposer stage"
+  },
+
+  "git": {
+    "commit": "619cf0a6c75fd4d1c05d34beda5f96178b68ddf7",
+    "branch": "main",
+    "dirty": true,
+    "dirty_files": ["?? \"Plan after the meeting.md\""]
+  }
+}

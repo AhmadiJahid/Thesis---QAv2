@@ -1,0 +1,98 @@
+{
+  "_note": "exp-006 covers only the CPU precompute half of issue #14's plan: pool construction + bi-encoder similarity + cross-encoder rerank, for all three construction strategies at pool size 2000, on one shared dev sample. Decomposition-quality metrics (the numbers issue #14 actually asks to sit next to the other strategies) are NOT produced by this run -- that needs the mistral_7b_instruct decomposer on GPU, which is deferred behind exp-004/exp-005's hold on runs/run.lock. Nothing below is a decomposition-quality claim.",
+
+  "stage": "precompute_only (sample_pool, similarity, truncate, rerank)",
+  "decompose_and_eval_stage": "NOT RUN -- deferred, queued behind exp-004/exp-005",
+
+  "dev_sample": {
+    "path": "runs/pool_sweep/dev_sample/dev_sample_250per_hop_seed42.jsonl",
+    "dev_seed": 42,
+    "dev_per_hop": 250,
+    "coarse_buckets": ["2hop", "3hop", "4hop"],
+    "total_rows": 750,
+    "sampled_counts": {"2hop": 250, "3hop": 250, "4hop": 250},
+    "masked_fields_present": {"typed": false, "uniform": false},
+    "masked_fields_note": "sample_dev.py reported typed=False, uniform=False for all rows of this dev sample -- the dev sample carries no question_masked_typed/question_masked_uniform fields. Whether this degrades the typed/uniform retrieval modes downstream is not evaluated by this run (that happens at the deferred similarity-scoring/decompose stage); flagged here for whoever runs the GPU follow-up."
+  },
+
+  "cells": {
+    "size2000_imbalanced_trial0": {
+      "pool_seed": 42,
+      "pool_rows": 2000,
+      "pool_sampled_bucket_counts": {"2hop": 1461, "3hop": 413, "4hop": 126},
+      "similarity_top20_rows": 750,
+      "biencoder_top5_rows": 750,
+      "rerank_top5_rows": 750,
+      "device_used": "cpu"
+    },
+    "size2000_balanced_trial0": {
+      "pool_seed": 42,
+      "pool_rows": 2000,
+      "pool_sampled_bucket_counts": {"2hop": 667, "3hop": 667, "4hop": 666},
+      "similarity_top20_rows": 750,
+      "biencoder_top5_rows": 750,
+      "rerank_top5_rows": 750,
+      "device_used": "cpu"
+    },
+    "size2000_clustered_trial0": {
+      "pool_seed": 42,
+      "pool_rows": 2000,
+      "pool_sampled_bucket_counts": {"2hop": 1396, "3hop": 495, "4hop": 109},
+      "similarity_top20_rows": 750,
+      "biencoder_top5_rows": 750,
+      "rerank_top5_rows": 750,
+      "device_used": "cpu",
+      "clustering_diagnostics": {
+        "n_candidates": 19938,
+        "n_clusters": 2000,
+        "kmeans_n_iter": 11,
+        "kmeans_inertia": 1803.4619140625,
+        "empty_clusters": 0,
+        "cluster_size_min": 1,
+        "cluster_size_max": 56,
+        "selected_from_clusters": 2000,
+        "selected_from_topup": 0,
+        "clusters_represented": 2000,
+        "mean_distance_to_centroid_selected": 0.23508480191230774,
+        "kmeans_fit_seconds": 25.4,
+        "embed_seconds": 33.4,
+        "embed_model_id": "intfloat/e5-small-v2",
+        "embed_num_texts": 19938,
+        "embed_device": "cpu"
+      }
+    }
+  },
+
+  "input_pool": {
+    "path": "/cta/users/fyilmaz/thesis-qav2-data/musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_all_questions_all_expanded_enriched.jsonl",
+    "rows": 19938,
+    "input_bucket_counts": {"2hop": 14376, "3hop": 4387, "4hop": 1175}
+  },
+
+  "gpu_state_before_and_after": {
+    "nvidia_smi_memory_used_mib": 21279,
+    "nvidia_smi_memory_free_mib": 2972,
+    "unchanged_across_this_run": true,
+    "note": "checked immediately before launch and immediately after completion; identical both times, confirming this run never touched the GPU."
+  },
+  "run_lock_state": {
+    "holder": "exp-004,exp-005",
+    "touched_by_this_run": false
+  },
+
+  "wall_clock": {
+    "started_utc": "2026-08-20T18:09:17+00:00",
+    "ended_utc": "2026-08-20T18:23:00+00:00",
+    "elapsed_seconds_approx": 823
+  },
+
+  "decomposition_quality": null,
+  "decomposition_quality_note": "Unmeasured by this run, by design. issue #14's 'done when' -- clustering's decomposition metrics next to the other strategies in experiments/log.md -- needs 18 decompose+eval cells (3 balances x 2 variants x 3 modes) run through components/decomposer/run_decomposer.py (mistral_7b_instruct, GPU) and scripts/musique_decompositions_evaluator.py. Queued as a follow-up: 'pool_sweep_orchestrator.py --stage decompose --only size2000_imbalanced,size2000_balanced,size2000_clustered' followed by '--stage eval' (or a single '--stage all' pass), once exp-004/exp-005 release runs/run.lock. That invocation will skip all precompute produced by this run (skip-if-exists) and go straight to the GPU stage.",
+
+  "git": {
+    "commit": "619cf0a6c75fd4d1c05d34beda5f96178b68ddf7",
+    "branch": "main",
+    "dirty": true,
+    "dirty_files": ["?? \"Plan after the meeting.md\""]
+  }
+}
