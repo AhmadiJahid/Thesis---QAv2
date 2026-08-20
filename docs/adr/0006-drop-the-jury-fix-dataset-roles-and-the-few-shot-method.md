@@ -18,7 +18,7 @@ Jahid met his supervisor on 2026-08-12. The v1 architecture recorded in ADR [000
 - **MuSiQue** carries **decomposition-quality evaluation** and **end-to-end evaluation**, because it ships gold decompositions.
 - **MetaQA** carries **end-to-end evaluation only**, through the supervisor's GRAG system, because it has no gold decompositions.
 
-**3. The few-shot method is fixed:** bi-encoder retrieves **top-20**, cross-encoder re-ranks to **top-5**, with **typed entity masking**. Raw masking, uniform masking, and bi-encoder-only retrieval become **ablations**, not live variables.
+**3. The few-shot method is fixed:** bi-encoder retrieves **top-20**, cross-encoder re-ranks to **top-5**, with **typed entity masking**. Raw masking, uniform masking, and bi-encoder-only retrieval become **ablations**, not live variables. *(Amended 2026-08-20 by [0017](./0017-triage-of-the-2026-08-12-transcript-cross-check.md): the exact k values 20/5 are demoted to ablatable working values, not method constants. Amended 2026-08-20 by [0018](./0018-resolve-the-carried-v1-research-decisions.md): Jahid reopened the typed-masking default as not settled — a recorded departure from the supervisor's [1:24:27] confirmation; the supervisor reasserting it supersedes.)*
 
 **4. Pool size is fixed at 2000.**
 

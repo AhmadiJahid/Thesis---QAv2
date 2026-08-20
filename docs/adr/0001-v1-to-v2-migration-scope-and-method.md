@@ -3,6 +3,8 @@
 - **Status**: Accepted
 - **Date**: 2026-08-12
 
+*(Amended 2026-08-20 by [0018](./0018-resolve-the-carried-v1-research-decisions.md): MetaQA + MuSiQue, recorded here as migration scope, are confirmed as the thesis datasets — a research decision, not an inheritance.)*
+
 ## Context
 
 The predecessor repo (`/cta/users/fyilmaz/Thesis---QA`, "v1") holds working tooling for two datasets (MetaQA and MuSiQue), a body of measured results (`handoff/results_analysis/FINDINGS.md`), and documented decisions (`docs/DECISIONS.md`, `docs/MASKING.md`, `docs/MODEL_SELECTION.md`). This repo ("v2") starts fresh under a stricter operating contract — committed configs, fixed seeds, an append-only experiment log, review gates. The question was what carries over, and how: v1 runs did ship config, metrics, and notes with a seed, but v1 has no append-only experiment log and no per-run commit SHA, so its numbers were not produced under v2's logging discipline. Compute for v2 is not yet settled (issue #2).

@@ -78,6 +78,13 @@ not macro averages: `reference_validity_micro` pools counts across all rows;
 | `predicted_hop_distribution`, `gold_hop_distribution` | counts of items per hop count |
 | `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics |
 
+When reading the two direction rates, note that the errors are **not equally bad**: the
+supervisor's judgment (2026-08-12 meeting, [33:23] — "a three-hop question, it's fine to
+make it a four-hop, but it's not fine to make it a two-hop"; recorded per ADR 0017) is that
+**over-decomposition is tolerable, under-decomposition is not**. So never collapse the two
+rates into a single "wrong-length" figure, and read `mean_signed_step_count_error`'s sign
+with this asymmetry in mind.
+
 Per item, the same quantities are written to `<prefix>_per_item.json`, plus
 `step_count_signed_error` (`len(pred) − len(gold)`), `pred_steps`, `gold_steps` and
 `item_id`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
@@ -138,7 +145,8 @@ snapshot and metrics JSON):
 The weights are a **choice, not a result**: they were hard-coded literals in v1 and were
 promoted to config in v2 so a run records them. Jahid's supervisor flagged this score as
 handmade and possibly biased and asked for it to be checked against standard methods
-(`docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md`, open item 4). Two
+(`docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md`, item 4; that
+check is tracked as issue #29). Two
 consequences worth carrying into the write-up: the 0.2 reference-validity term is a micro
 rate that can swing the composite on a handful of `[#k]` references, and the step-count
 term is direction-blind (it uses the MAE, so over- and under-decomposition are penalised

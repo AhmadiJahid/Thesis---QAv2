@@ -42,6 +42,8 @@ When **not** to write one:
 | [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md) | The Guided-vs-Unguided Experiment Runs on the v1 Pool and Retrieval Artifact | Accepted (Jahid 2026-08-19, pending supervisor confirmation) |
 | [0015](./0015-admit-qwen3.5-9b-to-the-decomposer-despite-the-8b-ceiling.md) | Admit Qwen3.5-9B to the Decomposer Despite the ~8B Ceiling | Accepted (Jahid 2026-08-19, pending supervisor confirmation) |
 | [0016](./0016-real-run-only-invariants-get-source-level-guards.md) | Real-Run-Only Invariants Get Source-Level Guards | Accepted |
+| [0017](./0017-triage-of-the-2026-08-12-transcript-cross-check.md) | Triage of the 2026-08-12 Transcript Cross-Check | Accepted (Jahid, 2026-08-20) |
+| [0018](./0018-resolve-the-carried-v1-research-decisions.md) | Resolve the Carried v1 Research Decisions | Accepted (Jahid, 2026-08-20; embedding model pending supervisor confirmation) |
 
 ---
 
@@ -71,5 +73,7 @@ Other options on the table and why they lost. This is what stops the next person
 ```
 
 Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number.
+
+**Amendments are marked on both ends.** An ADR that changes an earlier one carries an `Amends [NNNN]` line under its status, **and** the earlier ADR gets a dated in-place note pointing forward — at the changed clause, or under the status block when the amendment touches the record as a whole — never a silent rewrite, and never an unmarked contradiction. (Convention made explicit 2026-08-20; earlier ADRs follow it in varying shapes.)
 
 Filenames are `NNNN-kebab-case-title.md`, and every new record is added to the index table above in the same commit.
