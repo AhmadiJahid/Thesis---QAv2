@@ -25,7 +25,15 @@ no `experiments/log.md` entry.
 - **The harness that produced these figures is not committed** (analyst output is analysis, not
   code). The figures were **verified by independent recomputation in the PR #33 delta review**, so
   they are not unchecked — but they are **not re-derivable from committed code** until the
-  `--compare` shim in recommendation 6(b) lands. Every statistic reported below is also emitted
+  `--compare` shim in recommendation 6(b) lands.
+  **[Addendum 2026-08-20, PR #36: the shim landed, and this sentence is now only partly true.**
+  `--compare --v1-per-item` re-derives the ADR 0009 battery over the full item set of a pair —
+  the four bootstrap statistics with CIs, both McNemar tests, and the paired t-tests (43/43
+  values bit-identical to the JSON companion below for typed-vs-raw, uniform-vs-raw and a
+  Task B pair, seed 42, this note's stated alignment). Still harness-only: the EM / hop-EM
+  bootstrap CIs, the `composite_no_ref_renorm` diagnostic, the `power` blocks, the
+  `holm_bonferroni` adjusted p-values and every `per_gold_hop` stratum. See ADR 0020's
+  Consequences.**]** Every statistic reported below is also emitted
   machine-readably beside this note, in
   [`2026-08-20-v1-masking-and-retrieval-significance.json`](2026-08-20-v1-masking-and-retrieval-significance.json)
   (statistics only — no dataset content), which additionally carries the input sha256s, the
@@ -73,6 +81,13 @@ are exactly what `--compare` would print.
 not code). The four house statistics are re-derivable today by re-stamping the v1 per-item files
 into v2's schema and running `--compare`; the EM / hop-EM bootstrap columns and the diagnostic in §4
 are not, until such a shim exists. See recommendation 6(b).
+
+**[Addendum 2026-08-20, PR #36:** the shim exists — `--compare --v1-per-item --v1-alignment
+normalized_question` — so no re-stamping is needed, and the four house statistics plus both McNemar
+tests plus all five paired t-tests reproduce **bit-identically** from committed code at seed 42.
+What this section lists as *not* re-derivable is still not: the EM / hop-EM bootstrap columns and the
+§4 diagnostic, and additionally the `power` blocks, the `holm_bonferroni` adjustments and the
+per-gold-hop strata. ADR 0020's Consequences carries the full list.**]**
 
 ## 2. Inputs — paths and content hashes
 
@@ -381,6 +396,13 @@ direction — the call is Jahid's with his supervisor.
    (2000 vs 4000 etc., matched on balance/mode/retrieval, same 750 items) — the other half of
    #6 item 4; (b) a `--compare` shim that accepts v1-format per-item files, which would make every
    number in §4–§5 reproducible from committed code instead of from a session-local harness.
+   **[Addendum 2026-08-20, PR #36: (b) is done, and "every number" was an overstatement.** The shim
+   (`--v1-per-item`) re-derives the ADR 0009 battery over each pair's full item set — the four
+   bootstrap CIs, both McNemar tests and the five paired t-tests, bit-identical to the JSON
+   companion at seed 42 on three checked pairs. It does **not** re-derive the EM / hop-EM bootstrap
+   CIs, the `composite_no_ref_renorm` diagnostic, the `power` blocks, the `holm_bonferroni`
+   adjustments or any `per_gold_hop` stratum; those remain harness-only, checked by the PR #33
+   recomputation. Full list and reasons: ADR 0020 Consequences. **(a) is still open.]**
 
 ## 8. Unmeasured / out of scope
 

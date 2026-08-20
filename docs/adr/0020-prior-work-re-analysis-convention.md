@@ -54,6 +54,46 @@ shim accepts v1-format per-item files (note §7.6(b), unscheduled), the JSON is 
 verifiable artifact and independent recomputation is the check — as performed by the PR #33
 review.
 
+**Note added 2026-08-20 (PR #36, issue #30): the gap above is now partly closed, not
+closed.** `scripts/musique_decompositions_evaluator.py --compare --v1-per-item` reads
+v1-format per-item files, so **the ADR 0009 battery over a comparison's full item set is
+re-derivable from committed code**: the four bootstrap statistics (`rouge_l_f1`, `step_f1`,
+`ordered_step_accuracy`, `composite_score`) with their CIs, both exact McNemar tests, and
+the five paired t-tests added by issue #30. Verified against the committed masking note's
+JSON at seed 42 under its stated alignment: 43/43 values bit-identical on each of Task A
+typed-vs-raw, Task A uniform-vs-raw and one Task B pair. (43 is the acceptance harness's
+compared-field count per pair — the bootstrap, McNemar and t-test fields it checks; the
+PR #36 review compared a broader per-pair field set, 56–57 fields including `dof` and the
+`significant` flags, with the same all-equal result.)
+
+**Five families of numbers in that note remain harness-only** — computed by a session-local
+analyst harness, not reproducible by committed code, and still resting on the PR #33
+review's independent recomputation:
+
+1. the **bootstrap CIs for `exact_match` and `hop_count_exact_match`** (v2 bootstraps four
+   statistics; those two get McNemar and a t-test instead, and widening
+   `BOOTSTRAP_STATISTICS` would change the ADR 0009 protocol — Jahid's call, not the
+   implementer's);
+2. the **`composite_no_ref_renorm` diagnostic** (a reference-term-free composite constructed
+   for that note, explicitly not a house metric);
+3. the **`power` blocks** (sd of paired differences, minimum detectable effect, n needed);
+4. the **`holm_bonferroni` adjusted p-values** (ADR 0009 reports uncorrected; correction
+   stays post-hoc);
+5. the **`per_gold_hop` strata** (the shim compares one item set per invocation; per-hop
+   slices would need the caller to split the files).
+
+**Condition 3 is enforced in code on that path, not merely reported.** The shim refuses to
+compare unless the witness fields condition 3(b) names are present on every row of both files
+— `question` **and** `gold_steps` under positional alignment, and `gold_steps` under
+question-key alignment, where the question's equality holds by construction and so witnesses
+nothing — and it refuses on any mismatch. The alignment used is recorded in the output, since
+3's reason for existing (CI digits move with the row order) applies to a shim run exactly as
+it does to a note.
+
+The shim's other conventions — the explicit opt-in, the two alignments, the prior-work
+provenance block — are documented in `docs/METRICS.md` §5, not here; this note records only
+what changed about re-derivability.
+
 ## Alternatives considered
 
 - Forbidding any use of v1 numbers — loses real, per-item-verifiable evidence that directly

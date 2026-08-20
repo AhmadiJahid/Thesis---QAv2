@@ -259,15 +259,75 @@ Compares two runs **on the same evaluation set**. Parameters live in
   run note prints the warning. `min_items_for_significance_claim` is a **reporting guard
   chosen in config, not a statistical standard** — it exists so a tiny evaluation set
   cannot print a bare `significant: true`; its value is Jahid's and his supervisor's to set.
-- **Six tests are reported and none is corrected for multiple comparisons.** The run note
-  says so too.
-- This substitutes paired bootstrap + McNemar for the "t-test" the supervisor asked for
-  ([31:33] in the meeting cross-check); the substitution is recorded there as open item 8.
+- **Paired t-test** (`_paired_t_test`, `_paired_t_test_row`, `scipy.stats.ttest_rel`) over
+  the same per-item differences, the same pairing and the same aligned items, for the five
+  compared metrics that **have** a per-item value: `rouge_l_f1`, `step_f1`,
+  `ordered_step_accuracy`, `exact_match`, `hop_count_exact_match`
+  (`T_TEST_STATISTICS`). Each row carries `t_statistic`, `degrees_of_freedom` (n − 1) and
+  `p_value`, with `significant` = `p_value < alpha` and the same `underpowered` flag as the
+  rest. `composite_score` gets **no** t-test: its reference term is a micro rate and its
+  step-count term a MAE, so there is no per-item composite difference to test — only its
+  bootstrap CI, which recomputes it per resample. A row whose t is undefined (n < 2, or a
+  zero standard deviation of the differences, e.g. a file compared with itself, or a
+  non-finite result from the test) carries `t_statistic: null`, `p_value: null`,
+  `significant: false` and a `degenerate` reason string, and makes no claim; its bootstrap
+  CI still applies. Nothing non-finite is written to the metrics JSON: `NaN` and `Infinity`
+  are not valid JSON, so they are turned into a degenerate row instead. The t-test is **additive**:
+  bootstrap + McNemar remain the headline protocol (ADR 0009), and this covers the
+  supervisor's literal ask for "a t-test" (ADR
+  [0017](adr/0017-triage-of-the-2026-08-12-transcript-cross-check.md) item 4, issue #30).
+  Note the assumption it makes and the others do not: these bounded, 0/1-heavy per-item
+  scores are not obviously normal in their differences, which is why ADR 0009 chose the
+  bootstrap and McNemar as the headline. The run note prints that caveat.
+- **The headline protocol is six tests** (four bootstrap intervals + two McNemar p-values)
+  **and the five t-tests are reported alongside them**; the counts are in the metrics JSON
+  under `tests_reported`. **None** is corrected for multiple comparisons, and the t-test
+  rows re-test the same metrics on the same items rather than adding independent tests. The
+  run note says so too.
+- **v1 prior-work inputs** (`--v1-per-item`, `--v1-alignment`; ADR
+  [0020](adr/0020-prior-work-re-analysis-convention.md)). `--compare` can read v1's
+  bare-list per-item files — the format that predates
+  `musique_decomposition_per_item/1`, carrying the same per-item fields but no `item_id`
+  and no stamped weights. It is **opt-in**: without the flag such a file is refused (the
+  error names the flag), so a v1 artifact is never silently treated as a v2 one; with the
+  flag on a v2 object the run aborts too, and mixing one of each is not supported. The
+  `item_id` is reconstructed by `--v1-alignment`, either `normalized_question` (key = the
+  normalized question text, rows in sorted order of it — the default from
+  `paired_comparison.v1_compat.default_alignment`, and the alignment of the committed
+  analysis note `docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`) or
+  `position` (row i paired with row i, for v1 files whose question texts are not unique).
+  Either way the pairing has to be **witnessed**, and the witness fields are **required, not
+  optional**: under `position` both `question` and `gold_steps` must be present on every row
+  of both files and equal on every pair (ADR
+  [0020](adr/0020-prior-work-re-analysis-convention.md) condition 3(b) — the alignment field
+  *and* the gold), and under `normalized_question` the question is the alignment key, so its
+  equality holds by construction and witnesses nothing while `gold_steps` is the required
+  independent witness. A missing witness field **refuses the comparison**: a verification
+  that checked nothing would report "same item" having established nothing (the case the
+  PR #36 Gate-1 review demonstrated). A mismatch on a present witness aborts too, so a
+  misordered file cannot be compared as if aligned. The output records which fields
+  witnessed the pairing and on how many pairs
+  (`v1_format_inputs.same_item_check.verification_fields` / `fields_verified_equal`), and
+  the run note's sentence is built from those counts rather than asserted. Refusal messages on this path name a row by its index
+  and a short hash of its key, never by the question text — an error pasted into an issue
+  must not move dataset content into git. The output
+  records a `v1_format_inputs` block: the prior-work caveat (these inputs carry **no commit
+  SHA**, Gate 2 is not satisfied, the result is citable prior work and not a v2
+  measurement), each input's sha256, mtime and row count, the alignment used and its
+  definition, and that the composite weights are the config's because the files stamp none
+  (`config_weights_match_per_item_files` is then `null`, not a bool). The caveat leads the
+  run note and the stdout. Every compared field is type-checked at load: a JSON `null`, a
+  string or a non-finite number in a metric column aborts naming the file, row and field,
+  rather than surfacing as a `TypeError` inside the statistics.
+  `paired_comparison.v1_compat.read_only_prior_work_root` names the v1 repo, and **any**
+  `--run-dir` inside it is refused, v1 or not: v1 is read-only (ADR 0020 condition 1).
 
 Output: `<out_prefix>_config.json`, `<out_prefix>_metrics.json` and `<out_prefix>_notes.md`
 in the run directory, with a Markdown table of every statistic, its difference, its
 interval **or** p-value (the column is headed `CI or p`, because the bootstrap rows carry an
-interval and the McNemar rows a p-value), and its significant/underpowered annotations.
+interval while the McNemar and t-test rows carry a p-value), and its
+significant/underpowered annotations. One row per test, with a `test` column naming which
+family it came from.
 
 ### 5.1 Reporting power alongside a null result
 
@@ -312,6 +372,12 @@ applied anywhere.
 # paired significance between two scored runs (same eval set)
 .venv/bin/python scripts/musique_decompositions_evaluator.py \
     --compare runs/<a>/eval_per_item.json runs/<b>/eval_per_item.json
+
+# the same battery over two v1 prior-work per-item files (ADR 0020; opt-in, and the
+# output records that its inputs are v1 and carry no commit SHA)
+.venv/bin/python scripts/musique_decompositions_evaluator.py \
+    --compare <v1>/eval_typed_unguided_per_item.json <v1>/eval_raw_unguided_per_item.json \
+    --v1-per-item --v1-alignment normalized_question --run-dir runs/<out>
 ```
 
 The hand-computed checks for all of the above are in

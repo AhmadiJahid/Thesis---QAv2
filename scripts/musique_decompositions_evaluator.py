@@ -22,10 +22,14 @@ Two modes:
   (an object: the composite-score weights the rows were scored under, plus ``items``)
   plus the standard config/metrics/notes trail.
 - ``--compare A_per_item.json B_per_item.json``: paired significance between two runs
-  **on the same evaluation set** (bootstrap CIs + McNemar). It aligns rows by item id
-  and refuses to run when the two sets differ, or when the two files were scored under
-  different composite weights, because neither is a comparison (CLAUDE.md, evidence
-  discipline).
+  **on the same evaluation set** (bootstrap CIs + McNemar, plus an additive paired
+  t-test). It aligns rows by item id and refuses to run when the two sets differ, or
+  when the two files were scored under different composite weights, because neither is a
+  comparison (CLAUDE.md, evidence discipline).
+  With ``--v1-per-item`` the two inputs are read as **v1 prior-work artifacts** (the
+  bare-list format that predates ``musique_decomposition_per_item/1``) under ADR 0020;
+  the comparison output then records that its inputs carry no commit SHA and are not v2
+  evidence.
 
 Ported from v1 ``scripts/musique_decompositions_evaluator.py``. Adapted for v2: the
 gold path, run directory, seed, limit, the composite-score weights and the paired
@@ -35,15 +39,18 @@ standard config/metrics/notes trail.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy import stats as scipy_stats
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
@@ -191,14 +198,61 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "decision is whether the percentile interval excludes 0. Their resolution is "
         "instead bounded by n (recorded per row as 'n')"
     ),
+    "paired_t_test": (
+        "two-sided paired t-test (scipy.stats.ttest_rel) over the per-item differences "
+        "system_a minus system_b — the same pairing and the same items the bootstrap "
+        "resamples. Reports the t statistic, degrees of freedom (n - 1) and the p-value. It "
+        "is ADDITIVE (ADR 0009 as amended by ADR 0017, issue #30): the bootstrap CIs and "
+        "McNemar remain the headline protocol, and no verdict here replaces one of theirs"
+    ),
+    "t_test_significance": "significant = p_value < alpha",
+    "t_test_statistics_covered": (
+        "every compared metric that has a per-item value: the bootstrap statistics except "
+        "composite_score, plus the two McNemar metrics. composite_score has no per-item "
+        "value (its reference term is a micro rate and its step-count term a MAE), so no "
+        "paired difference exists to t-test and only its bootstrap CI is reported"
+    ),
+    "t_test_degenerate_rows": (
+        "a row carries t_statistic = null, p_value = null, significant = false and a "
+        "'degenerate' reason when the t statistic is undefined: n < 2, or a zero standard "
+        "deviation of the per-item differences (every item differs by exactly the same "
+        "amount, including the all-zeros case of comparing a file with itself). No "
+        "significance claim is made from such a row; its bootstrap CI still is"
+    ),
+    "t_test_normality_caveat": (
+        "the compared per-item scores are bounded and often exactly 0 or 1, so the "
+        "normality-of-differences assumption is doubtful — the reason ADR 0009 chose the "
+        "bootstrap and McNemar as the headline. The t-test is reported because the "
+        "supervisor asked for it by name (ADR 0017 item 4), next to tests that do not "
+        "assume it"
+    ),
     "underpowered": (
         "true when n is below paired_comparison.min_items_for_significance_claim, or (for "
         "McNemar) when min_attainable_p_value >= alpha. A 'significant' flag on an "
-        "underpowered row is not evidence"
+        "underpowered row is not evidence. It applies to the t-test rows on the same terms "
+        "as the rest"
     ),
     "multiple_comparisons": (
-        "six tests are reported per comparison and none of the p-values or intervals is "
-        "corrected for multiple comparisons"
+        "the headline protocol is six tests per comparison (four bootstrap intervals + two "
+        "McNemar p-values, ADR 0009); the paired t-tests are reported alongside them. The "
+        "exact counts are in 'tests_reported'. None of the p-values or intervals is "
+        "corrected for multiple comparisons, and the t-test rows overlap the other two "
+        "families by construction (same items, same metrics) — so they are not six "
+        "independent extra tests"
+    ),
+    "v1_format_inputs": (
+        "null for normal (v2) inputs. When --v1-per-item was passed it is an object "
+        "recording that both inputs were v1 prior-work per-item files (ADR 0020): their "
+        "sha256 and mtime (v1 runs carry no commit SHA), the alignment used, and the caveat "
+        "that the result is citable prior work and not a v2 measurement"
+    ),
+    "v1_same_item_check": (
+        "v1 rows carry no id, so the pairing rests on a reconstructed key and something must "
+        "witness that it paired the right rows. 'verification_fields' names the fields that "
+        "did (present on every row of both files, and not the alignment key itself — a "
+        "question matching the question it was keyed on witnesses nothing), and "
+        "'fields_verified_equal' counts the pairs each one matched on. With no usable witness "
+        "field the comparison is refused rather than reported"
     ),
     "composite_score_weights_provenance": (
         "the per-item files stamp the weights and scale they were scored under; --compare "
@@ -527,6 +581,15 @@ BOOTSTRAP_STATISTICS = ("rouge_l_f1", "step_f1", "ordered_step_accuracy", "compo
 #: Binary per-item metrics compared with McNemar.
 MCNEMAR_STATISTICS = ("exact_match", "hop_count_exact_match")
 
+#: Statistics a paired t-test is reported on, added alongside the two families above per
+#: ADR 0017 item 4 / issue #30 (never as a replacement). It is every compared metric that
+#: HAS a per-item value: the bootstrap statistics minus ``composite_score``, whose
+#: reference term is a micro rate and step-count term a MAE, so no per-item difference to
+#: t-test exists, plus the two binary McNemar metrics (which do have one).
+T_TEST_STATISTICS = (
+    tuple(name for name in BOOTSTRAP_STATISTICS if name != "composite_score") + MCNEMAR_STATISTICS
+)
+
 #: Top-level shape of ``<prefix>_per_item.json``. It is an object rather than a bare list
 #: because the composite-score weights the rows were scored under have to travel with them:
 #: --compare recomputes the composite, and weights that differ from the ones a file was
@@ -558,7 +621,10 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
         raise SystemExit(
             f"{path}: this is the legacy bare-list per-item format, which does not record "
             f"the composite-score weights its rows were scored under. --compare recomputes "
-            f"the composite, so it needs them; re-run the evaluation to regenerate the file."
+            f"the composite, so it needs them; re-run the evaluation to regenerate the file.\n"
+            f"If both files are v1 prior-work artifacts (ADR 0020), pass --v1-per-item to "
+            f"read them explicitly as v1 format — the comparison output then records that "
+            f"its inputs are v1 and carry no commit SHA."
         )
     if not isinstance(payload, dict):
         raise SystemExit(f"--compare expects a per-item JSON object: {path}")
@@ -588,6 +654,22 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
                 f"'<prefix>_per_item.json' files written by this script; re-run the "
                 f"evaluation to regenerate them."
             )
+        # Same contract as the v1 loader: every compared field is read through float()
+        # downstream, so a null/string/NaN here gets the file, row and field named now
+        # rather than a TypeError three functions away from the cause.
+        unusable = [
+            f"{f}={obj[f]!r}"
+            for f in _REQUIRED_V1_PER_ITEM_FIELDS
+            if isinstance(obj[f], bool)
+            or not isinstance(obj[f], (int, float))
+            or not math.isfinite(float(obj[f]))
+        ]
+        if unusable:
+            raise SystemExit(
+                f"{path}: row {i} has non-numeric or non-finite compared field(s): "
+                f"{unusable}. Every metric --compare reads must be a finite number; this "
+                f"file cannot be compared as it stands."
+            )
         item_id = str(obj["item_id"])
         if item_id in by_id:
             duplicates.append(item_id)
@@ -595,6 +677,337 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
     if duplicates:
         raise SystemExit(f"{path}: duplicate item_id(s): {sorted(set(duplicates))}")
     return by_id, header
+
+
+# --------------------------------------------------------------------------------------
+# v1 prior-work per-item files (--v1-per-item; ADR 0020)
+# --------------------------------------------------------------------------------------
+
+#: How the rows of two v1 files are paired. v1 wrote a bare list with no ``item_id``, so
+#: the key has to be reconstructed, and which key was used changes the bootstrap CI in the
+#: 3rd-4th decimal — hence ADR 0020 condition 3 (alignment must be stated) and hence this
+#: is recorded in the comparison output rather than left implicit.
+#:
+#: - ``normalized_question``: key = the normalized question text, rows processed in sorted
+#:   order of it. This is the alignment of
+#:   ``docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md`` §3 (Task A).
+#: - ``position``: key = the row's position in the file, so the two files are paired in
+#:   file order. Needed for v1 artifacts whose question texts are not unique (that note's
+#:   Task B has one question appearing twice), and only sound because every paired row is
+#:   then verified to be the same item (:func:`_assert_v1_pairs_are_the_same_item`).
+V1_ALIGNMENTS = ("normalized_question", "position")
+
+#: Bound on ``position`` alignment: ids are zero-padded to this width so their sorted order
+#: is their file order. A v1 per-item file larger than this does not exist (the largest is
+#: 750 rows) and would silently mis-order, so it is refused instead.
+_V1_POSITION_ID_WIDTH = 6
+
+#: The per-item fields a v1 file must carry. v1 wrote every one of them except ``item_id``,
+#: which it had no concept of. Every one is numeric and every one is read through
+#: ``float()`` downstream, so the loader type-checks them rather than letting a JSON ``null``
+#: surface as a bare TypeError three functions later.
+_REQUIRED_V1_PER_ITEM_FIELDS = tuple(f for f in _REQUIRED_PER_ITEM_FIELDS if f != "item_id")
+
+#: Fields that can witness "this row of file A and that row of file B are the same
+#: evaluation item". v1 files carry no id, so the pairing rests on a reconstructed key and
+#: these are the only evidence that it paired the right rows — see
+#: :func:`_assert_v1_pairs_are_the_same_item`, which refuses to proceed without one.
+_V1_VERIFICATION_FIELDS = ("question", "gold_steps")
+
+#: Leads every v1 comparison's run note and travels in its metrics JSON, so a consumer of
+#: the output cannot mistake it for a v2 measurement (ADR 0020 conditions 5 and 2).
+V1_PRIOR_WORK_CAVEAT = (
+    "PRIOR WORK, NOT A v2 MEASUREMENT: both inputs are v1-format per-item files produced "
+    "before this repo's rules existed. v1's runs/ is untracked, so these inputs carry NO "
+    "commit SHA — they are pinned here only by sha256 and mtime. Gate 2 (committed code + "
+    "committed config + fixed seed) is not satisfied by them and there is no "
+    "experiments/log.md entry, because nothing was run to produce them. The statistics "
+    "below are computed by committed v2 code, but they are statistics ABOUT v1 numbers and "
+    "inherit v1's provenance gap (ADR 0005, ADR 0020)."
+)
+
+
+def _redacted_key(item_id: str) -> str:
+    """A short content hash of an alignment key, for error messages.
+
+    Under ``normalized_question`` the alignment key IS a dataset question, and error
+    messages get pasted into issues and PRs — which would move dataset content into git
+    (CLAUDE.md: data never enters git). Messages therefore identify a row by its index plus
+    this hash, which is enough to find the row in the file and carries no content.
+    """
+    return "key sha256:" + hashlib.sha256(item_id.encode("utf-8")).hexdigest()[:12]
+
+
+def _v1_id_labeller(
+    alignment: str,
+    rows_by_id_a: dict[str, dict[str, Any]],
+    rows_by_id_b: dict[str, dict[str, Any]],
+) -> Any:
+    """A callable turning a v1 item id into a message-safe label, or None if it is safe.
+
+    ``position`` ids are ``row_000123`` — an index, no content — so they need no redaction.
+    """
+    if alignment != "normalized_question":
+        return None
+
+    def label(item_id: str) -> str:
+        sides = [
+            f"{tag} row {rows[item_id]['v1_row_index']}"
+            for tag, rows in (("a:", rows_by_id_a), ("b:", rows_by_id_b))
+            if item_id in rows
+        ]
+        where = ", ".join(sides) if sides else "row unknown"
+        return f"{where} ({_redacted_key(item_id)})"
+
+    return label
+
+
+def _file_provenance(path: Path) -> dict[str, Any]:
+    """Pin an input by content and mtime — ADR 0020 condition 2 (v1 has no commit SHA)."""
+    data = path.read_bytes()
+    stat = path.stat()
+    return {
+        "path": str(path.resolve()),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "size_bytes": stat.st_size,
+        "mtime_utc": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+    }
+
+
+def _load_v1_per_item(
+    path: Path,
+    alignment: str,
+    weights: dict[str, float],
+    scale: float,
+    max_reported: int,
+) -> tuple[dict[str, dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Load a v1 bare-list per-item file into ({item_id: row}, header, provenance).
+
+    The rows are v1's own scores, untouched; only the ``item_id`` this script aligns on is
+    reconstructed, by ``alignment``. The header is synthesized from the CURRENT config
+    because v1 stamped no weights — recorded as such in the output, never as if the file
+    had stated them.
+    """
+    if alignment not in V1_ALIGNMENTS:
+        raise SystemExit(f"--v1-alignment must be one of {list(V1_ALIGNMENTS)}, got {alignment!r}")
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise SystemExit(
+            f"{path}: --v1-per-item expects the v1 bare-list per-item format, but this file "
+            f"is a {type(payload).__name__} — it looks like a v2 "
+            f"'{PER_ITEM_SCHEMA}' artifact. Drop --v1-per-item to compare v2 artifacts; "
+            f"mixing a v1 file with a v2 one is not supported, because the two were scored "
+            f"by different code."
+        )
+    if len(payload) > 10 ** _V1_POSITION_ID_WIDTH:
+        raise SystemExit(
+            f"{path}: {len(payload)} rows exceeds the {10 ** _V1_POSITION_ID_WIDTH}-row bound "
+            f"of the v1 shim's positional ids."
+        )
+
+    by_id: dict[str, dict[str, Any]] = {}
+    duplicates: list[str] = []
+    for i, obj in enumerate(payload):
+        if not isinstance(obj, dict):
+            raise SystemExit(f"{path}: row {i} is not an object")
+        missing = [f for f in _REQUIRED_V1_PER_ITEM_FIELDS if f not in obj]
+        if missing:
+            raise SystemExit(
+                f"{path}: row {i} is missing {missing}. --v1-per-item reads the bare-list "
+                f"per-item files v1's evaluator wrote; this file is not one of them."
+            )
+        # Every compared field is read through float() downstream. A JSON null or a string
+        # there is a broken input, and saying so with the file, row and field beats a
+        # TypeError raised three functions away from the cause.
+        unusable = [
+            f"{f}={obj[f]!r}"
+            for f in _REQUIRED_V1_PER_ITEM_FIELDS
+            if isinstance(obj[f], bool)
+            or not isinstance(obj[f], (int, float))
+            or not math.isfinite(float(obj[f]))
+        ]
+        if unusable:
+            raise SystemExit(
+                f"{path}: row {i} has non-numeric or non-finite compared field(s): "
+                f"{unusable}. Every metric --compare reads must be a finite number; this "
+                f"file cannot be compared as it stands."
+            )
+        if alignment == "normalized_question":
+            question = obj.get("question")
+            if not isinstance(question, str) or not question.strip():
+                raise SystemExit(
+                    f"{path}: row {i} has no 'question', so it cannot be aligned by "
+                    f"normalized question text. Use --v1-alignment position."
+                )
+            item_id = _normalize_question(question)
+        else:
+            item_id = f"row_{i:0{_V1_POSITION_ID_WIDTH}d}"
+        if item_id in by_id:
+            duplicates.append(
+                f"row {i} duplicates row {by_id[item_id]['v1_row_index']} "
+                f"({_redacted_key(item_id)})"
+            )
+        row = dict(obj)
+        row["item_id"] = item_id
+        # Which row of the file this came from: the only safe way to name a row in an error
+        # message once the alignment key is dataset text (see _redacted_key).
+        row["v1_row_index"] = i
+        by_id[item_id] = row
+
+    if duplicates:
+        shown = duplicates[:max_reported]
+        more = "" if len(duplicates) <= max_reported else f" ... (+{len(duplicates) - max_reported} more)"
+        raise SystemExit(
+            f"{path}: {len(duplicates)} duplicate alignment key(s) under --v1-alignment "
+            f"{alignment}:\n  " + "\n  ".join(shown) + more + "\n"
+            "Two rows with the same key cannot be paired unambiguously. If the duplicates "
+            "are genuinely duplicated evaluation items, use --v1-alignment position (which "
+            "pairs the two files row by row and verifies each pair is the same item). Keys "
+            "are shown hashed: they are dataset question text, which does not go into an "
+            "error message (CLAUDE.md - data never enters git)."
+        )
+
+    header = {
+        # No 'schema': a v1 file carries none, and inventing one would read as if it did.
+        "composite_score_weights": weights,
+        "composite_step_count_error_scale": scale,
+    }
+    provenance = {**_file_provenance(path), "rows": len(payload)}
+    return by_id, header, provenance
+
+
+def _assert_v1_pairs_are_the_same_item(
+    ids: list[str],
+    rows_a: list[dict[str, Any]],
+    rows_b: list[dict[str, Any]],
+    path_a: Path,
+    path_b: Path,
+    alignment: str,
+    max_reported: int,
+    label: Any = None,
+) -> dict[str, Any]:
+    """Verify that each paired v1 row really is the same evaluation item on both sides.
+
+    v1 files have no ids, so the pairing rests on a reconstructed key and something has to
+    witness that it paired the right rows: the question text and the gold decomposition, the
+    check the analysis note performed by hand (§3) and the reason its positional alignment is
+    sound.
+
+    **Every** witness field must be present on **every** aligned row of **both** files, or the
+    run is refused. Two reasons it is "every" and not "any": a verification that silently
+    checked zero fields would report "same item" having established nothing, and ADR 0020
+    condition 3(b) (as amended 2026-08-20 by PR #35) requires the alignment field **and** the
+    gold to be asserted equal wherever positional alignment is used. Under
+    ``normalized_question`` the question IS the alignment key, so its equality holds by
+    construction and cannot witness anything — there, the independent witness is the gold.
+    """
+    tautological = ("question",) if alignment == "normalized_question" else ()
+    candidates = [f for f in _V1_VERIFICATION_FIELDS if f not in tautological]
+    usable = [
+        f for f in candidates if all(f in row for row in rows_a) and all(f in row for row in rows_b)
+    ]
+    absent = [f for f in candidates if f not in usable]
+    if absent:
+        raise SystemExit(
+            f"--v1-per-item --v1-alignment {alignment}: refusing to compare, because "
+            f"{'nothing' if not usable else 'not enough'} can verify that the paired rows are "
+            f"the same evaluation item.\n"
+            f"  a: {path_a}\n  b: {path_b}\n"
+            f"  required on every row of both files: {list(candidates)}\n"
+            f"  missing: {absent}"
+            + (
+                f"\n  ('question' is the alignment key under {alignment}, so matching "
+                f"questions are true by construction and verify nothing)"
+                if tautological
+                else ""
+            )
+            + "\nv1 per-item rows carry no id, so without these fields this comparison could "
+            "pair unrelated rows and report a full battery over them (ADR 0020 condition 3). "
+            "Use the per-item files v1's evaluator wrote, which carry them, or re-score the "
+            "runs in v2."
+        )
+
+    checked = {f: 0 for f in usable}
+    mismatches: list[str] = []
+    for item_id, a, b in zip(ids, rows_a, rows_b):
+        shown_id = label(item_id) if label is not None else item_id
+        for field in usable:
+            if field == "question":
+                qa, qb = a.get("question"), b.get("question")
+                same = (
+                    isinstance(qa, str)
+                    and isinstance(qb, str)
+                    and _normalize_question(qa) == _normalize_question(qb)
+                )
+            else:
+                same = a.get(field) == b.get(field)
+            if same:
+                checked[field] += 1
+            else:
+                mismatches.append(f"{shown_id}: {field} differs")
+    if mismatches:
+        shown = mismatches[:max_reported]
+        more = "" if len(mismatches) <= max_reported else f" ... (+{len(mismatches) - max_reported} more)"
+        raise SystemExit(
+            f"--v1-per-item --v1-alignment {alignment}: {len(mismatches)} paired row(s) are "
+            f"not the same evaluation item on both sides.\n"
+            f"  a: {path_a}\n  b: {path_b}\n  " + "\n  ".join(shown) + more + "\n"
+            "Pairing rows that hold different items is not a paired comparison. Check that "
+            "the two files were scored on the same evaluation set in the same order."
+        )
+    return {
+        "alignment": alignment,
+        "pairs": len(ids),
+        # Non-empty by construction: no witness field means the run was refused above.
+        "verification_fields": usable,
+        "fields_verified_equal": checked,
+        "fields_not_usable_as_witness": [f for f in candidates if f not in usable],
+        "tautological_fields": list(tautological),
+    }
+
+
+def _v1_verification_sentence(same_item_check: dict[str, Any]) -> str:
+    """State what the same-item verification actually established — or that it did not.
+
+    Never an unconditional "verified": the sentence is built from the counts, so a record
+    with nothing verified reads as nothing verified. ``_assert_v1_pairs_are_the_same_item``
+    refuses that case today, and this stays honest if that ever changes.
+    """
+    fields = same_item_check.get("verification_fields") or []
+    counts = same_item_check.get("fields_verified_equal") or {}
+    pairs = same_item_check.get("pairs", 0)
+    verified = [f for f in fields if counts.get(f, 0) == pairs and pairs > 0]
+    if not verified:
+        return (
+            "NOT VERIFIED: no field established that the paired rows are the same "
+            f"evaluation item (fields checked: {counts or 'none'})."
+        )
+    return (
+        f"all {pairs} pairs verified to be the same evaluation item on "
+        + ", ".join(f"`{f}`" for f in verified)
+        + "."
+    )
+
+
+def _refuse_writing_into_prior_work(run_dir: Path, read_only_root: str) -> None:
+    """Refuse an output directory inside the read-only prior-work repo (ADR 0020 cond. 1).
+
+    A source-level guard rather than a convention (ADR 0016): the v1 inputs live in that
+    tree, so ``--run-dir`` next to them is an easy mistake, and it would write into a repo
+    this project treats as read-only.
+    """
+    root = Path(read_only_root).expanduser()
+    resolved = run_dir.resolve()
+    if resolved == root.resolve() or resolved.is_relative_to(root.resolve()):
+        raise SystemExit(
+            f"refusing to write into the read-only prior-work repo: {resolved}\n"
+            f"paired_comparison.v1_compat.read_only_prior_work_root = {root} is read-only "
+            f"(ADR 0020 condition 1). Point --run-dir somewhere under this repo's runs/ "
+            f"instead."
+        )
 
 
 def _require_matching_weights(
@@ -633,17 +1046,22 @@ def _aligned_ids(
     path_a: Path,
     path_b: Path,
     max_reported: int,
+    label: Any = None,
 ) -> list[str]:
     """Ids common to both files, or abort naming the offenders.
 
     A comparison across two different evaluation sets is not a comparison (CLAUDE.md,
     evidence discipline), so a mismatch is fatal rather than an intersection.
+
+    ``label`` renders an id for the error message. It exists for the v1 shim, whose
+    ``normalized_question`` ids are dataset question text: those are reported as a row index
+    plus a hash instead, so an error pasted into an issue carries no data (``_redacted_key``).
     """
     only_a = sorted(set(a_by_id) - set(b_by_id))
     only_b = sorted(set(b_by_id) - set(a_by_id))
     if only_a or only_b:
         def _fmt(ids: list[str]) -> str:
-            shown = ids[:max_reported]
+            shown = [label(i) if label is not None else i for i in ids[:max_reported]]
             more = "" if len(ids) <= max_reported else f" ... (+{len(ids) - max_reported} more)"
             return ", ".join(shown) + more
 
@@ -816,6 +1234,97 @@ def _mcnemar(
     return out
 
 
+def _paired_t_test_row(
+    values_a: np.ndarray,
+    values_b: np.ndarray,
+    alpha: float,
+    underpowered: bool,
+) -> dict[str, Any]:
+    """One two-sided paired t-test row over the per-item differences ``a - b``.
+
+    ``scipy.stats.ttest_rel`` computes t and p (scipy is a pinned dependency of this repo).
+    The degenerate cases are caught here rather than passed through: scipy returns NaN or an
+    infinite t for them, and while Python's ``json`` writes those as the bare tokens ``NaN``
+    and ``Infinity``, they are **not valid JSON** — a strict reader rejects the file and a
+    lenient one silently turns them into a float no consumer can compare. A row with an
+    undefined t therefore carries nulls, makes no significance claim, and says why in
+    ``degenerate``.
+    """
+    differences = values_a - values_b
+    n = int(differences.size)
+    mean_a = float(values_a.mean()) if n else 0.0
+    mean_b = float(values_b.mean()) if n else 0.0
+    mean_difference = float(differences.mean()) if n else 0.0
+    # Not just t and p: if the inputs are not all finite then the means are not either, and
+    # NaN in ANY field of this row would end up in the metrics JSON.
+    summary_is_finite = all(math.isfinite(x) for x in (mean_a, mean_b, mean_difference))
+    row: dict[str, Any] = {
+        "system_a": mean_a if summary_is_finite else None,
+        "system_b": mean_b if summary_is_finite else None,
+        "difference": mean_difference if summary_is_finite else None,
+        "n": n,
+        "degrees_of_freedom": n - 1,
+        "underpowered": underpowered,
+    }
+
+    def degenerate(reason: str) -> dict[str, Any]:
+        return {
+            **row,
+            "t_statistic": None,
+            "p_value": None,
+            "significant": False,
+            "degenerate": reason,
+        }
+
+    if n < 2:
+        return degenerate(f"n = {n}: a paired t-test needs at least 2 items")
+    if not summary_is_finite:
+        return degenerate(
+            "the per-item values are not all finite, so no mean and no t statistic can be "
+            "reported for this metric (the compared columns should never contain NaN or "
+            "infinity; --v1-per-item type-checks them at load)"
+        )
+    if float(differences.std(ddof=1)) == 0.0:
+        return degenerate(
+            "the standard deviation of the per-item differences is 0 (every item differs by "
+            "exactly the same amount, e.g. a file compared with itself), so the t statistic "
+            "is undefined or infinite; the bootstrap CI for this metric still applies"
+        )
+
+    result = scipy_stats.ttest_rel(values_a, values_b)
+    p_value = float(result.pvalue)
+    t_statistic = float(result.statistic)
+    # Belt and braces on the two guards above: anything non-finite coming out of the test is
+    # reported as degenerate rather than written into the metrics JSON as NaN/Infinity.
+    if not math.isfinite(t_statistic) or not math.isfinite(p_value):
+        return degenerate(
+            f"the test returned a non-finite result (t={t_statistic!r}, p={p_value!r}), so "
+            f"no p-value can be reported; the bootstrap CI for this metric still applies"
+        )
+    return {
+        **row,
+        "t_statistic": t_statistic,
+        "p_value": p_value,
+        "significant": bool(p_value < alpha),
+        "degenerate": None,
+    }
+
+
+def _paired_t_test(
+    rows_a: list[dict[str, Any]],
+    rows_b: list[dict[str, Any]],
+    alpha: float,
+    underpowered: bool,
+) -> dict[str, dict[str, Any]]:
+    """Paired t-tests on the aligned rows, one per :data:`T_TEST_STATISTICS` metric."""
+    out: dict[str, dict[str, Any]] = {}
+    for name in T_TEST_STATISTICS:
+        values_a = np.array([float(r[name]) for r in rows_a], dtype=float)
+        values_b = np.array([float(r[name]) for r in rows_b], dtype=float)
+        out[name] = _paired_t_test_row(values_a, values_b, alpha, underpowered)
+    return out
+
+
 def _significance_floor(n: int, min_items: int) -> dict[str, Any]:
     """Record how much evidence the comparison actually has, next to its verdicts."""
     below = n < min_items
@@ -849,18 +1358,69 @@ def _compare(
     min_items = int(require(compare_cfg, "min_items_for_significance_claim"))
     max_reported = int(require(compare_cfg, "max_reported_id_mismatches"))
     out_prefix = args.out_prefix or require(compare_cfg, "out_prefix")
+    v1_cfg = require(compare_cfg, "v1_compat")
+
+    run_dir = args.run_dir if args.run_dir is not None else runs_path(paths_cfg, require(cfg, "run_subdir"))
+    # Unconditional, and before any work: ADR 0020 condition 1 makes the prior-work repo
+    # read-only for this pipeline whatever the input format is.
+    _refuse_writing_into_prior_work(run_dir, require(v1_cfg, "read_only_prior_work_root"))
 
     path_a, path_b = args.compare
-    a_by_id, header_a = _load_per_item(path_a)
-    b_by_id, header_b = _load_per_item(path_b)
-    _require_matching_weights(header_a, header_b, path_a, path_b)
-    ids = _aligned_ids(a_by_id, b_by_id, path_a, path_b, max_reported)
+    v1_inputs: dict[str, Any] | None = None
+    v1_label: Any = None
+    if args.v1_per_item:
+        alignment = args.v1_alignment or require(v1_cfg, "default_alignment")
+        a_by_id, header_a, prov_a = _load_v1_per_item(
+            path_a, alignment, weights, scale, max_reported
+        )
+        b_by_id, header_b, prov_b = _load_v1_per_item(
+            path_b, alignment, weights, scale, max_reported
+        )
+        v1_label = _v1_id_labeller(alignment, a_by_id, b_by_id)
+        # No _require_matching_weights here: on this path both headers were synthesized from
+        # the same config a few lines up, so the check could only ever pass. Calling it would
+        # read like a check that ran. What CAN be said about v1 weights is recorded instead,
+        # in v1_format_inputs.composite_score_weights_source.
+    else:
+        a_by_id, header_a = _load_per_item(path_a)
+        b_by_id, header_b = _load_per_item(path_b)
+        _require_matching_weights(header_a, header_b, path_a, path_b)
+    ids = _aligned_ids(a_by_id, b_by_id, path_a, path_b, max_reported, label=v1_label)
     if not ids:
         raise SystemExit("--compare: both files are empty, nothing to compare.")
 
     rows_a = [a_by_id[i] for i in ids]
     rows_b = [b_by_id[i] for i in ids]
     n = len(ids)
+
+    if args.v1_per_item:
+        same_item_check = _assert_v1_pairs_are_the_same_item(
+            ids, rows_a, rows_b, path_a, path_b, alignment, max_reported, label=v1_label
+        )
+        v1_inputs = {
+            "enabled": True,
+            "prior_work_not_v2_evidence": True,
+            "caveat": V1_PRIOR_WORK_CAVEAT,
+            "adr": "ADR 0020 (prior-work re-analysis convention)",
+            "format": (
+                "v1 bare-list per-item file: the same per-item fields this script writes, "
+                f"but no item_id and no stamped composite weights (predates {PER_ITEM_SCHEMA})"
+            ),
+            "alignment": alignment,
+            "alignment_definition": (
+                "rows keyed by the normalized question text (strip, lowercase, collapse "
+                "whitespace) and processed in sorted order of that key"
+                if alignment == "normalized_question"
+                else "rows keyed by their position in the file, so the two files are paired "
+                "in file order (row i with row i)"
+            ),
+            "same_item_check": same_item_check,
+            "composite_score_weights_source": (
+                "the config below — v1 per-item files stamp no weights, so the ones the "
+                "bootstrap composite is recomputed with cannot be checked against them"
+            ),
+            "inputs": {"system_a": prov_a, "system_b": prov_b},
+        }
     floor = _significance_floor(n, min_items)
     underpowered = bool(floor["below_min_items"])
 
@@ -877,14 +1437,25 @@ def _compare(
         underpowered=underpowered,
     )
     mcnemar = _mcnemar(rows_a, rows_b, alpha, underpowered)
+    t_test = _paired_t_test(rows_a, rows_b, alpha, underpowered)
+    tests_reported = {
+        "bootstrap": len(BOOTSTRAP_STATISTICS),
+        "mcnemar": len(MCNEMAR_STATISTICS),
+        "paired_t_test": len(T_TEST_STATISTICS),
+        "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+        "multiple_comparison_correction": None,
+    }
 
     # The bootstrap composite is recomputed with THIS config's weights; the files record
     # the ones their rows were scored under. Equal above between a and b, so one check.
-    per_item_weights = header_a.get("composite_score_weights")
-    per_item_scale = header_a.get("composite_step_count_error_scale")
-    weights_match_config = bool(per_item_weights == weights and per_item_scale == scale)
+    # A v1 file records none, so there is nothing to match against and the answer is null
+    # rather than a bool that would read as "checked and equal".
+    per_item_weights = None if v1_inputs else header_a.get("composite_score_weights")
+    per_item_scale = None if v1_inputs else header_a.get("composite_step_count_error_scale")
+    weights_match_config = (
+        None if v1_inputs else bool(per_item_weights == weights and per_item_scale == scale)
+    )
 
-    run_dir = args.run_dir if args.run_dir is not None else runs_path(paths_cfg, require(cfg, "run_subdir"))
     run_dir.mkdir(parents=True, exist_ok=True)
 
     metrics = {
@@ -904,6 +1475,10 @@ def _compare(
         "significance_floor": floor,
         "bootstrap": bootstrap,
         "mcnemar": mcnemar,
+        "t_test": t_test,
+        "tests_reported": tests_reported,
+        # Null for v2 inputs; an object (with the prior-work caveat) for v1 inputs.
+        "v1_format_inputs": v1_inputs,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
         "per_item_composite_score_weights": per_item_weights,
@@ -927,9 +1502,26 @@ def _compare(
         "min_items_for_significance_claim": min_items,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "v1_per_item": bool(args.v1_per_item),
+        "v1_alignment": (v1_inputs["alignment"] if v1_inputs else None),
     }
 
-    note_lines = [
+    note_lines: list[str] = []
+    if v1_inputs:
+        # ADR 0020 condition 5: the no-SHA caveat leads.
+        note_lines += [
+            f"- **{V1_PRIOR_WORK_CAVEAT}**",
+            f"- v1 inputs pinned by content (no commit SHA exists): "
+            + "; ".join(
+                f"{side} `{rec['path']}` sha256 {rec['sha256'][:16]} "
+                f"mtime {rec['mtime_utc']} rows {rec['rows']}"
+                for side, rec in v1_inputs["inputs"].items()
+            ),
+            f"- v1 alignment: `{v1_inputs['alignment']}` — "
+            f"{v1_inputs['alignment_definition']}; "
+            f"{_v1_verification_sentence(v1_inputs['same_item_check'])}",
+        ]
+    note_lines += [
         f"- System a: `{path_a}`",
         f"- System b: `{path_b}`",
         f"- Aligned items: {n} (same evaluation set in both files)",
@@ -937,7 +1529,7 @@ def _compare(
         f"{100 * (1 - alpha):.0f}% percentile CI of (a - b)",
         "",
         # The interval column carries a CI for the bootstrap rows and a p-value for the
-        # McNemar rows, so it is not labelled "CI".
+        # McNemar and t-test rows, so it is not labelled "CI".
         "| statistic | a | b | a - b | CI or p | test | significant | underpowered |",
         "|---|---|---|---|---|---|---|---|",
     ]
@@ -956,6 +1548,24 @@ def _compare(
             f"McNemar | {'yes' if r['significant'] else 'no'} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
+    for name, r in t_test.items():
+        if r["degenerate"] is None:
+            cell = (
+                f"t={r['t_statistic']:+.4f} (dof={r['degrees_of_freedom']}), "
+                f"p={r['p_value']:.4g}"
+            )
+        else:
+            # The reason can be a sentence; it stays in the metrics JSON ('degenerate')
+            # rather than widening every row of this table.
+            cell = (
+                f"t=n/a, p=n/a (dof={r['degrees_of_freedom']}; t undefined — see "
+                f"'degenerate' in the metrics JSON)"
+            )
+        note_lines.append(
+            f"| {name} | {r['system_a']:.4f} | {r['system_b']:.4f} | {r['difference']:+.4f} | "
+            f"{cell} | paired t-test | {'yes' if r['significant'] else 'no'} | "
+            f"{'yes' if r['underpowered'] else 'no'} |"
+        )
     note_lines.append("")
     note_lines.append(
         f"- n = {n}; the reporting floor is min_items_for_significance_claim = {min_items} "
@@ -963,15 +1573,31 @@ def _compare(
     )
     if floor["warning"]:
         note_lines.append(f"- WARNING: {floor['warning']}")
-    if not weights_match_config:
+    if weights_match_config is False:
         note_lines.append(
             "- WARNING: the bootstrap composite was recomputed with this config's weights "
             f"({json.dumps(weights, sort_keys=True)}, scale {scale}), which differ from the "
             f"weights the per-item files were scored under "
             f"({json.dumps(per_item_weights, sort_keys=True)}, scale {per_item_scale})."
         )
+    if weights_match_config is None:
+        note_lines.append(
+            "- NOTE: v1 per-item files stamp no composite weights, so the ones the bootstrap "
+            f"composite was recomputed with ({json.dumps(weights, sort_keys=True)}, scale "
+            f"{scale}) could not be checked against them; they are this config's."
+        )
     note_lines.append(
-        "No correction for multiple comparisons is applied to these six tests."
+        f"- The headline protocol is {tests_reported['bootstrap']} bootstrap intervals + "
+        f"{tests_reported['mcnemar']} McNemar p-values (ADR 0009); "
+        f"{tests_reported['paired_t_test']} paired t-tests are reported alongside them "
+        f"(ADR 0017 item 4, issue #30). No correction for multiple comparisons is applied to "
+        "any of them, and the t-test rows re-test the same metrics on the same items rather "
+        "than adding independent tests."
+    )
+    note_lines.append(
+        "- The paired t-test assumes normally distributed per-item differences, which these "
+        "bounded 0/1-heavy scores do not obviously satisfy (ADR 0009); it is reported next to "
+        "the bootstrap and McNemar, which do not assume it."
     )
 
     write_run_artifacts(
@@ -984,7 +1610,13 @@ def _compare(
     )
 
     print(f"Compared {n} aligned items ({iterations} bootstrap resamples, seed {seed})")
-    for line in note_lines[5:]:
+    if v1_inputs:
+        # Printed first for the same reason it leads the note (ADR 0020 condition 5).
+        print(f"[v1] {V1_PRIOR_WORK_CAVEAT}")
+    # From the table header on: the preamble lines above it are already in the note file,
+    # and the header's index moves with the (optional) v1 caveat block.
+    table_start = next(i for i, line in enumerate(note_lines) if line.startswith("| statistic |"))
+    for line in note_lines[table_start:]:
         print(line)
 
 
@@ -1000,6 +1632,22 @@ def _parse_args() -> argparse.Namespace:
         metavar=("A_PER_ITEM", "B_PER_ITEM"),
         help="Paired significance between two '<prefix>_per_item.json' files (same eval set).",
     )
+    p.add_argument(
+        "--v1-per-item",
+        action="store_true",
+        help="Read BOTH --compare inputs as v1 prior-work per-item files (the bare-list "
+        "format with no item_id, ADR 0020). Opt-in on purpose: without it a v1 file is "
+        "refused, never silently read as a v2 artifact. The comparison output records that "
+        "its inputs are v1 and carry no commit SHA.",
+    )
+    p.add_argument(
+        "--v1-alignment",
+        choices=V1_ALIGNMENTS,
+        default=None,
+        help="How the two v1 files are paired (default: "
+        "paired_comparison.v1_compat.default_alignment from the config). Recorded in the "
+        "output, because CI digits are alignment-dependent (ADR 0020 condition 3).",
+    )
     p.add_argument("--gold", type=Path, default=None, help="Override the gold JSONL from config.")
     p.add_argument("--run-dir", type=Path, default=None, help="Override the run directory from config.")
     p.add_argument("--seed", type=int, default=None, help="Override the config seed.")
@@ -1008,6 +1656,10 @@ def _parse_args() -> argparse.Namespace:
     args = p.parse_args()
     if (args.predictions is None) == (args.compare is None):
         p.error("pass exactly one of --predictions (scoring) or --compare A B (comparison)")
+    if args.compare is None and (args.v1_per_item or args.v1_alignment is not None):
+        p.error("--v1-per-item / --v1-alignment only apply to --compare")
+    if args.v1_alignment is not None and not args.v1_per_item:
+        p.error("--v1-alignment requires --v1-per-item (v2 artifacts align on item_id)")
     return args
 
 

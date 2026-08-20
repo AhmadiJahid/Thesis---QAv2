@@ -19,8 +19,11 @@ Run::
 """
 from __future__ import annotations
 
+import ast
+import hashlib
 import importlib.util
 import json
+import math
 import os
 import subprocess
 import sys
@@ -485,6 +488,135 @@ class TestMcNemarPower(unittest.TestCase):
         self.assertAlmostEqual(EVAL._mcnemar_exact_p(6, 0), 2 / 64, places=PLACES)  # 0.03125
 
 
+class TestPairedTTest(unittest.TestCase):
+    """Known-answer checks for the paired t-test added by issue #30 / ADR 0017.
+
+    The expected p-values come from the closed forms of the Student-t survival function at
+    1 and 2 degrees of freedom, not from the library that computes them, so these are
+    genuine known answers rather than a restatement of the implementation:
+
+      dof = 1: P(|T| > t) = 1 - (2/pi) * arctan(t)
+      dof = 2: P(|T| > t) = 1 - t / sqrt(2 + t^2)
+    """
+
+    ALPHA = 0.05
+
+    def _row(self, a: list[float], b: list[float]) -> dict[str, Any]:
+        return EVAL._paired_t_test_row(
+            np.array(a, dtype=float), np.array(b, dtype=float), self.ALPHA, underpowered=False
+        )
+
+    def test_two_items_dof_one(self) -> None:
+        """differences [1, 0]: mean 0.5, sd sqrt(0.5), se 0.5, t = 1.0, dof = 1.
+
+        sd = sqrt(((1 - 0.5)^2 + (0 - 0.5)^2) / (2 - 1)) = sqrt(0.5)
+        se = sqrt(0.5) / sqrt(2) = 0.5   ->   t = 0.5 / 0.5 = 1.0
+        p  = 1 - (2/pi) * arctan(1) = 1 - (2/pi) * (pi/4) = 0.5
+        """
+        row = self._row([1.0, 0.0], [0.0, 0.0])
+        self.assertEqual(row["n"], 2)
+        self.assertEqual(row["degrees_of_freedom"], 1)
+        self.assertIsNone(row["degenerate"])
+        self.assertAlmostEqual(row["difference"], 0.5, places=PLACES)
+        self.assertAlmostEqual(row["t_statistic"], 1.0, places=PLACES)
+        self.assertAlmostEqual(row["p_value"], 0.5, places=PLACES)
+        self.assertFalse(row["significant"])
+
+    def test_three_items_dof_two(self) -> None:
+        """differences [1, 1, -1]: t = 0.5 at dof = 2, so p = 1 - 0.5/1.5 = 2/3.
+
+        mean = 1/3; deviations 2/3, 2/3, -4/3
+        sd   = sqrt((4/9 + 4/9 + 16/9) / 2) = sqrt(4/3)
+        se   = sqrt(4/3) / sqrt(3) = 2/3    ->  t = (1/3) / (2/3) = 0.5
+        p    = 1 - 0.5 / sqrt(2 + 0.25) = 1 - 0.5/1.5 = 2/3
+        """
+        row = self._row([1.0, 1.0, 0.0], [0.0, 0.0, 1.0])
+        self.assertEqual(row["degrees_of_freedom"], 2)
+        self.assertAlmostEqual(row["difference"], 1 / 3, places=PLACES)
+        self.assertAlmostEqual(row["t_statistic"], 0.5, places=PLACES)
+        self.assertAlmostEqual(row["p_value"], 2 / 3, places=PLACES)
+        self.assertFalse(row["significant"])
+
+    def test_sign_follows_the_difference_direction(self) -> None:
+        """Same magnitudes with the systems swapped: t flips sign, p is unchanged."""
+        forward = self._row([1.0, 1.0, 0.0], [0.0, 0.0, 1.0])
+        reverse = self._row([0.0, 0.0, 1.0], [1.0, 1.0, 0.0])
+        self.assertAlmostEqual(reverse["t_statistic"], -forward["t_statistic"], places=PLACES)
+        self.assertAlmostEqual(reverse["p_value"], forward["p_value"], places=PLACES)
+
+    def test_significance_is_p_below_alpha(self) -> None:
+        """A large, consistent difference at dof = 2: p = 1 - t/sqrt(2+t^2) < 0.05.
+
+        differences [1, 1, 0.9]: mean 0.9666..., sd sqrt(1/300), se sqrt(1/900) = 1/30,
+        t = 29.0 -> p = 1 - 29/sqrt(843) = 0.00118..., which is below alpha 0.05.
+        """
+        row = self._row([1.0, 1.0, 0.9], [0.0, 0.0, 0.0])
+        self.assertAlmostEqual(row["t_statistic"], 29.0, places=PLACES)
+        self.assertAlmostEqual(row["p_value"], 1 - 29 / math.sqrt(843), places=PLACES)
+        self.assertTrue(row["significant"])
+
+    def test_zero_variance_is_degenerate_not_significant(self) -> None:
+        """Identical inputs: every difference is 0, t is 0/0, so no claim is made."""
+        row = self._row([0.2, 0.4, 0.6], [0.2, 0.4, 0.6])
+        self.assertIsNone(row["t_statistic"])
+        self.assertIsNone(row["p_value"])
+        self.assertFalse(row["significant"])
+        self.assertIn("standard deviation", row["degenerate"])
+
+    def test_constant_non_zero_difference_is_degenerate(self) -> None:
+        """A constant non-zero difference gives an infinite t: recorded, not claimed.
+
+        Not representable in JSON and not a real case for bounded per-item metrics; the
+        bootstrap CI (which would be [0.1, 0.1], excluding 0) is what carries this input.
+        """
+        row = self._row([0.3, 0.5, 0.7], [0.2, 0.4, 0.6])
+        self.assertIsNone(row["t_statistic"])
+        self.assertFalse(row["significant"])
+        self.assertIsNotNone(row["degenerate"])
+
+    def test_non_finite_input_yields_a_degenerate_row_not_a_nan_in_json(self) -> None:
+        """N5: nothing non-finite reaches the metrics JSON.
+
+        `NaN` and `Infinity` are what Python's json writer emits for those floats and are
+        **not valid JSON**, so a non-finite result is reported as a degenerate row instead.
+        A NaN cannot come from a v1 file any more (the loader type-checks every compared
+        column), which is exactly why this guard is tested directly.
+        """
+        row = self._row([1.0, float("nan"), 0.5], [0.0, 0.0, 0.0])
+        self.assertIsNone(row["t_statistic"])
+        self.assertIsNone(row["p_value"])
+        self.assertFalse(row["significant"])
+        self.assertIsNotNone(row["degenerate"])
+        # Serialisable, and strictly so: json rejects NaN when told to.
+        json.dumps(row, allow_nan=False)
+
+    def test_single_item_is_degenerate(self) -> None:
+        """n = 1: dof = 0, no t-test exists."""
+        row = self._row([1.0], [0.0])
+        self.assertEqual(row["degrees_of_freedom"], 0)
+        self.assertIsNone(row["p_value"])
+        self.assertIn("at least 2 items", row["degenerate"])
+
+    def test_statistics_covered(self) -> None:
+        """The t-test covers every compared metric with a per-item value, and only those."""
+        self.assertEqual(
+            sorted(EVAL.T_TEST_STATISTICS),
+            sorted(
+                [
+                    "rouge_l_f1",
+                    "step_f1",
+                    "ordered_step_accuracy",
+                    "exact_match",
+                    "hop_count_exact_match",
+                ]
+            ),
+        )
+        # composite_score is bootstrapped but has no per-item value, so no paired difference
+        # to t-test exists.
+        self.assertIn("composite_score", EVAL.BOOTSTRAP_STATISTICS)
+        self.assertNotIn("composite_score", EVAL.T_TEST_STATISTICS)
+
+
 class TestBootstrapChunking(unittest.TestCase):
     """The chunked bootstrap must be bit-identical to the single-block draw it replaced."""
 
@@ -551,7 +683,59 @@ class TestBootstrapChunking(unittest.TestCase):
             self._run(0)
 
 
+#: The four fixture gold ids, in the order the comparison helpers below score them.
+FIXTURE_IDS = ("2hop__d001_a", "3hop1__d002_b", "4hop1__d003_c", "2hop__d004_p")
+
+
+def perfect_predictions() -> list[dict[str, Any]]:
+    """Every fixture row predicted exactly as gold."""
+    return [prediction(i, gold_steps(i)) for i in FIXTURE_IDS]
+
+
+def degraded_predictions() -> list[dict[str, Any]]:
+    """The same rows, degraded unevenly, so the per-item differences have a spread.
+
+    Two rows are left perfect, one loses its last step's text and one loses everything.
+    An even degradation would give a constant per-item difference and hence a degenerate
+    t-test, which is not what a real comparison looks like.
+    """
+    preds = []
+    for position, item_id in enumerate(FIXTURE_IDS):
+        steps = list(gold_steps(item_id))
+        if position == 2:
+            steps[-1] = "a step that matches no gold step"
+        elif position == 3:
+            steps = ["nothing like the gold decomposition"]
+        preds.append(prediction(item_id, steps))
+    return preds
+
+
 class TestPairedComparison(EvaluatorTestBase):
+    def _arm_a_per_item(self) -> Path:
+        _, path = self.evaluate("arm_a_perfect", perfect_predictions())
+        return path
+
+    def _arm_b_per_item(self) -> Path:
+        _, path = self.evaluate("arm_b_degraded", degraded_predictions())
+        return path
+
+    @staticmethod
+    def _items(per_item: Path) -> dict[str, dict[str, Any]]:
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        return {row["item_id"]: row for row in payload["items"]}
+
+    def _degraded_comparison(self) -> tuple[Path, dict[str, Any]]:
+        """Compare the perfect arm against the degraded one; return (run_dir, metrics)."""
+        run_dir = self.tmp / "compare_degraded"
+        if not (run_dir / "compare_metrics.json").exists():
+            self._run(
+                [
+                    "--compare", str(self._arm_a_per_item()), str(self._arm_b_per_item()),
+                    "--run-dir", str(run_dir),
+                ]
+            )
+        return run_dir, json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+
     def _per_item_of_fixture(self) -> Path:
         """Score the committed fixture predictions once; reuse the per-item file."""
         run_dir = self.tmp / "compare_base"
@@ -674,6 +858,81 @@ class TestPairedComparison(EvaluatorTestBase):
         self.assertEqual(a["bootstrap"], b["bootstrap"])
         self.assertEqual(a["seed"], b["seed"])
 
+    def test_t_test_is_reported_next_to_bootstrap_and_mcnemar(self) -> None:
+        """The t-test rows cover the five per-item metrics, on the same pairing.
+
+        Same-pairing check: for every metric that both families report, the t-test's
+        difference must equal the bootstrap's (or McNemar's) difference exactly — they are
+        the mean of the same per-item differences over the same aligned items.
+        """
+        run_dir, metrics = self._degraded_comparison()
+        self.assertEqual(
+            sorted(metrics["t_test"]),
+            sorted(
+                [
+                    "rouge_l_f1",
+                    "step_f1",
+                    "ordered_step_accuracy",
+                    "exact_match",
+                    "hop_count_exact_match",
+                ]
+            ),
+        )
+        self.assertNotIn("composite_score", metrics["t_test"])
+        self.assertEqual(
+            metrics["tests_reported"],
+            {
+                "bootstrap": 4,
+                "mcnemar": 2,
+                "paired_t_test": 5,
+                "headline_protocol": (
+                    "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)"
+                ),
+                "multiple_comparison_correction": None,
+            },
+        )
+        for name, row in metrics["t_test"].items():
+            with self.subTest(statistic=name):
+                self.assertEqual(row["n"], metrics["num_aligned_items"])
+                self.assertEqual(row["degrees_of_freedom"], metrics["num_aligned_items"] - 1)
+                # n = 4 is below the reporting floor, so every row carries the flag (ADR 0011).
+                self.assertTrue(row["underpowered"])
+                if name in metrics["bootstrap"]:
+                    self.assertAlmostEqual(
+                        row["difference"], metrics["bootstrap"][name]["difference"], places=PLACES
+                    )
+                if name in metrics["mcnemar"]:
+                    self.assertAlmostEqual(
+                        row["difference"], metrics["mcnemar"][name]["difference"], places=PLACES
+                    )
+                if row["degenerate"] is None:
+                    self.assertEqual(row["significant"], row["p_value"] < metrics["alpha"])
+                    # A positive difference must carry a positive t: same direction, a - b.
+                    self.assertEqual(row["difference"] > 0, row["t_statistic"] > 0)
+
+        note = (run_dir / "compare_notes.md").read_text(encoding="utf-8")
+        self.assertIn("paired t-test", note)
+        self.assertIn("dof=3", note)
+        self.assertIn("headline protocol", note)
+
+    def test_t_test_matches_a_directly_computed_value(self) -> None:
+        """The step-F1 t of the degraded comparison, recomputed from its per-item rows.
+
+        Independent of the comparison path: the per-item files are read here, the paired
+        differences are formed from them, and t = mean / (sd / sqrt(n)) is evaluated
+        directly. This pins that --compare t-tests the per-item column it claims to.
+        """
+        _, metrics = self._degraded_comparison()
+        rows_a = self._items(self._arm_a_per_item())
+        rows_b = self._items(self._arm_b_per_item())
+        diffs = np.array(
+            [rows_a[i]["step_f1"] - rows_b[i]["step_f1"] for i in sorted(rows_a)], dtype=float
+        )
+        expected_t = float(diffs.mean() / (diffs.std(ddof=1) / math.sqrt(diffs.size)))
+        self.assertAlmostEqual(
+            metrics["t_test"]["step_f1"]["t_statistic"], expected_t, places=PLACES
+        )
+
     def test_different_evaluation_sets_are_refused(self) -> None:
         """Dropping one item from one side must abort and name the offending id."""
         per_item = self._per_item_of_fixture()
@@ -694,6 +953,481 @@ class TestPairedComparison(EvaluatorTestBase):
         message = proc.stdout + proc.stderr
         self.assertIn(dropped, message)
         self.assertIn("SAME evaluation set", message)
+
+
+class TestV1CompareShim(EvaluatorTestBase):
+    """``--v1-per-item``: read v1's bare-list per-item files (ADR 0020).
+
+    The v1 format is reconstructed here from a v2 per-item file by dropping ``item_id`` and
+    the object header — which is exactly what v1 wrote (verified against
+    ``/cta/users/fyilmaz/Thesis---QA/runs/musique_decomposition_eval/*_per_item.json``,
+    whose rows carry the same field names and no id). No test reads the v1 tree: it is
+    read-only, outside this repo, and a test must not depend on it existing.
+    """
+
+    def _v1_file(self, name: str, predictions: list[dict[str, Any]]) -> Path:
+        _, per_item = self.evaluate(f"v1src_{name}", predictions)
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        rows = [{k: v for k, v in row.items() if k != "item_id"} for row in payload["items"]]
+        path = self.tmp / f"v1_{name}.json"
+        path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _v1_pair(self) -> tuple[Path, Path]:
+        return (
+            self._v1_file("perfect", perfect_predictions()),
+            self._v1_file("degraded", degraded_predictions()),
+        )
+
+    def _compare_v1(self, name: str, extra: list[str] | None = None) -> dict[str, Any]:
+        a, b = self._v1_pair()
+        run_dir = self.tmp / name
+        self._run(
+            ["--compare", str(a), str(b), "--v1-per-item", "--run-dir", str(run_dir), *(extra or [])]
+        )
+        return json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+
+    def test_v1_file_without_the_flag_is_refused_and_names_it(self) -> None:
+        """A v1 input is never silently read as a v2 artifact."""
+        a, b = self._v1_pair()
+        proc = self._run(
+            ["--compare", str(a), str(b), "--run-dir", str(self.tmp / "v1_no_flag")],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        message = proc.stdout + proc.stderr
+        self.assertIn("legacy bare-list per-item format", message)
+        self.assertIn("--v1-per-item", message)
+
+    def test_the_flag_on_a_v2_file_is_refused(self) -> None:
+        """The opt-in is not a "read anything" switch: a v2 object under it aborts."""
+        v2 = self._arm_a_per_item_for_v1_test()
+        proc = self._run(
+            [
+                "--compare", str(v2), str(v2), "--v1-per-item",
+                "--run-dir", str(self.tmp / "v1_on_v2"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("expects the v1 bare-list per-item format", proc.stdout + proc.stderr)
+
+    def _arm_a_per_item_for_v1_test(self) -> Path:
+        _, per_item = self.evaluate("v1src_perfect", perfect_predictions())
+        return per_item
+
+    def test_v1_statistics_equal_the_v2_comparison_of_the_same_rows(self) -> None:
+        """The shim changes provenance recording, not arithmetic.
+
+        The same four rows compared as v2 artifacts and as v1 artifacts must give the same
+        point estimates, the same McNemar counts and p-values and the same t-tests. Only the
+        bootstrap CI edges are excluded: the two paths align on different keys (item_id vs
+        normalized question), and the percentile interval depends on the row order the index
+        matrix is applied to — the alignment sensitivity ADR 0020 condition 3 exists for.
+        """
+        v1 = self._compare_v1("v1_vs_v2")
+        run_dir = self.tmp / "v2_for_v1_check"
+        self._run(
+            [
+                "--compare", str(self._arm_a_per_item_for_v1_test()),
+                str(self._v1_source_of_degraded()),
+                "--run-dir", str(run_dir),
+            ]
+        )
+        v2 = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(v1["num_aligned_items"], v2["num_aligned_items"])
+        for name, row in v2["bootstrap"].items():
+            with self.subTest(bootstrap=name):
+                for key in ("system_a", "system_b", "difference"):
+                    self.assertAlmostEqual(v1["bootstrap"][name][key], row[key], places=PLACES)
+        for family in ("mcnemar", "t_test"):
+            for name, row in v2[family].items():
+                with self.subTest(family=family, statistic=name):
+                    self.assertEqual(sorted(v1[family][name]), sorted(row))
+                    for key, value in row.items():
+                        got = v1[family][name][key]
+                        if isinstance(value, float):
+                            self.assertAlmostEqual(got, value, places=PLACES)
+                        else:
+                            self.assertEqual(got, value)
+
+    def _v1_source_of_degraded(self) -> Path:
+        _, per_item = self.evaluate("v1src_degraded", degraded_predictions())
+        return per_item
+
+    def test_v1_provenance_is_recorded(self) -> None:
+        """ADR 0020: the output states v1 inputs, their hashes, and the no-SHA caveat."""
+        metrics = self._compare_v1("v1_provenance")
+        block = metrics["v1_format_inputs"]
+        self.assertTrue(block["enabled"])
+        self.assertTrue(block["prior_work_not_v2_evidence"])
+        self.assertIn("NO commit SHA", block["caveat"])
+        self.assertEqual(block["alignment"], "normalized_question")
+        check = block["same_item_check"]
+        self.assertEqual(check["pairs"], metrics["num_aligned_items"])
+        # 'question' is the alignment key here, so it witnesses nothing and is recorded as
+        # tautological; 'gold_steps' is what actually verified the pairing.
+        self.assertEqual(check["verification_fields"], ["gold_steps"])
+        self.assertEqual(check["tautological_fields"], ["question"])
+        self.assertEqual(
+            check["fields_verified_equal"]["gold_steps"], metrics["num_aligned_items"]
+        )
+        for side, record in block["inputs"].items():
+            with self.subTest(side=side):
+                path = Path(record["path"])
+                self.assertEqual(
+                    record["sha256"], hashlib.sha256(path.read_bytes()).hexdigest()
+                )
+                self.assertEqual(record["rows"], 4)
+                self.assertRegex(record["mtime_utc"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        # v1 files stamp no weights, so "do the config's weights match the files'?" has no
+        # answer — null, not a bool that would read as "checked and equal".
+        self.assertIsNone(metrics["config_weights_match_per_item_files"])
+        self.assertIsNone(metrics["per_item_composite_score_weights"])
+
+    def test_v1_caveat_leads_the_note_and_the_stdout(self) -> None:
+        """ADR 0020 condition 5: the caveat is the first thing a reader sees."""
+        a, b = self._v1_pair()
+        run_dir = self.tmp / "v1_caveat"
+        proc = self._run(
+            ["--compare", str(a), str(b), "--v1-per-item", "--run-dir", str(run_dir)]
+        )
+        self.assertIn("PRIOR WORK, NOT A v2 MEASUREMENT", proc.stdout)
+        lines = [
+            line
+            for line in (run_dir / "compare_notes.md").read_text(encoding="utf-8").splitlines()
+            if line.startswith("- ")
+        ]
+        self.assertIn("PRIOR WORK, NOT A v2 MEASUREMENT", lines[0])
+
+    def test_duplicate_questions_are_refused_under_question_alignment(self) -> None:
+        """Two rows with the same question cannot be paired unambiguously."""
+        a, _ = self._v1_pair()
+        rows = json.loads(a.read_text(encoding="utf-8"))
+        duplicated = self.tmp / "v1_duplicate.json"
+        duplicated.write_text(
+            json.dumps(rows + [dict(rows[0])], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        proc = self._run(
+            [
+                "--compare", str(duplicated), str(duplicated), "--v1-per-item",
+                "--v1-alignment", "normalized_question",
+                "--run-dir", str(self.tmp / "v1_dupe"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        message = proc.stdout + proc.stderr
+        self.assertIn("duplicate alignment key", message)
+        self.assertIn("--v1-alignment position", message)
+
+    def test_positional_alignment_pairs_rows_in_file_order(self) -> None:
+        """Position mode works, and records that it verified each pair is the same item."""
+        metrics = self._compare_v1("v1_position", ["--v1-alignment", "position"])
+        block = metrics["v1_format_inputs"]
+        self.assertEqual(block["alignment"], "position")
+        self.assertIn("file order", block["alignment_definition"])
+        check = block["same_item_check"]
+        # Position ids say nothing about the item, so both fields witness the pairing here.
+        self.assertEqual(check["verification_fields"], ["question", "gold_steps"])
+        self.assertEqual(check["tautological_fields"], [])
+        self.assertEqual(check["fields_verified_equal"], {"question": 4, "gold_steps": 4})
+
+    def test_positional_alignment_refuses_misaligned_files(self) -> None:
+        """Row i of one file holding a different question than row i of the other aborts.
+
+        This is the check that makes positional pairing safe: without it, reversing one
+        file's row order would silently produce a comparison between different items.
+        """
+        a, b = self._v1_pair()
+        reversed_b = self.tmp / "v1_reversed.json"
+        rows = json.loads(b.read_text(encoding="utf-8"))
+        reversed_b.write_text(
+            json.dumps(rows[::-1], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        proc = self._run(
+            [
+                "--compare", str(a), str(reversed_b), "--v1-per-item",
+                "--v1-alignment", "position", "--run-dir", str(self.tmp / "v1_misaligned"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        message = proc.stdout + proc.stderr
+        self.assertIn("not the same evaluation item", message)
+        self.assertIn("question differs", message)
+
+    def test_alignment_flag_requires_the_v1_flag(self) -> None:
+        """--v1-alignment is meaningless for v2 artifacts, which align on item_id."""
+        per_item = self._arm_a_per_item_for_v1_test()
+        proc = self._run(
+            [
+                "--compare", str(per_item), str(per_item),
+                "--v1-alignment", "position", "--run-dir", str(self.tmp / "v1_flagless"),
+            ],
+            expect_ok=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("requires --v1-per-item", proc.stdout + proc.stderr)
+
+    def test_writing_into_the_prior_work_repo_is_refused(self) -> None:
+        """ADR 0020 condition 1: the v1 tree is read-only, enforced in source.
+
+        Checked against the guard directly, with a fabricated root: the point is that no
+        run_dir under the configured read-only root is accepted, and a test must not create
+        a directory there to prove it.
+        """
+        root = "/fabricated/prior/work/repo"
+        for run_dir in (Path(root), Path(root) / "runs" / "out"):
+            with self.subTest(run_dir=str(run_dir)):
+                with self.assertRaises(SystemExit) as caught:
+                    EVAL._refuse_writing_into_prior_work(run_dir, root)
+                self.assertIn("read-only", str(caught.exception))
+        # Anywhere else is fine.
+        EVAL._refuse_writing_into_prior_work(self.tmp / "somewhere", root)
+
+    # ---- negative controls from the PR #36 Gate-1 review (I-1, N3, N5) ----
+
+    #: A distinctive string standing in for dataset question text, so a test can assert it
+    #: never reaches an error message.
+    FABRICATED_QUESTION = "ZZQuestionTextThatMustNotAppearInAnyErrorMessage"
+
+    def _synthetic_v1(
+        self,
+        name: str,
+        rows: int,
+        *,
+        with_question: bool,
+        with_gold: bool,
+        offset: float = 0.0,
+        gold_prefix: str = "step",
+        drop_last: bool = False,
+        null_metric_row: int | None = None,
+    ) -> Path:
+        """A v1-shaped bare list built field by field, so a field can be left out.
+
+        The evaluator's own per-item files always carry `question` and `gold_steps`, which is
+        exactly why the vacuous case has to be constructed by hand.
+        """
+        out = []
+        for i in range(rows - (1 if drop_last else 0)):
+            row: dict[str, Any] = {
+                "exact_match": float(i % 2),
+                "step_f1": min(1.0, 0.1 * (i % 7) + offset),
+                "ordered_step_accuracy": min(1.0, 0.05 * (i % 5) + offset),
+                "rouge_l_f1": min(1.0, 0.2 + 0.03 * (i % 9) + offset),
+                "reference_valid_count": 0,
+                "reference_total_count": 0,
+                "step_count_abs_error": i % 3,
+                "hop_count_exact_match": float((i + 1) % 2),
+            }
+            if with_question:
+                row["question"] = f"{self.FABRICATED_QUESTION} number {i}?"
+            if with_gold:
+                row["gold_steps"] = [f"{gold_prefix} {i}.1", f"{gold_prefix} {i}.2"]
+            if null_metric_row == i:
+                row["step_f1"] = None
+            out.append(row)
+        path = self.tmp / f"v1syn_{name}.json"
+        path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _refuse(self, argv: list[str], run_dir_name: str) -> str:
+        proc = self._run(
+            [*argv, "--run-dir", str(self.tmp / run_dir_name)], expect_ok=False
+        )
+        self.assertNotEqual(proc.returncode, 0, "expected a refusal, got success")
+        return proc.stdout + proc.stderr
+
+    def test_unverifiable_pairing_is_refused_not_reported(self) -> None:
+        """I-1 negative control: two v1 files with no witness field must not compare.
+
+        The Gate-1 review's demonstration: two unrelated 40-row v1 files carrying neither
+        `question` nor `gold_steps` produced rc=0, a full battery, and a run note claiming
+        "every pair verified to be the same item ({'question': 0, 'gold_steps': 0})". With no
+        id and no witness field there is nothing that says row i of one file is the same
+        evaluation item as row i of the other, so the comparison is refused.
+        """
+        a = self._synthetic_v1("vac_a", 40, with_question=False, with_gold=False)
+        b = self._synthetic_v1("vac_b", 40, with_question=False, with_gold=False, offset=0.05)
+        message = self._refuse(
+            ["--compare", str(a), str(b), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_vacuous",
+        )
+        self.assertIn("nothing can verify that the paired rows are the same", message)
+        self.assertIn("missing: ['question', 'gold_steps']", message)
+        self.assertFalse((self.tmp / "v1_vacuous" / "compare_metrics.json").exists())
+
+    def test_the_alignment_key_alone_cannot_witness_the_pairing(self) -> None:
+        """I-1: under normalized_question, matching questions verify nothing.
+
+        The question IS the key rows were grouped by, so equality is true by construction. A
+        file carrying only that field has no independent witness and is refused.
+        """
+        a = self._synthetic_v1("taut_a", 40, with_question=True, with_gold=False)
+        b = self._synthetic_v1("taut_b", 40, with_question=True, with_gold=False, offset=0.05)
+        message = self._refuse(
+            [
+                "--compare", str(a), str(b), "--v1-per-item",
+                "--v1-alignment", "normalized_question",
+            ],
+            "v1_tautological",
+        )
+        self.assertIn("nothing can verify that the paired rows are the same", message)
+        self.assertIn("true by construction", message)
+
+    def test_positional_alignment_requires_the_question_and_the_gold(self) -> None:
+        """I-1: positional alignment needs both witness fields, per ADR 0020 condition 3(b).
+
+        That condition (amended 2026-08-20 by PR #35) makes positional alignment admissible
+        only when the alignment field *and* the gold are asserted equal on every matched row,
+        so a file carrying only the gold is refused rather than compared on half the check.
+        """
+        a = self._synthetic_v1("wit_a", 40, with_question=False, with_gold=True)
+        b = self._synthetic_v1("wit_b", 40, with_question=False, with_gold=True, offset=0.05)
+        message = self._refuse(
+            ["--compare", str(a), str(b), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_one_witness",
+        )
+        self.assertIn("missing: ['question']", message)
+        self.assertIn("ADR 0020 condition 3", message)
+
+    def test_the_gold_is_the_witness_under_question_alignment(self) -> None:
+        """I-1 positive control: with the question as the key, the gold verifies the pairing."""
+        a = self._synthetic_v1("goldwit_a", 40, with_question=True, with_gold=True)
+        b = self._synthetic_v1("goldwit_b", 40, with_question=True, with_gold=True, offset=0.05)
+        run_dir = self.tmp / "v1_gold_witness"
+        self._run(
+            [
+                "--compare", str(a), str(b), "--v1-per-item",
+                "--v1-alignment", "normalized_question", "--run-dir", str(run_dir),
+            ]
+        )
+        metrics = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+        check = metrics["v1_format_inputs"]["same_item_check"]
+        self.assertEqual(check["verification_fields"], ["gold_steps"])
+        self.assertEqual(check["tautological_fields"], ["question"])
+        self.assertEqual(check["fields_verified_equal"], {"gold_steps": 40})
+        note = (run_dir / "compare_notes.md").read_text(encoding="utf-8")
+        self.assertIn("all 40 pairs verified to be the same evaluation item on `gold_steps`", note)
+
+    def test_the_verification_sentence_is_built_from_the_counts(self) -> None:
+        """I-1: the note never asserts verification unconditionally.
+
+        Checked at the formatter, because the refusal above means the run cannot reach the
+        note with nothing verified — and this is the guard that keeps that true if it ever can.
+        """
+        self.assertIn(
+            "NOT VERIFIED",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": [],
+                 "fields_verified_equal": {}}
+            ),
+        )
+        self.assertIn(
+            "NOT VERIFIED",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": ["gold_steps"],
+                 "fields_verified_equal": {"gold_steps": 39}}
+            ),
+        )
+        self.assertIn(
+            "all 40 pairs verified",
+            EVAL._v1_verification_sentence(
+                {"alignment": "position", "pairs": 40, "verification_fields": ["gold_steps"],
+                 "fields_verified_equal": {"gold_steps": 40}}
+            ),
+        )
+
+    def test_refusals_never_print_dataset_question_text(self) -> None:
+        """N3: v1 error messages identify a row by index + key hash, never by content.
+
+        Under `normalized_question` the alignment key *is* a dataset question, and error text
+        gets pasted into issues and PRs — which would move data into git (CLAUDE.md). All
+        three refusal paths that name ids are covered: id-set mismatch, duplicate key, and a
+        same-item mismatch.
+        """
+        a = self._synthetic_v1("leak_a", 5, with_question=True, with_gold=True)
+        short = self._synthetic_v1("leak_short", 5, with_question=True, with_gold=True, drop_last=True)
+        other_gold = self._synthetic_v1(
+            "leak_gold", 5, with_question=True, with_gold=True, gold_prefix="different"
+        )
+        duplicated = self.tmp / "v1syn_leak_dup.json"
+        rows = json.loads(a.read_text(encoding="utf-8"))
+        duplicated.write_text(
+            json.dumps(rows + [dict(rows[0])], ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+        cases = {
+            "id_mismatch": (a, short),
+            "duplicate_key": (duplicated, duplicated),
+            "same_item_mismatch": (a, other_gold),
+        }
+        for name, (left, right) in cases.items():
+            with self.subTest(refusal=name):
+                message = self._refuse(
+                    [
+                        "--compare", str(left), str(right), "--v1-per-item",
+                        "--v1-alignment", "normalized_question",
+                    ],
+                    f"v1_leak_{name}",
+                )
+                self.assertNotIn(self.FABRICATED_QUESTION, message)
+                self.assertIn("sha256:", message)
+                self.assertIn("row ", message)
+
+    def test_a_null_metric_field_is_refused_with_a_clear_message(self) -> None:
+        """N5: a JSON null in a compared column aborts at load, not inside the statistics."""
+        path = self._synthetic_v1(
+            "nullmetric", 40, with_question=True, with_gold=True, null_metric_row=7
+        )
+        message = self._refuse(
+            ["--compare", str(path), str(path), "--v1-per-item", "--v1-alignment", "position"],
+            "v1_nullmetric",
+        )
+        self.assertIn("row 7", message)
+        self.assertIn("step_f1", message)
+        self.assertIn("non-numeric or non-finite", message)
+        self.assertNotIn("TypeError", message)
+
+    def test_prior_work_write_guard_is_not_gated_on_the_v1_flag(self) -> None:
+        """N1: ADR 0020 condition 1 is unconditional, so the guard cannot sit under the flag.
+
+        Checked on the source (the AST pattern of tests/test_generation_contract.py) rather
+        than by pointing a real --run-dir at the read-only repo: a regression in that test
+        would itself write into the tree the rule protects.
+        """
+        tree = ast.parse(EVALUATOR.read_text(encoding="utf-8"))
+        compare_fn = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_compare"
+        )
+        top_level_calls = {
+            sub.func.id
+            for stmt in compare_fn.body
+            for sub in ast.walk(stmt)
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+            # Only statements that are not conditional: an Expr call in the function body.
+            if isinstance(stmt, ast.Expr)
+        }
+        self.assertIn(
+            "_refuse_writing_into_prior_work",
+            top_level_calls,
+            "_refuse_writing_into_prior_work must be called unconditionally in _compare, "
+            "not inside the --v1-per-item branch",
+        )
+
+    def test_configured_alignment_default_is_the_analysis_note_alignment(self) -> None:
+        """The default reproduces the committed analysis note, whose Task A sorted on it."""
+        config = json.loads(
+            (REPO_ROOT / "configs" / "musique_eval.json").read_text(encoding="utf-8")
+        )
+        v1_cfg = config["paired_comparison"]["v1_compat"]
+        self.assertEqual(v1_cfg["default_alignment"], "normalized_question")
+        self.assertIn(v1_cfg["default_alignment"], EVAL.V1_ALIGNMENTS)
+        self.assertTrue(v1_cfg["read_only_prior_work_root"])
 
 
 if __name__ == "__main__":
