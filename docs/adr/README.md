@@ -14,6 +14,8 @@ When to write a new one:
 - A decision that constrains future work — a rule a later session has to keep obeying.
 - Decisions of this shape earn a record: when the dataset changes, when the evaluation method changes, when the way few-shot examples are selected changes, when one model family or embedding model is chosen over another, when the evaluation set is split differently. These are examples of the *shape* of a decision, not a list of things to go decide.
 
+**Separate the human's decision from the implementer's defaults, and label arbitrary choices as arbitrary.** When a record has to carry both — Jahid decided *that* something exists, an agent decided *how* it works — keep them in different sections, say plainly which is which, and where a default had no evidence behind it, write "this is arbitrary" instead of retrofitting a rationale. A plausible-sounding reason invented after the fact is the worst outcome, because it survives review and gets cited in November as if it had been reasoned. ADR [0019](./0019-musique-answering-backend-conventions.md) put the implementer's part under its own heading; ADR [0021](./0021-clustering-pool-construction-strategy.md) additionally names which of its defaults are arbitrary. *(Convention captured from the PR #34 review, 2026-08-20; first instance ADR 0021.)*
+
 When **not** to write one:
 
 - Conventions that are obvious from the code (naming, folder layout) — a short note beside the code is enough.
@@ -46,6 +48,7 @@ When **not** to write one:
 | [0018](./0018-resolve-the-carried-v1-research-decisions.md) | Resolve the Carried v1 Research Decisions | Accepted (Jahid, 2026-08-20; embedding model pending supervisor confirmation) |
 | [0019](./0019-musique-answering-backend-conventions.md) | MuSiQue Answering-Backend Conventions: Reader, Context and Scoring | Accepted (Jahid, 2026-08-20, in session; pending supervisor confirmation) |
 | [0020](./0020-prior-work-re-analysis-convention.md) | Prior-Work Re-Analysis Convention | Accepted |
+| [0021](./0021-clustering-pool-construction-strategy.md) | Clustering-Based Pool Construction: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
 
 ---
 

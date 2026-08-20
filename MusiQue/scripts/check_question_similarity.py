@@ -42,6 +42,7 @@ from _prep_common import (
 import numpy as np
 
 from model_size import assert_within_ceiling, load_limits
+from pool_embeddings import needs_e5_prefix
 from run_artifacts import now_iso, write_run_artifacts
 from seeding import set_global_seed
 
@@ -133,10 +134,6 @@ def _save_cached_pool_embeddings(
     )
 
 
-def _needs_e5_prefix(model_id: str) -> bool:
-    return "e5" in model_id.lower()
-
-
 def _load_jsonl(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as f:
@@ -151,7 +148,7 @@ def _load_jsonl(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def _embed(texts: list[str], model: Any, model_id: str, *, prefix: str) -> np.ndarray:
-    prepared = [f"{prefix}: {t}" for t in texts] if _needs_e5_prefix(model_id) else texts
+    prepared = [f"{prefix}: {t}" for t in texts] if needs_e5_prefix(model_id) else texts
     return model.encode(prepared, normalize_embeddings=True, show_progress_bar=True)
 
 

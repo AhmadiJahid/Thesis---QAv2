@@ -30,8 +30,15 @@ def _model_slug(model_id: str) -> str:
     return model_id.split("/")[-1].replace(".", "_")[:20]
 
 
-def _needs_e5_prefix(model_id: str) -> bool:
-    """E5 models expect 'query:' and 'passage:' prefixes."""
+def needs_e5_prefix(model_id: str) -> bool:
+    """E5 models expect 'query:' and 'passage:' prefixes.
+
+    The single definition of that rule for the whole repo. It used to be copied
+    character-for-character into ``MusiQue/scripts/check_question_similarity.py`` and
+    (with issue #14) ``MusiQue/scripts/sample_pool.py``; both now import this, so
+    "the clustered pool is embedded with the same prefix the retrieval stage uses"
+    is enforced by one function instead of asserted in prose (PR #34 review, N-2).
+    """
     return "e5" in model_id.lower()
 
 
@@ -100,7 +107,7 @@ def get_router_pool_embeddings(
     cache_file = cache_dir / f"embeddings_router_{model_slug}_{content_hash}.npz"
 
     model = SentenceTransformer(model_id)
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
 
     if cache_file.exists():
         loaded = np.load(cache_file, allow_pickle=True)
@@ -127,7 +134,7 @@ def top_k_similar_router(
     k: int,
 ) -> list[tuple[dict, float]]:
     """Top-k similar from the combined router pool (hop unknown)."""
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
     to_encode = [f"query: {query}"] if use_prefix else [query]
     q_emb = model.encode(to_encode, normalize_embeddings=True)[0]
     scores = np.dot(embeddings, q_emb)
@@ -161,7 +168,7 @@ def get_decomposer_pool_embeddings(
     cache_file = cache_dir / f"embeddings_decomposer_{model_slug}_masked_{content_hash}.npz"
 
     model = SentenceTransformer(model_id)
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
 
     if cache_file.exists():
         loaded = np.load(cache_file, allow_pickle=True)
@@ -204,7 +211,7 @@ def top_k_similar_decomposer(
     not: a query retrieving its own gold decomposition as a few-shot example is leakage that
     would read as a quality gain. Asserted below rather than assumed.
     """
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
     to_encode = [f"query: {query}"] if use_prefix else [query]
     q_emb = model.encode(to_encode, normalize_embeddings=True)[0]
     scores = np.dot(embeddings, q_emb)
@@ -261,7 +268,7 @@ def get_pool_embeddings(
     model = SentenceTransformer(model_id)
 
     model_slug = _model_slug(model_id)
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
 
     for hop_key, items in pool.items():
         questions = [it["question"] for it in items]
@@ -310,7 +317,7 @@ def top_k_similar(
     items, emb = pool_embeddings[hop_key]
     if not items:
         return []
-    use_prefix = _needs_e5_prefix(model_id)
+    use_prefix = needs_e5_prefix(model_id)
     to_encode = [f"query: {query}"] if use_prefix else [query]
     q_emb = model.encode(to_encode, normalize_embeddings=True)[0]
     scores = np.dot(emb, q_emb)  # cosine sim (embeddings normalized)

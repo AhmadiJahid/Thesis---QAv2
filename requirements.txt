@@ -10,6 +10,12 @@ numpy==2.4.1
 scipy==1.17.1
 pandas==3.0.0
 scikit-learn==1.8.0
+# Imported directly by MusiQue/scripts/sample_pool.py (clustered pool construction,
+# issue #14): threadpool_limits is what makes the k-means fit single-threaded and
+# therefore bit-reproducible under the seed (ADR 0021 item 7). It arrives as a
+# scikit-learn dependency anyway, but a determinism guarantee should not rest on a
+# transitive pin. Version read from the installed .venv on 2026-08-20, not guessed.
+threadpoolctl==3.6.0
 
 # Plotting (scripts/analyze_runs.py, plot_pool_sweep.py, plot_musique_chunk_stats.py,
 # compare_answer_accuracy.py --report)

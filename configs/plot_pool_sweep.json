@@ -15,7 +15,7 @@
     "hop_count_exact_match_rate"
   ],
 
-  "balances": ["imbalanced", "balanced"],
+  "balances": ["imbalanced", "balanced", "clustered"],
   "variants": ["biencoder_only", "biencoder_plus_ce"],
   "modes": ["raw", "typed", "uniform"],
 

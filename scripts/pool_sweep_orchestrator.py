@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Orchestrator for the MuSiQue pool-size sweep.
+"""Orchestrator for the MuSiQue pool sweep.
 
 Reads ``configs/pool_sweep.json`` and drives the full pipeline:
 
   1. Sample a dev set once (reused for every cell).
-  2. For each ``(size, balance, trial)``:
+  2. For each ``(size, balance, trial)`` — where ``balance`` is the pool-**construction
+     strategy** (``imbalanced`` / ``balanced`` / ``clustered``, the last from issue #14
+     and ADR 0021, configured under ``clustered_sizes``):
        a. ``sample_pool.py``
        b. ``check_question_similarity.py`` (bi-encoder top-k, mode=all)
        c. ``truncate_top20.py``            -> top5_biencoder.jsonl
@@ -108,12 +110,20 @@ def _run_cmd(
 
 
 def _grid(cfg: dict[str, Any]) -> list[tuple[int, str]]:
-    """The (size, balance) combinations that actually exist in the config."""
+    """The (size, balance) combinations that actually exist in the config.
+
+    ``balance`` is the pool-**construction strategy** axis, not only a hop-balance flag:
+    ``clustered`` (issue #14, ADR 0021) is a third value of it. The name stays as it is so
+    every path, run key and ``all_runs.csv`` column keeps its meaning and rows produced
+    before the strategy existed stay comparable with rows produced after.
+    """
     combos: list[tuple[int, str]] = []
     for s in require(cfg, "imbalanced_sizes"):
         combos.append((int(s), "imbalanced"))
     for s in require(cfg, "balanced_sizes"):
         combos.append((int(s), "balanced"))
+    for s in require(cfg, "clustered_sizes"):
+        combos.append((int(s), "clustered"))
     return combos
 
 
@@ -241,6 +251,18 @@ def stage_sample_pool(
         "--seed", pool_seed,
         "--out-dir", out_dir,
     ]
+    if balance == "clustered":
+        # The clustered strategy embeds the input pool, so it takes the sweep's own
+        # bi-encoder, device AND alias registry rather than the prep config's defaults —
+        # one sweep, one embedding model (ADR 0021). The registry is threaded explicitly
+        # because every retrieval stage below resolves --embed-model through
+        # configs.similarity: without this the pool stage resolved the same alias through
+        # a config named somewhere else, and the two agreeing was luck (PR #34 review).
+        cmd += [
+            "--embed-model", require(cfg, "embed_model"),
+            "--device", require(cfg, "device"),
+            "--similarity-config", require(cfg, "configs.similarity"),
+        ]
     if overwrite:
         cmd.append("--overwrite")
     rc = _run_cmd(cmd, log_path=log_path, dry_run=dry_run)
@@ -818,6 +840,7 @@ def main() -> None:
         "grid": {
             "imbalanced_sizes": require(cfg, "imbalanced_sizes"),
             "balanced_sizes": require(cfg, "balanced_sizes"),
+            "clustered_sizes": require(cfg, "clustered_sizes"),
             "combos_run": [[size, balance] for size, balance in combos],
             "retriever_variants": variants,
             "retrieval_modes": modes,
