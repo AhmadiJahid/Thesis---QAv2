@@ -1,7 +1,7 @@
 # 0015. Admit Qwen3.5-9B to the Decomposer Despite the ~8B Ceiling
 
-- **Status**: Accepted (Jahid, 2026-08-19, in session) — **pending supervisor confirmation**, because the ~8B ceiling is recorded in CLAUDE.md as the supervisor's decision
-- **Date**: 2026-08-19
+- **Status**: Accepted (Jahid, 2026-08-19, in session) — **re-confirmed by Jahid in session 2026-08-22** ("10B rise to qwen is fine"): the raise stands. Whether the supervisor has separately signed off was not stated; the supersede clause below remains in force if the supervisor reasserts the 8B ceiling.
+- **Date**: 2026-08-19 (re-confirmed 2026-08-22)
 
 Related: [0008](./0008-lift-the-600m-router-cap-to-the-overall-8b-ceiling.md) (the router-cap precedent for a Jahid-stated cap change), [0014](./0014-guided-vs-unguided-runs-on-the-v1-pool-and-retrieval-artifact.md) (the other pending-confirmation deviation on issue #12), 0013 on the `feature/12-guided-vs-unguided` branch (the #12 condition conventions).
 
