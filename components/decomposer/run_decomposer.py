@@ -21,9 +21,11 @@ Usage::
 
 ``--config decomposer_musique.json`` runs the pinned MuSiQue evaluation set (ADR 0007) and
 carries a ``conditions`` block: ``unguided``, ``oracle_guided`` (gold hop count in the
-prompt) and ``unguided_capped`` (no hop count, generation stopped at N step lines). All
-three share model, seed, retrieval and decoding; only the prompt's hop information and the
-step-line budget differ. That claim is enforced, not asserted in prose: the unguided prompt
+prompt), ``unguided_capped`` (no hop count, generation stopped at N step lines) and
+``router_guided`` (the hop count comes from a router predictions file, joined by query id -
+issue #27's with-router arm; run it with ``--hop-predictions <router run>/predictions.jsonl``).
+All of them share model, seed, retrieval and decoding; only the prompt's hop information and
+the step-line budget differ. That claim is enforced, not asserted in prose: the unguided prompt
 must be the guided prompt with its hop-bearing lines removed and nothing else changed
 (``unguided_prompt_must_equal_guided_minus_hop_lines``), so the arms cannot differ in a
 second way. The unguided arms therefore need a model folder that ships an
@@ -68,6 +70,7 @@ from typing import Any, Callable
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from hop_matching import HOP_SOURCES, load_predicted_hops  # noqa: E402
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
 from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import (  # noqa: E402
@@ -108,7 +111,10 @@ _WORD_RX = re.compile(r"[A-Za-z]{2,}")
 #: Keys a ``conditions.<name>`` block may carry. Deliberately short: the conditions of an
 #: experiment arm differ only in what the prompt says about the hop count and in the
 #: step-line budget. Model, seed and decoding are shared, so no condition can move them.
-_CONDITION_KEYS = frozenset({"guided", "stop_after_step_lines", "_note"})
+#: ``hop_source`` belongs here for the same reason ``guided`` does - it says *which* hop
+#: count the prompt carries (the gold depth, or a router's prediction), which is exactly
+#: what separates the oracle-guided arm from the router-guided one (issue #27).
+_CONDITION_KEYS = frozenset({"guided", "stop_after_step_lines", "hop_source", "_note"})
 
 
 # --------------------------------------------------------------------------- IO
@@ -225,6 +231,152 @@ def resolve_guided(
     if "guided" in condition:
         return bool(condition["guided"])
     return bool(require(cfg, "guided"))
+
+
+def resolve_hop_source(
+    condition_name: str | None,
+    condition: dict,
+    cfg: dict,
+    *,
+    guided: bool,
+    cli_predictions: str | None,
+) -> dict[str, Any]:
+    """Where a guided arm's hop count comes from: the gold depth, or a router's prediction.
+
+    ``gold`` is every arm that existed before issue #27: the query's gold hop depth, parsed
+    from its id on the retrieval path or taken from the per-hop file it was read from.
+    ``predictions`` is the router-guided arm: the hop count comes from a router predictions
+    JSONL, joined by **query id** (:func:`join_predicted_hops`). The two arms then differ in
+    where the number came from and in nothing else, which is what makes a with-router versus
+    without-router comparison a comparison.
+
+    Four refusals, all of them a run that would otherwise be filed under the wrong label:
+
+    - an unimplemented hop source (not silently treated as ``gold``);
+    - ``predictions`` in an **unguided** arm - no hop count reaches the prompt at all there,
+      so the run would be the unguided arm wearing the router's name;
+    - ``predictions`` with no file named;
+    - ``--hop-predictions`` passed to a ``gold`` arm - the file would be ignored, and the
+      run recorded as the oracle while the operator believed it routed.
+
+    Returns the record for the run's config snapshot and metrics.
+    """
+    src = cfg.get("_config_path", "<config>")
+    source = condition.get("hop_source") or require(cfg, "hop_source")
+    if source not in HOP_SOURCES:
+        raise SystemExit(
+            f"hop_source={source!r} is not one of {list(HOP_SOURCES)} (config: {src}, "
+            f"condition: {condition_name!r}). A hop source that is not implemented is "
+            f"refused rather than treated as 'gold'."
+        )
+    record: dict[str, Any] = {
+        "source": source,
+        "condition": condition_name,
+        "predictions_file": None,
+        "predictions_file_sha256": None,
+        "id_field": require(cfg, "hop_predictions.id_field"),
+        "hop_field": require(cfg, "hop_predictions.hop_field"),
+    }
+    if source == "gold":
+        if cli_predictions:
+            raise SystemExit(
+                f"--hop-predictions {cli_predictions!r} was given, but this run's hop source "
+                f"is 'gold' (condition {condition_name!r} in {src}), so the file would be "
+                f"ignored and the run recorded as the oracle arm. Select the condition whose "
+                f"hop_source is 'predictions' (the router-guided arm), or drop the flag."
+            )
+        record["note"] = (
+            "the query's gold hop depth (from its id on the retrieval path, or from the "
+            "per-hop file it was read from) - never a prediction"
+        )
+        return record
+    if not guided:
+        raise SystemExit(
+            f"hop_source 'predictions' in an unguided arm (condition {condition_name!r} in "
+            f"{src}): an unguided prompt carries no hop count at all, so the router's "
+            f"predictions would never reach the model and the run would be the unguided arm "
+            f"under the router's label. Set guided true for this condition, or use "
+            f"hop_source 'gold'."
+        )
+    file_value = cli_predictions or optional(cfg, "hop_predictions.file")
+    if not file_value:
+        raise SystemExit(
+            f"hop_source 'predictions' (condition {condition_name!r}) needs a predictions "
+            f"file: pass --hop-predictions, or set 'hop_predictions.file' in {src}. Without "
+            f"it the router-guided arm would silently become the oracle-guided one.\n"
+            f"The file is a JSONL, one object per query, carrying the fields named by "
+            f"'hop_predictions.id_field' / 'hop_predictions.hop_field' (ADR 0022 item 5); "
+            f"components/router/run_router.py writes exactly that shape."
+        )
+    record["predictions_file"] = str(file_value)
+    record["note"] = (
+        "the hop count in the prompt is the router's prediction for that query id, which "
+        "overrides the gold depth even when the two disagree - that disagreement is the "
+        "behaviour under test"
+    )
+    return record
+
+
+def join_predicted_hops(
+    rows: list[dict],
+    predicted: dict[str, int],
+    *,
+    predictions_path: Path,
+    id_field: str,
+) -> dict[str, Any]:
+    """Set each row's prompt hop count from the router's prediction, joined by query id.
+
+    Mutates ``rows`` in place: ``hop_count`` (the number the prompt states) becomes the
+    prediction, while ``gold_hop_count`` is left alone - the per-hop reporting and the pinned
+    evaluation-set assertion are counted on the gold depth, so a router that predicts 3 for a
+    2-hop question must not move that question into the 3-hop row of the results table.
+
+    Nothing falls back, for ADR 0022 item 3's reason: a query with no prediction is not an
+    oracle-guided query, and a run that mixed the two would be neither arm. A row with no
+    query id cannot be joined at all, and both refusals name the offenders.
+
+    Returns the record for the run's config snapshot and metrics, including how often the
+    prediction agreed with the gold depth (a count, not a claim: the router's own accuracy is
+    measured in its own run).
+    """
+    no_id = [str(i) for i, row in enumerate(rows) if not str(row.get("query_id") or "").strip()]
+    if no_id:
+        raise SystemExit(
+            f"{len(no_id)} of {len(rows)} rows have no query id, so the router's predictions "
+            f"cannot be joined onto them (row indices: {_sample(no_id)}). The router-guided "
+            f"arm needs a question source that carries ids (questions_format 'jsonl', or a "
+            f"retrieval input whose rows carry 'query_id')."
+        )
+    missing = [
+        str(row["query_id"]).strip()
+        for row in rows
+        if str(row["query_id"]).strip() not in predicted
+    ]
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} of {len(rows)} queries have no prediction in {predictions_path} "
+            f"(joined on {id_field!r}): {_sample(missing)}. The predictions file must cover "
+            f"every query in the run; a missing one is not a gold-guided query, and filling "
+            f"it in from the gold depth would make this arm a blend of two conditions."
+        )
+    agreed = 0
+    for row in rows:
+        hop = int(predicted[str(row["query_id"]).strip()])
+        if hop == row["gold_hop_count"]:
+            agreed += 1
+        row["hop_count"] = hop
+    unused = sorted(set(predicted) - {str(r["query_id"]).strip() for r in rows})
+    return {
+        "rows_joined": len(rows),
+        "predictions_in_file": len(predicted),
+        "predictions_unused": len(unused),
+        "rows_agreeing_with_gold_hop": agreed,
+        "rows_disagreeing_with_gold_hop": len(rows) - agreed,
+        "agreement_note": (
+            "a count over the rows of this run, not the router's accuracy: the router's own "
+            "run measures that on its own evaluation set"
+        ),
+    }
 
 
 def resolve_step_line_cap(condition_name: str | None, condition: dict) -> int | None:
@@ -1588,6 +1740,13 @@ def _parse_args() -> argparse.Namespace:
         help="Named condition from the config's 'conditions' block (e.g. unguided, "
         "oracle_guided, unguided_capped). Overrides the config's default 'condition'.",
     )
+    p.add_argument(
+        "--hop-predictions",
+        default=None,
+        help="Router predictions JSONL (one object per query, with the id and hop fields "
+        "named by 'hop_predictions' in the config). Required by a condition whose "
+        "hop_source is 'predictions' - the router-guided arm; refused by a 'gold' one.",
+    )
     p.add_argument("--sample-size", type=int, default=None)
     p.add_argument("--embed-model", default=None, help="Key in decomposer.json embed_models")
     p.add_argument("--retrieval-input", default=None, help="Reranked/truncated top-k JSONL")
@@ -1896,6 +2055,13 @@ def main() -> None:
     seed = args.seed if args.seed is not None else int(require(cfg, "seed"))
     guided = resolve_guided(args.guided, condition_name, condition, cfg)
     stop_after_step_lines = resolve_step_line_cap(condition_name, condition)
+    hop_source_record = resolve_hop_source(
+        condition_name,
+        condition,
+        cfg,
+        guided=guided,
+        cli_predictions=args.hop_predictions,
+    )
     sample_size = args.sample_size if args.sample_size is not None else require(cfg, "sample_size")
     embed_key = args.embed_model or require(cfg, "embed_model")
     embed_model_id = require(cfg, f"embed_models.{embed_key}")
@@ -2046,6 +2212,24 @@ def main() -> None:
             raise SystemExit(f"retrieval input not found: {retrieval_path}")
         retrieval_sha256 = sha256_file(retrieval_path)
 
+    # The router's predictions, content-addressed for the same reason as the retrieval input:
+    # a with-router arm is only comparable to a without-router one if the routing decisions
+    # it actually used can be identified from the run record.
+    hop_predictions_path: Path | None = None
+    if hop_source_record["source"] == "predictions":
+        hop_predictions_path = Path(hop_source_record["predictions_file"])
+        if not hop_predictions_path.is_absolute():
+            hop_predictions_path = _REPO_ROOT / hop_predictions_path
+        if not hop_predictions_path.exists():
+            raise SystemExit(
+                f"hop predictions file not found: {hop_predictions_path}\n"
+                "Point --hop-predictions at a router run's predictions JSONL "
+                "(components/router/run_router.py writes one per run when its question "
+                "source carries ids)."
+            )
+        hop_source_record["predictions_file_resolved"] = str(hop_predictions_path)
+        hop_source_record["predictions_file_sha256"] = sha256_file(hop_predictions_path)
+
     snapshot = {
         "script": Path(__file__).name,
         "created_utc": now_iso(),
@@ -2062,6 +2246,7 @@ def main() -> None:
         "condition": condition_name,
         "condition_settings": condition,
         "guided": guided,
+        "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
         "seed": seed,
         "seeded": seeded,
@@ -2210,7 +2395,13 @@ def main() -> None:
                 {
                     "query_id": row.get("query_id"),
                     "question": question,
+                    # hop_count is the number the PROMPT will state; gold_hop_count is the
+                    # query's own depth, which is what the per-hop reporting and the pinned
+                    # eval-set assertion are counted on. They are the same number in every
+                    # arm but the router-guided one, where the join below overwrites the
+                    # first and leaves the second alone.
                     "hop_count": hop,
+                    "gold_hop_count": hop,
                     "retrieval_examples": examples,
                 }
             )
@@ -2259,8 +2450,11 @@ def main() -> None:
                         "query_id": item["query_id"],
                         "question": item["question"],
                         # Guided runs inject this hop count: it is the gold depth of the
-                        # file the question was read from, not a model prediction.
+                        # file the question was read from, not a model prediction - unless
+                        # the arm's hop source is a router predictions file, which the join
+                        # below applies to `hop_count` only.
                         "hop_count": hop,
+                        "gold_hop_count": hop,
                         "retrieval_examples": [],
                     }
                 )
@@ -2271,15 +2465,39 @@ def main() -> None:
             )
         print(f"Loaded {len(inference_rows)} total questions.")
 
+    # The router-guided arm (issue #27): the prompt's hop count comes from the router's
+    # predictions, joined by query id. Done here - after the rows exist, before any model is
+    # loaded - so a predictions file that does not cover this run is a refusal that costs no
+    # GPU time.
+    if hop_predictions_path is not None:
+        predicted_hops = load_predicted_hops(
+            hop_predictions_path,
+            id_field=hop_source_record["id_field"],
+            hop_field=hop_source_record["hop_field"],
+        )
+        hop_source_record["join"] = join_predicted_hops(
+            inference_rows,
+            predicted_hops,
+            predictions_path=hop_predictions_path,
+            id_field=hop_source_record["id_field"],
+        )
+        snapshot["hop_source"] = hop_source_record
+        print(f"[decomposer] hop source: {json.dumps(hop_source_record, default=str)}")
+
     # The evaluation set this arm was actually asked to decompose: after any `sample_size`
     # restriction (which a run on the pinned set leaves null), before the `--dry-run` limit,
     # which only shortens the prompt-assembly pass. Three conditions are comparable only if
     # these are the same across them - for the pinned MuSiQue set of ADR 0007, 200 rows per
     # hop for hops 2/3/4, 600 ids in total, and *those* 600 ids.
+    #
+    # Counted on the GOLD depth, never on the prompt's: a router that predicts 3 for a 2-hop
+    # question must not move that question into the 3-hop row of the table, or the pinned-set
+    # assertion would fail on a correctly loaded set and the per-hop numbers would be filed
+    # under a prediction.
     rows_loaded_total = len(inference_rows)
     rows_loaded_per_hop = {
-        str(hop): sum(1 for r in inference_rows if r["hop_count"] == hop)
-        for hop in sorted({r["hop_count"] for r in inference_rows})
+        str(hop): sum(1 for r in inference_rows if r["gold_hop_count"] == hop)
+        for hop in sorted({r["gold_hop_count"] for r in inference_rows})
     }
     loaded_ids = {str(r["query_id"]) for r in inference_rows if r["query_id"] is not None}
     distinct_query_ids = len(loaded_ids)
@@ -2356,7 +2574,10 @@ def main() -> None:
 
     for i, row in enumerate(inference_rows):
         question = row["question"]
+        # The hop count the prompt states (the gold depth, or the router's prediction);
+        # `gold_hop_count` is what the row is filed under.
         hop = row["hop_count"]
+        gold_hop = row["gold_hop_count"]
         if (i + 1) % progress_every == 0:
             print(f"Processed {i + 1}/{len(inference_rows)}...")
 
@@ -2462,12 +2683,17 @@ def main() -> None:
             cost = {k: gen[k] for k in cost}
 
         if args.dry_run or (i + 1) % prompt_log_every == 0:
-            log_path = prompts_dir / f"prompt_idx{i + 1:04d}_hop{hop}.txt"
+            # Filed under the gold depth, so the log file names are the same across arms
+            # (the router's prediction is stated inside the header instead).
+            log_path = prompts_dir / f"prompt_idx{i + 1:04d}_hop{gold_hop}.txt"
             masked_q = mask_fn(question) if mask_fn else "N/A"
             header = [
                 "--- Log Header ---",
                 f"Question (original): {question}",
                 f"Question (masked): {masked_q}",
+                f"Gold hop count: {gold_hop}",
+                f"Hop count in prompt: {hop_input} "
+                f"(source: {hop_source_record['source']})",
                 f"Few-shot source: {source} (k={len(sampled)})",
             ]
             for j, (item, score) in enumerate(sampled_with_scores, start=1):
@@ -2496,7 +2722,12 @@ def main() -> None:
             {
                 "query_id": row.get("query_id"),
                 "question": question,
-                "hop_count": hop,
+                # Unchanged meaning for every consumer: the query's GOLD hop depth. What the
+                # prompt actually stated is `prompt_hop_count` (null in an unguided arm), and
+                # `hop_count_source` says where that number came from.
+                "hop_count": gold_hop,
+                "prompt_hop_count": hop_input,
+                "hop_count_source": hop_source_record["source"],
                 "decomposition": decomposition,
                 "few_shot_source": source,
                 # Same fields in all three arms, whether or not a cap applies. The raw
@@ -2540,6 +2771,10 @@ def main() -> None:
         },
         "condition": condition_name,
         "guided": guided,
+        # Where the prompt's hop count came from, with the join counts when it came from a
+        # router: a metrics file read on its own has to say whether it is the oracle arm or
+        # the routed one, and which predictions file produced it.
+        "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
         # Two different questions, deliberately reported separately:
         #   rows_at_step_line_cap        - how many decompositions HAVE cap-many steps, by the
@@ -2643,6 +2878,18 @@ def main() -> None:
             f"- Prompt: `{prompt_path}` (style: {prompt_style})",
             f"- Condition: {condition_name or 'none (no conditions block)'}; guided: {guided}; "
             f"step-line cap: {stop_after_step_lines or 'none'}; seed: {seed}",
+            (
+                f"- Hop count in the prompt: {hop_source_record['source']} - "
+                f"`{hop_source_record.get('predictions_file_resolved')}` (sha256 "
+                f"`{hop_source_record['predictions_file_sha256']}`), joined on "
+                f"`{hop_source_record['id_field']}`: "
+                f"{hop_source_record['join']['rows_joined']} row(s), "
+                f"{hop_source_record['join']['rows_agreeing_with_gold_hop']} agreeing with "
+                f"the gold depth"
+                if hop_source_record["source"] == "predictions"
+                else f"- Hop count in the prompt: {hop_source_record['source']} "
+                f"({'injected' if guided else 'not stated - unguided arm'})"
+            ),
             f"- Rows: {len(results)} of {rows_loaded_total} loaded "
             f"(per hop: {rows_loaded_per_hop}; distinct ids: {distinct_query_ids})",
             f"- Evaluation set pinned: {eval_set_record['pinned']} "

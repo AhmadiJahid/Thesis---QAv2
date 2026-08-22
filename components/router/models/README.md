@@ -9,7 +9,13 @@ One folder per model. Each contains:
   response). The `parsing` and `generation` fields are where v1's per-copy code differences
   now live; the `notes` field in each config records which ones.
 
-Shared in this directory: `prompt_zero_shot.md` — zero-shot prompt, selected with
-`--prompt-file prompt_zero_shot.md`.
+Shared in this directory (not per-model, and not v1 assets):
+
+- `prompt_zero_shot.md` — zero-shot prompt, selected with `--prompt-file prompt_zero_shot.md`.
+- `prompt_few_shot_musique.md` — the retrieved-few-shot prompt of issue #27: an instruction, a
+  `{few_shot_examples}` block the runner fills with the query's retrieved exemplars (each
+  labelled with its own gold hop depth), then the query. Named by
+  `configs/router_musique.json`, so that config cannot be run with a model folder's MetaQA
+  prompt by accident.
 
 Folder naming is lowercase with underscores.

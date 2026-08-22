@@ -25,6 +25,14 @@
   "eval_rows_per_hop": 200,
   "_eval_rows_per_hop_note": "Asserted by run_decomposer.py at load time, whether the questions come from questions_template_key or from --retrieval-input, and asserted twice over: (1) the per-hop row counts must be 200/200/200 (600 total), and (2) the loaded question ids must be EXACTLY the ids in the three files behind questions_template_key - counts alone would let a different 600 questions through, and 600 of the wrong questions is not the pinned set. A mismatch is refused, naming the offending hop depths and up to ten offending ids. ADR 0007 pins the set and ADR 0011's stance is that a comparison across different evaluation sets is not a comparison. --allow-unpinned-eval-set is the explicit opt-out for fixture/smoke runs; it records evaluation_set.pinned false in the metrics and such a run is not an experiment arm.",
 
+  "hop_source": "gold",
+  "hop_predictions": {
+    "file": null,
+    "id_field": "query_id",
+    "hop_field": "predicted_hop"
+  },
+  "_hop_source_note": "Where a GUIDED arm's hop count comes from. 'gold' is the default and is what every arm before issue #27 did: the query's own depth, parsed from its id on the retrieval path. A condition may override it with 'predictions' (the router_guided arm below), and then the hop count is read from a router predictions JSONL and joined on the query id - one object per query, with the id and hop field names declared here; they are the defaults components/router/run_router.py writes and the retrieval chain's hop_match reads (ADR 0022 item 5). hop_predictions.file is null on purpose: a routed run names the predictions file it used with --hop-predictions, because that file is a run output (runs/, gitignored) rather than a pinned artifact, and a stale path in a committed config would silently route a later run with an older router. The runner refuses the mismatched combinations: an unimplemented source, 'predictions' in an unguided arm, 'predictions' with no file, and --hop-predictions passed to a 'gold' arm.",
+
   "condition": "unguided",
   "conditions": {
     "unguided": {
@@ -35,13 +43,18 @@
       "guided": true,
       "_note": "Two kinds of hop line, both gold. (1) The QUERY's gold hop count goes into the prompt through the guided mechanism's {hop_count} placeholder: the gold depth of the evaluation file the question was read from, or the depth parsed from its id on the retrieval path - never a prediction, and never a fallback (an id whose hop depth cannot be parsed is refused). (2) Each FEW-SHOT EXEMPLAR's 'Hop count:' line carries THAT EXEMPLAR's own gold hop count, defined as the number of steps in its own gold decomposition (pool_few_shot_decomposition_musique), counted with the shared splitter in src/step_lines.py - Jahid's decision of 2026-08-19 on issue #12, set here by few_shot_exemplar_hop_count. v1 stamped the query's hop count on every exemplar, which made most exemplar hop lines contradict the exemplar shown beneath them (measured: 1740 of 3000 on the 600 oracle_guided prompts of the 2026-08-19 dry run); that behaviour is gone from this config and v1's guided numbers are not directly comparable - see docs/adr/0013. An exemplar with a missing or empty gold decomposition is refused, naming its pool id: there is deliberately no fallback to the query's hop count."
     },
+    "router_guided": {
+      "guided": true,
+      "hop_source": "predictions",
+      "_note": "Issue #27's with-router arm: identical to oracle_guided in every way except where the query's hop count comes from - a router predictions file, joined on the query id, whose prediction OVERRIDES the gold depth even when the two disagree. That disagreement is the whole content of the arm: it is what shows how much of any oracle-guided gain survives an imperfect hop predictor. Nothing falls back: a query with no prediction in the file is a refusal, not a gold-guided query, because a per-query fallback would make this arm a blend of two conditions (the same stance ADR 0022 item 3 takes for hop-matched retrieval). The FEW-SHOT exemplars' own 'Hop count:' lines are unaffected - they state each exemplar's own gold step count, as in every guided arm (few_shot_exemplar_hop_count above), because the exemplars are pool rows and the router predicts for the query. Run it with --hop-predictions <router run>/predictions.jsonl; the run record carries that path and its sha256, plus how often the prediction agreed with the gold depth."
+    },
     "unguided_capped": {
       "guided": false,
       "stop_after_step_lines": 8,
       "_note": "Same prompt as 'unguided'. Generation is stopped once 8 step lines are complete - a transformers StoppingCriteria during decoding, plus a trim of the partial line the criterion can leave behind after it fires. Step lines are counted with the evaluator's own step normalization (src/step_lines.py), after <think>/tail post-processing, so 8 means 8 of the steps that get scored. The supervisor's example in the 2026-08-12 meeting used a cap of 6; 8 is Jahid's plan default and is the value set here - see docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md and docs/adr/0013."
     }
   },
-  "_conditions_note": "A condition may set only 'guided' and 'stop_after_step_lines' (plus '_note'). Decoding, model and seed are deliberately NOT per-condition: run_decomposer.py rejects any other key so the three arms cannot drift apart.",
+  "_conditions_note": "A condition may set only 'guided', 'hop_source' and 'stop_after_step_lines' (plus '_note'). Decoding, model and seed are deliberately NOT per-condition: run_decomposer.py rejects any other key so the arms cannot drift apart. 'hop_source' is allowed there because it says WHICH hop count the prompt carries (gold or a router's prediction), which is precisely what separates oracle_guided from router_guided.",
 
   "generation_overrides": {
     "max_new_tokens": 1024

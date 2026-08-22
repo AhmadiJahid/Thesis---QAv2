@@ -10,6 +10,14 @@
   "questions_format": "lines",
   "unguided_hop_placeholder": "Unknown",
 
+  "hop_source": "gold",
+  "hop_predictions": {
+    "file": null,
+    "id_field": "query_id",
+    "hop_field": "predicted_hop"
+  },
+  "_hop_source_note": "'gold' is the MetaQA path's behaviour, unchanged: a guided run injects the hop depth of the question file the question was read from. The router-guided source ('predictions', joined on a query id) is a MuSiQue condition and needs a question source that carries ids, which 'lines' files do not; the field names are declared here anyway so this config states the interface rather than leaving a required key missing.",
+
   "few_shot_exemplar_hop_count": "query",
   "_few_shot_exemplar_hop_count_note": "v1 behaviour, unchanged: in a guided MetaQA run every few-shot exemplar's 'Hop count:' line states the QUERY's hop count. Jahid's 2026-08-19 decision to state each exemplar's own gold step count instead was taken for the MuSiQue conditions (configs/decomposer_musique.json sets 'exemplar_gold'), so it is not applied here: changing it would change MetaQA guided prompts, which no one asked for. Verified 2026-08-19 that this path renders exactly as before.",
 

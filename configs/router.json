@@ -1,12 +1,30 @@
 {
-  "_note": "Shared config for components/router/run_router.py. Per-model model_id, prompt file, decoding, loader and response-parsing settings live in components/router/models/<model>/config.json; everything that is not model-specific lives here. v1 carried these as argparse defaults inside each copy of router.py.",
+  "_note": "Shared config for components/router/run_router.py. Per-model model_id, prompt file, decoding, loader and response-parsing settings live in components/router/models/<model>/config.json; everything that is not model-specific lives here. v1 carried these as argparse defaults inside each copy of router.py. This is the MetaQA path and it is unchanged by issue #27: few_shot.enabled and predictions.enabled are false, so the run is the one it was before (v1's static few-shot prompt.md or the shared zero-shot prompt, questions read one per line with no ids). The MuSiQue few-shot-prompted router lives in configs/router_musique.json.",
 
   "seed": 42,
   "num_runs": 1,
   "sample_size_per_hop": null,
 
+  "prompt_file": null,
+  "_prompt_file_note": "null: this config does not pin a prompt, so the model folder's own prompt_file (v1's prompt.md) is used and --prompt-file prompt_zero_shot.md selects the zero-shot variant, exactly as before.",
+
   "hops": [1, 2, 3],
   "questions_template_key": "metaqa_questions_template",
+  "questions_format": "lines",
+  "_questions_format_note": "'lines' is MetaQA's plain-text format: one question per line, no id. A question source with no ids cannot produce a predictions file keyed by query id, which is why predictions.enabled is false below.",
+
+  "few_shot": {
+    "enabled": false,
+    "_note": "Retrieved few-shot exemplars (issue #27) are off here. The MetaQA prompts carry their own hand-written examples inside prompt.md (byte-identical to v1), so there is nothing to retrieve and no exemplar source to name. Enabling this requires a prompt with a {few_shot_examples} placeholder and a retrieval input; the runner refuses the mismatched combinations rather than rendering an empty exemplar block."
+  },
+
+  "predictions": {
+    "enabled": false,
+    "filename": "predictions.jsonl",
+    "id_field": "query_id",
+    "hop_field": "predicted_hop",
+    "_note": "Off on this path: MetaQA questions carry no id to key on. The field names are still declared because they are the interface ADR 0022 item 5 documents (query_id / predicted_hop), and a consumer reads them out of the run's config snapshot."
+  },
 
   "output_subdir_few_shot": "router/average_few_shot",
   "output_subdir_zero_shot": "router/average_zero_shot",

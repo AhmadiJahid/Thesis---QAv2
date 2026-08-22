@@ -65,6 +65,11 @@ WORK = RUNS_ROOT / "work"
 #: not contain, so those stages pass this one instead (see the stages' comment).
 MUSIQUE_CONDITIONS_RETRIEVAL = FIXTURES / "retrieval" / "top5_musique_conditions.jsonl"
 
+#: Fabricated router predictions over the same nine fixture queries, in the shape
+#: run_router.py writes (query_id + predicted_hop). Three of the nine deliberately disagree
+#: with the gold hop depth, which is what the router_guided arm exists to carry through.
+MUSIQUE_HOP_PREDICTIONS = FIXTURES / "router" / "hop_predictions_musique.jsonl"
+
 MUSIQUE_SCRIPTS = REPO_ROOT / "MusiQue" / "scripts"
 SCRIPTS = REPO_ROOT / "scripts"
 COMPONENTS = REPO_ROOT / "components"
@@ -110,6 +115,7 @@ def _stages() -> list[Stage]:
     plots_dir = WORK / "sweep_plots"
     analysis_dir = WORK / "router_analysis"
     router_dry = WORK / "router_dry"
+    router_musique = WORK / "router_musique"
     decomposer_dry = WORK / "decomposer_dry"
     decomposer_musique = WORK / "decomposer_musique"
     finetune_dry = WORK / "finetune_dry"
@@ -452,6 +458,32 @@ def _stages() -> list[Stage]:
             ],
             note="router prompt assembly + artifacts, no weights loaded",
         ),
+        # The few-shot-prompted router of issue #27. --retrieval-input for the same reason
+        # the MuSiQue decomposer stages pass it (the config's key names the real v1
+        # artifact), and --allow-unpinned-eval-set because the fixtures hold 3 rows per hop
+        # rather than the pinned 200 of ADR 0007. A dry run writes no predictions file - it
+        # generates nothing - so what this stage covers is the whole path up to generation:
+        # the query-id integrity check, the exemplar assembly with self-exclusion, and the
+        # prompt. The predictions file's own shape is pinned by
+        # tests/test_router_predictions.py (round-tripped through load_predicted_hops).
+        Stage(
+            name="router_dry_run_musique_few_shot",
+            cmd=[
+                sys.executable, COMPONENTS / "router" / "run_router.py",
+                "--model", "qwen2_5_0_5b", "--config", "router_musique.json",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--dry-run", "--dry-run-limit", "9", "--allow-unpinned-eval-set",
+                "--output-root", router_musique,
+            ],
+            expect_dir_globs=[
+                (router_musique, "*/metrics.json"),
+                (router_musique, "*/config.json"),
+                (router_musique, "*/notes.md"),
+                (router_musique, "*/prompts_log/prompt_idx0001.txt"),
+            ],
+            note="few-shot-prompted router: retrieved exemplars labelled with their own hop "
+            "depth, query excluded from its own exemplars, no weights loaded",
+        ),
         Stage(
             name="decomposer_dry_run_retrieval",
             cmd=[
@@ -565,6 +597,21 @@ def _stages() -> list[Stage]:
             ],
             expect_dir_globs=[(decomposer_musique / "unguided_capped", "*/results.json")],
             note="MuSiQue conditions: step-line cap configured (no generation in a dry run)",
+        ),
+        Stage(
+            name="decomposer_dry_run_musique_router_guided",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "router_guided", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--hop-predictions", MUSIQUE_HOP_PREDICTIONS,
+                "--allow-unpinned-eval-set",
+                "--output-root", decomposer_musique / "router_guided",
+            ],
+            expect_dir_globs=[(decomposer_musique / "router_guided", "*/results.json")],
+            note="MuSiQue conditions: the hop count in the prompt comes from a router "
+            "predictions file, joined by query id (issue #27)",
         ),
         # The MuSiQue answering backend of issue #16: execute a decomposition and score the
         # answer it leads to. Dry runs, so the join, the context assembly and the [#k]

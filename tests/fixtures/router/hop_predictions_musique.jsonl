@@ -1,0 +1,9 @@
+{"query_id": "2hop__d001_a", "predicted_hop": 2, "expected_hop": 2, "correct": true, "parse_fallback": false}
+{"query_id": "2hop__d004_d", "predicted_hop": 3, "expected_hop": 2, "correct": false, "parse_fallback": false}
+{"query_id": "2hop__d009_b", "predicted_hop": 2, "expected_hop": 2, "correct": true, "parse_fallback": false}
+{"query_id": "3hop1__d002_b", "predicted_hop": 3, "expected_hop": 3, "correct": true, "parse_fallback": false}
+{"query_id": "3hop2__d005_e", "predicted_hop": 2, "expected_hop": 3, "correct": false, "parse_fallback": true}
+{"query_id": "3hop1__d011_f", "predicted_hop": 3, "expected_hop": 3, "correct": true, "parse_fallback": false}
+{"query_id": "4hop1__d003_c", "predicted_hop": 4, "expected_hop": 4, "correct": true, "parse_fallback": false}
+{"query_id": "4hop2__d007_h", "predicted_hop": 3, "expected_hop": 4, "correct": false, "parse_fallback": false}
+{"query_id": "4hop3__d013_i", "predicted_hop": 4, "expected_hop": 4, "correct": true, "parse_fallback": false}
