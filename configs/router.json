@@ -8,6 +8,9 @@
   "prompt_file": null,
   "_prompt_file_note": "null: this config does not pin a prompt, so the model folder's own prompt_file (v1's prompt.md) is used and --prompt-file prompt_zero_shot.md selects the zero-shot variant, exactly as before.",
 
+  "response_truncate_at": [],
+  "_response_truncate_at_note": "Empty: v1 parsing, unchanged. The MetaQA prompts end with 'Trace:' and elicit a multi-line response whose 'A:' line comes after the trace, so cutting the response at its first line break would throw the answer away. What protects the MuSiQue prompt (whose 'A:' cue is in the prompt, so its answer is the FIRST thing in the response and anything after it is the model writing its own next question) is configs/router_musique.json's marker list - see clean_response in run_router.py.",
+
   "hops": [1, 2, 3],
   "questions_template_key": "metaqa_questions_template",
   "questions_format": "lines",

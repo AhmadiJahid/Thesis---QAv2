@@ -34,10 +34,13 @@
   },
   "_retrieval_note": "input_key names the ONE artifact this condition reads, resolved through datasets.musique_few_shot_top5_pinned600 in configs/paths.json - the repo convention for data outside the tree, no absolute path in a config. It is the ADR 0014 artifact the decomposer conditions read (bi-encoder top-20 -> cross-encoder top-5, typed masking, seed 42, v1 pool of 9,156; 600 rows, one per pinned query). --retrieval-input overrides it, which is how the fixture and smoke runs point at tests/fixtures/retrieval/. The runner records the resolved path AND its sha256 in the config snapshot and the metrics, so two router conditions can be shown to have read the same exemplars. k = 5 matches the decomposer's k on the same artifact; mode 'typed' matches configs/decomposer_musique.json.",
 
+  "response_truncate_at": ["\n"],
+  "_response_truncate_at_note": "The prompt ends with the 'A:' cue, so the model's answer is the FIRST thing in its response and everything after the first line break is the model writing a fresh Q/A pair of its own. The response is therefore cut at that line break before any hop count is read. Without this, a response like '2\\n\\nQ: ...\\nA: 3' returned 3 - another question's answer - as this query's prediction, with parse_fallback false (PR #43 review, C1). Truncation, not the token budget, is what makes the read safe: max_new_tokens is left at the model folder's value because a thinking model needs room to emit and close its <think> block before answering.",
+
   "parsing_overrides": {
-    "answer_regex": "A:\\s*([234])"
+    "answer_regex": null
   },
-  "_parsing_overrides_note": "The per-model parsing block is a v1 asset whose answer_regex reads a single digit in 1-3 (MetaQA's hop depths). MuSiQue's are 2/3/4, so the answer-prefix regex is overridden here rather than by editing a model folder. It must cover every value in 'hops' above: a digit outside the class simply misses this branch and falls through to the hop-derived digit-class search, which is less precise. The runner refuses an override key the model's parsing block does not define.",
+  "_parsing_overrides_note": "answer_regex null: this prompt puts the 'A:' cue in the PROMPT, so the model's response has no 'A:' prefix of its own - a regex requiring one could only ever match a regurgitated exemplar. Nulling it lets the next rule in run_router.py read the leading digit, and that rule builds its digit class from 'hops' above, so it needs no hop-specific constant (the v1 per-model regexes hardcode MetaQA's 1-3). The model folder's parsing block is otherwise untouched: it is a v1 asset. The runner refuses an override key that block does not define, and asserts at load time that the parsing rules cover every value in 'hops' and that parsing.default_hop is one of them.",
 
   "predictions": {
     "enabled": true,
@@ -48,8 +51,8 @@
   },
 
   "output_subdir_few_shot": "router_musique/few_shot",
-  "output_subdir_zero_shot": "router_musique/zero_shot",
   "zero_shot_prompt_marker": "zero_shot",
+  "_output_subdir_note": "Only the few-shot root is declared: this config has no zero-shot arm (few_shot.enabled is true, and a prompt without a {few_shot_examples} placeholder is refused), so a zero-shot output root would be a dead knob. Selecting a zero-shot prompt with this config is refused, naming the missing key. A zero-shot MuSiQue router arm would be its own config.",
 
   "progress_every": 10,
   "model_limits_config": "model_limits.json",

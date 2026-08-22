@@ -250,11 +250,14 @@ def resolve_hop_source(
     where the number came from and in nothing else, which is what makes a with-router versus
     without-router comparison a comparison.
 
-    Four refusals, all of them a run that would otherwise be filed under the wrong label:
+    Five refusals, all of them a run that would otherwise be filed under the wrong label:
 
-    - an unimplemented hop source (not silently treated as ``gold``);
+    - an unimplemented hop source (not silently treated as ``gold``), including a condition
+      that sets ``hop_source`` to null;
     - ``predictions`` in an **unguided** arm - no hop count reaches the prompt at all there,
       so the run would be the unguided arm wearing the router's name;
+    - ``predictions`` with ``few_shot_exemplar_hop_count`` ``"query"``, which would stamp the
+      *prediction* on every exemplar (ADR 0013's defect, with a prediction for a gold depth);
     - ``predictions`` with no file named;
     - ``--hop-predictions`` passed to a ``gold`` arm - the file would be ignored, and the
       run recorded as the oracle while the operator believed it routed.
@@ -262,7 +265,19 @@ def resolve_hop_source(
     Returns the record for the run's config snapshot and metrics.
     """
     src = cfg.get("_config_path", "<config>")
-    source = condition.get("hop_source") or require(cfg, "hop_source")
+    # An explicit null in a condition is refused rather than falling through to the config's
+    # default: "hop_source": null reads as "this arm names no source", and silently running
+    # it as the gold arm would file a routed arm's label on an oracle run (PR #43 review, N4).
+    if "hop_source" in condition:
+        source = condition["hop_source"]
+        if not isinstance(source, str) or not source:
+            raise SystemExit(
+                f"condition {condition_name!r} in {src} sets 'hop_source' to {source!r}. A "
+                f"condition that names a hop source must name one of {list(HOP_SOURCES)}; "
+                f"remove the key to inherit the config's default ({require(cfg, 'hop_source')!r})."
+            )
+    else:
+        source = require(cfg, "hop_source")
     if source not in HOP_SOURCES:
         raise SystemExit(
             f"hop_source={source!r} is not one of {list(HOP_SOURCES)} (config: {src}, "
@@ -297,6 +312,18 @@ def resolve_hop_source(
             f"predictions would never reach the model and the run would be the unguided arm "
             f"under the router's label. Set guided true for this condition, or use "
             f"hop_source 'gold'."
+        )
+    exemplar_hop_mode = require(cfg, "few_shot_exemplar_hop_count")
+    if exemplar_hop_mode == "query":
+        raise SystemExit(
+            f"hop_source 'predictions' (condition {condition_name!r}) with "
+            f"few_shot_exemplar_hop_count 'query' in {src}: that mode stamps the QUERY's hop "
+            f"count on every few-shot exemplar, so the router's prediction would be printed "
+            f"above k exemplars it does not describe - the ADR 0013 defect Jahid's 2026-08-19 "
+            f"decision removed, with a prediction in place of the gold depth. Use "
+            f"'exemplar_gold' (each exemplar states its own gold step count) for a routed "
+            f"arm. Refused for the config combination whether or not few-shot examples are "
+            f"switched on for a given run, so the combination cannot reach a prompt at all."
         )
     file_value = cli_predictions or optional(cfg, "hop_predictions.file")
     if not file_value:

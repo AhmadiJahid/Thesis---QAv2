@@ -30,12 +30,15 @@ for the zero-shot prompt, `router/average_few_shot/<run_id>/` otherwise (and
 `router_musique/...` for the MuSiQue config). Every run writes `config.json`, `metrics.json`,
 `notes.md` and `detailed_results*.json`.
 
-**Predictions keyed by query id.** With a question source that carries ids
-(`questions_format: jsonl`, i.e. the MuSiQue config) a run also writes `predictions.jsonl`:
-one object per query with `query_id` and `predicted_hop` (field names from the config), plus
-the gold depth it is scored against and whether the hop was read out of the response or fell
-back to `parsing.default_hop`. That is the shape ADR 0022 item 5 documents, and it is what the
-two consumers join on:
+**Predictions keyed by query id.** A **real** run whose config sets `predictions.enabled`
+writes `predictions.jsonl` — one object per query with `query_id` and `predicted_hop` (field
+names from the config), plus the gold depth it is scored against and whether the hop was read
+out of the response or fell back to `parsing.default_hop`. Two gates, both explicit: the knob
+is on only in `configs/router_musique.json` (a `questions_format: lines` source such as
+MetaQA's has no id to key on, so `configs/router.json` sets it false), and a `--dry-run`
+writes **no** predictions file at all — it generates nothing, so there is no prediction to
+record and the metrics say so rather than reporting an empty or invented file. The shape is
+the one ADR 0022 item 5 documents, and it is what the two consumers join on:
 
 ```bash
 # issue #15's router-hop-matched retrieval condition
@@ -57,6 +60,21 @@ reads), each labelled with **its own** gold hop depth parsed from its pool id. A
 is the query itself is dropped — by id and by normalized question text, using the decomposer's
 own rule — before the top-k is taken, so no query is shown its own answer. A dry run assembles
 all of this and writes the prompt log; it predicts nothing, so it writes no predictions file.
+
+**Reading the hop count out of a response.** The retrieved-few-shot prompt ends with the `A:`
+cue, so the model's answer is the *first* thing in its response and anything after the first
+line break is the model writing a fresh question of its own. `response_truncate_at` in the
+config cuts the response there before it is parsed, and that config drops the `A:`-prefix
+regex, so the answer is read as the leading digit; the v1 MetaQA prompts set no markers and
+keep their own regex, so their parsing is unchanged. Every run — dry runs included — asserts
+that the parsing rules can express every depth in `hops` and that `parsing.default_hop` is one
+of them, and records the result as `parsing_coverage`. A response with no readable hop count is
+recorded as `default_hop` with `parse_fallback` true, **counted in the accuracies**, and broken
+out per gold hop as `unparsed_response_rows_per_gold_hop` — a defaulted row is correct for
+whichever class the default belongs to, so that split is what says how much of a per-hop number
+is a prediction. `accuracy_definitions` in `metrics.json` states what each accuracy measures
+(exact-hop against the gold depth; the per-hop rows are within-gold-class recall, not
+precision).
 
 `--num-runs N` repeats inference with seeds seed, seed+1, … and reports mean ± std. The
 predictions file is written from run 0, the same run `detailed_results_run_0.json` records.

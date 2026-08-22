@@ -58,6 +58,46 @@ later write the same predictions file and drop into the same two consumers uncha
    join on it, and a field that is present gets keyed on. `detailed_results.json` keeps it, and
    now also carries `query_id`.
 
+1a. **The response is cut at the answer before a hop count is read, and the parsing rules are
+   asserted to cover the config's hop depths.** *(Added 2026-08-22 in the PR #43 review fix
+   pass — findings C1 and I1. Implementer design, pending Jahid, like the rest of this record.)*
+
+   The retrieved-few-shot prompt ends with the `A:` cue, so the model's answer is the **first**
+   thing in the response and everything after the first line break is the model writing a fresh
+   `Q:`/`A:` pair of its own. Two consequences, both now encoded:
+
+   - **Truncation before parsing.** `response_truncate_at` (per config, because it is a property
+     of the prompt shape) cuts the response at its first line break for the MuSiQue prompt and
+     is empty for the v1 MetaQA prompts, whose responses are multi-line by design. And that
+     config sets `answer_regex` to null: a rule requiring an `A:` prefix can only match a
+     regurgitated exemplar when the prompt consumed the cue itself, so the answer is read as the
+     leading digit by the rule whose digit class is derived from `hops`. Measured on the
+     committed configs: the response `"2\n\nQ: …\nA: 3\n\nQ:"` parsed to **(3, True)** under the
+     first version of this change — another question's answer, returned as this query's
+     prediction with `parse_fallback` false — and parses to **(2, True)** now. `eos_token_id` is
+     also passed to `generate` so a finished model can stop, but that is not what makes the read
+     safe: a model can always keep going, so truncation is the guarantee.
+   - **A coverage assertion, not a prose requirement.** `assert_parsing_covers_hops` refuses, at
+     config-load time and therefore on a dry run too: a hop depth the fallback label table
+     cannot name (v1's tables stopped at three, so a MuSiQue router's "four hops" fell through
+     to `default_hop`), a hop depth above 9 (the digit-class rule is a single-character regex
+     class), and a `default_hop` outside `hops`. The label tables are now derived from the hop
+     depth rather than listed, so they follow the config. This is ADR 0016's rule applied to a
+     config invariant: the earlier version of this record stated the requirement in a config
+     `_note`, and a `_note` does not fail a run.
+
+   **How a defaulted hop is scored, stated once here because it shapes every router number.** An
+   unreadable response is recorded as `parsing.default_hop` **as if it were a prediction** and is
+   **counted in the accuracies** — it is not dropped, and the denominator does not change. That
+   is deliberate (a router that cannot answer has still routed the query, and the pipeline will
+   use that hop), but it means the default's own class is flattered: with `default_hop` 2, every
+   defaulted row is correct for a 2-hop query and wrong for a 3- or 4-hop one. So the count is
+   reported overall *and* per gold hop (`unparsed_response_rows_per_gold_hop`), and
+   `accuracy_definitions` in the metrics says that the per-hop rows are within-gold-class recall
+   rather than precision. Any router accuracy claim in the write-up has to carry that split;
+   whether a defaulted row should instead be excluded, or scored as a refusal, is Jahid's call
+   and is not decided here.
+
 2. **A dry run writes no predictions file.** It generates nothing, so a predictions file from a
    dry run would be fabricated routing decisions. The metrics say `predictions_file: null` with a
    note, in the "unmeasured, not zero" style of ADR
@@ -117,10 +157,16 @@ later write the same predictions file and drop into the same two consumers uncha
    `stop_after_step_lines` as the only keys a condition may set, because it says *which* hop count
    the prompt carries — the single difference between `oracle_guided` and `router_guided`. Model,
    seed, retrieval and decoding stay shared and un-overridable, so the two arms cannot differ in a
-   second way. Four refusals, all of them a run that would otherwise be filed under the wrong
-   label: an unimplemented source; `predictions` in an unguided arm (no hop count reaches the
-   prompt at all there); `predictions` with no file named; and `--hop-predictions` passed to a
-   `gold` arm, where the file would be ignored while the operator believed the run was routed.
+   second way. **Five** refusals, all of them a run that would otherwise be filed under the wrong
+   label: an unimplemented source (an explicit `"hop_source": null` in a condition included — it
+   names no source, so it may not quietly inherit the default); `predictions` in an unguided arm
+   (no hop count reaches the prompt at all there); `predictions` together with
+   `few_shot_exemplar_hop_count: "query"`, which would stamp the *prediction* on all k exemplars
+   and so resurrect ADR 0013's defect with a prediction where the gold depth used to be —
+   unreachable from the committed configs, which is exactly why it is a guard and not a fix
+   *(added 2026-08-22, PR #43 review I3)*; `predictions` with no file named; and
+   `--hop-predictions` passed to a `gold` arm, where the file would be ignored while the operator
+   believed the run was routed.
 
 9. **The predictions path is a flag, not a committed config value.**
    `hop_predictions.file` is null in both decomposer configs. The file is a *run output* under the
@@ -139,17 +185,30 @@ later write the same predictions file and drop into the same two consumers uncha
 
 ## What was verified (and what was not)
 
-Ran 2026-08-22, CPU only, no weights, on this branch:
+Ran 2026-08-22, CPU only, no weights, on this branch. Counts are from the **PR #43 review fix
+pass**; the first version of this record cited 44 / 354, and the earlier count that mattered most
+was also *wrong about what it checked* — it asserted the response shape `A: <n>`, which the
+retrieved-few-shot prompt cannot produce, and that is the mistake finding C1 exposed. The
+response-shape checks below are written against the shape the prompt actually elicits.
 
-- `tests/test_router_predictions.py` — **44 tests, all passing**: the predictions rows and their
+- `tests/test_router_predictions.py` — **62 tests, all passing**: the predictions rows and their
   round trip through `load_predicted_hops`, the committed fixture read by the consumer, every id
-  and join refusal, the exemplar assembly (labels, both self-exclusion paths, four refusals),
-  the prompt rendering including that a v1 prompt renders unchanged, that the exemplar `A: <n>`
-  line is readable by the run's own configured parser for hops 2/3/4, `hop_source` resolution
-  with all four refusals, and the join's effect on the prompt hop versus the gold hop.
-- Full suite `python -m unittest discover -s tests` — **354 tests, OK** (310 before this change).
+  and join refusal, the exemplar assembly (labels, both self-exclusion paths, four refusals, and
+  the post-filter assertion), the prompt rendering including that a v1 prompt renders unchanged,
+  the **response parsing** (the answer is the leading digit; a response that answers and then
+  regurgitates a `Q:`/`A:` pair parses to the answer; a leading newline does not truncate the
+  answer away; a `<think>` preamble is stripped; a hop named in words is read rather than
+  defaulted; v1 multi-line parsing unchanged with no markers configured), the parsing-coverage
+  assertion and its four refusals, `hop_source` resolution with all five refusals, the accuracy
+  definitions and the per-gold-hop default counts, and the join's effect on the prompt hop versus
+  the gold hop.
+- Full suite `python -m unittest discover -s tests` — **372 tests, OK** (310 before this change).
 - `scripts/smoke_test.py` — **39/39 stages**, including the two new ones
   (`router_dry_run_musique_few_shot`, `decomposer_dry_run_musique_router_guided`).
+- `python tests/test_decomposer_conditions.py --skip-data-checks` — **258 checks passed**.
+- **The C1 regression, measured on the committed configs**: response
+  `"2\n\nQ: Who founded the press in Marlow Bay?\nA: 3\n\nQ:"` → `(3, True)` with the first
+  version's parsing (an `A:`-prefix regex over the untruncated response), `(2, True)` now.
 - **The routed arm does something different from the oracle arm, on the same nine fixture
   queries**: with a fabricated predictions file in which three of nine predictions disagree with
   the gold depth, `router_guided` put the *predicted* hop in all nine prompts (verified row by row
@@ -180,9 +239,14 @@ router predictions file over the pinned set exists yet).
   (`questions_format`, `few_shot`, `predictions`; `hop_source`, `hop_predictions`). A config
   without them is refused loudly by `require()`, which is the intended behaviour and matches what
   ADR 0022 item 4 did to `configs/similarity.json`.
-- The router's response parsing now reports how often it fell back to a default. If that count is
-  high on a real run, the router's "accuracy" is partly the default's accuracy — a caveat the
-  write-up must carry, and a number that now exists to carry it.
+- The router's response parsing now reports how often it fell back to a default, overall and per
+  gold hop. If that count is high on a real run, the router's "accuracy" is partly the default's
+  accuracy — a caveat the write-up must carry, and a number that now exists to carry it.
+- A new prompt for this component brings an obligation with it: state its
+  `response_truncate_at`, and check that its answer position matches the parsing rules. The
+  coverage assertion catches a hop-depth gap automatically; it cannot catch a prompt whose answer
+  is not where the parsing looks for it. That check is a test against the response shape the
+  prompt elicits (`TestResponseParsing`), and it is the shape of test the next prompt needs.
 
 ## Alternatives considered
 

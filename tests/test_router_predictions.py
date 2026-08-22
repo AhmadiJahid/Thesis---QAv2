@@ -17,13 +17,20 @@ What it covers:
    the gold depth.
 3. **The few-shot router's prompt construction** — k exemplars per query, each labelled with
    its own gold hop depth parsed from its pool id, with the query itself excluded by id and
-   by normalized question text (the decomposer's rule, imported not copied). The exemplar
-   block's ``A: <n>`` line is checked to be readable by the run's own response parser, so the
-   prompt and the parsing cannot disagree.
-4. **The decomposer's router-predictions consumption** — ``hop_source`` resolution and all
-   four of its refusals, and that the join moves the *prompt's* hop count while leaving the
+   by normalized question text (the decomposer's rule, imported not copied).
+4. **The response parsing this prompt needs** — the prompt ends with the ``A:`` cue, so the
+   answer is the *leading* digit of the response and everything after the first line break is
+   the model writing its own next question. A response that answers and then regurgitates a
+   fresh ``Q:``/``A:`` pair must parse to the answer, not to the regurgitation (PR #43 review,
+   C1); a hop named in words must be read rather than defaulted (I1); and the config-level
+   guard that the parsing rules cover every hop depth, with ``default_hop`` among them, is
+   asserted here and by every run including a dry one.
+5. **The decomposer's router-predictions consumption** — ``hop_source`` resolution and all
+   five of its refusals, and that the join moves the *prompt's* hop count while leaving the
    gold depth (and therefore the per-hop reporting and the pinned-set assertion) alone.
-5. **End to end on the fixtures** — the few-shot router and the ``router_guided`` decomposer
+6. **How the accuracy numbers are defined where they are reported**, and defaulted rows
+   broken out per gold hop.
+7. **End to end on the fixtures** — the few-shot router and the ``router_guided`` decomposer
    arm both run to completion in ``--dry-run``, the routed arm's prompts carry the predicted
    hop where ``oracle_guided`` carries the gold one, and the unchanged MetaQA router path
    still runs.
@@ -40,6 +47,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -360,33 +368,159 @@ class TestFewShotPromptConstruction(unittest.TestCase):
         self.assertEqual(rr.build_prompt("Q: {{question}}", "why?"), "Q: why?")
         self.assertEqual(rr.build_prompt("no placeholders", "why?"), "no placeholders")
 
-    def test_the_exemplar_answer_line_is_readable_by_the_run_s_parser(self) -> None:
-        """The prompt format and the response parsing must agree, or 4-hop is unreadable."""
-        cfg = load_config("router_musique.json")
-        model_cfg = load_config(
-            REPO_ROOT / "components" / "router" / "models" / ROUTER_MODEL / "config.json"
-        )
-        parsing = rr.apply_overrides(
-            dict(model_cfg["parsing"]),
-            cfg["parsing_overrides"],
-            block="parsing",
-            src="test",
-        )
-        parsing["hops"] = cfg["hops"]
-        for hop in cfg["hops"]:
-            self.assertEqual(rr.parse_hop_response(f" {hop}", "q", parsing), (hop, True))
-            self.assertEqual(rr.parse_hop_response(f"A: {hop}", "q", parsing), (hop, True))
-        # Nothing readable: the configured default, flagged as not parsed.
-        hop, parsed = rr.parse_hop_response("no idea", "q", parsing)
-        self.assertEqual(hop, int(parsing["default_hop"]))
-        self.assertFalse(parsed)
-
     def test_unknown_override_keys_are_refused(self) -> None:
         with self.assertRaises(SystemExit) as ctx:
             rr.apply_overrides(
                 {"answer_regex": "x"}, {"answr_regex": "y"}, block="parsing", src="test"
             )
         self.assertIn("answr_regex", str(ctx.exception))
+
+
+def musique_parsing() -> dict:
+    """The parsing rules a real `router_musique.json` run assembles, from the committed files.
+
+    Built here rather than hand-written so the checks below read what a run would read: the
+    model folder's v1 block, the config's overrides, its hops and its truncation markers.
+    """
+    cfg = load_config("router_musique.json")
+    model_cfg = load_config(
+        REPO_ROOT / "components" / "router" / "models" / ROUTER_MODEL / "config.json"
+    )
+    parsing = rr.apply_overrides(
+        dict(model_cfg["parsing"]), cfg["parsing_overrides"], block="parsing", src="test"
+    )
+    parsing["hops"] = cfg["hops"]
+    parsing["truncate_at"] = list(cfg["response_truncate_at"])
+    return parsing
+
+
+class TestResponseParsing(unittest.TestCase):
+    """The response shape this prompt actually produces, and what must not be read from it."""
+
+    def setUp(self) -> None:
+        self.parsing = musique_parsing()
+        self.hops = self.parsing["hops"]
+
+    def test_the_answer_is_the_leading_digit(self) -> None:
+        # The prompt ends with "A:", so the cue is consumed and the response STARTS with the
+        # model's answer. (The previous version of this check asserted an "A: <n>" response,
+        # a shape this prompt cannot produce - PR #43 review, C1.)
+        for hop in self.hops:
+            self.assertEqual(rr.parse_hop_response(f" {hop}", "q", self.parsing), (hop, True))
+            self.assertEqual(rr.parse_hop_response(f"{hop}\n", "q", self.parsing), (hop, True))
+
+    def test_a_regurgitated_exemplar_answer_is_not_the_prediction(self) -> None:
+        """The C1 regression: the answer is this query's, not the next one the model invents."""
+        for hop in self.hops:
+            other = next(h for h in self.hops if h != hop)
+            response = f"{hop}\n\nQ: Who founded the town that hosts the press?\nA: {other}\n\nQ:"
+            self.assertEqual(
+                rr.parse_hop_response(response, "q", self.parsing), (hop, True), response
+            )
+
+    def test_a_leading_newline_does_not_truncate_the_answer_away(self) -> None:
+        # Order of operations: strip the outer whitespace first, THEN cut at the marker.
+        self.assertEqual(rr.parse_hop_response("\n3\n\nQ: x\nA: 4", "q", self.parsing), (3, True))
+
+    def test_a_think_block_is_stripped_before_the_answer_is_read(self) -> None:
+        self.assertEqual(
+            rr.parse_hop_response("<think>maybe 4?</think>\n2\n\nQ: x", "q", self.parsing),
+            (2, True),
+        )
+
+    def test_a_hop_named_in_words_is_read_not_defaulted(self) -> None:
+        """I1: with the v1 1/2/3 tables, "four hops" scored as parsing.default_hop."""
+        parsing = dict(self.parsing, answer_regex=None, fallback_labels="hop_words")
+        self.assertEqual(rr.parse_hop_response("four hops", "q", parsing), (4, True))
+        self.assertEqual(rr.parse_hop_response("this is 4-hop", "q", parsing), (4, True))
+        parsing = dict(self.parsing, answer_regex=None, fallback_labels="number_words")
+        self.assertEqual(rr.parse_hop_response("FOUR", "q", parsing), (4, True))
+
+    def test_an_unreadable_response_is_the_default_and_is_flagged(self) -> None:
+        hop, parsed = rr.parse_hop_response("no idea", "q", self.parsing)
+        self.assertEqual(hop, int(self.parsing["default_hop"]))
+        self.assertFalse(parsed)
+
+    def test_v1_parsing_is_unchanged_when_no_marker_is_configured(self) -> None:
+        """The MetaQA path: multi-line responses, and its own answer_regex still leads."""
+        cfg = load_config("router.json")
+        self.assertEqual(cfg["response_truncate_at"], [])
+        model_cfg = load_config(
+            REPO_ROOT / "components" / "router" / "models" / ROUTER_MODEL / "config.json"
+        )
+        parsing = dict(model_cfg["parsing"], hops=cfg["hops"], truncate_at=[])
+        # v1 shape: the trace comes first, the answer after it, on a later line.
+        self.assertEqual(
+            rr.parse_hop_response("Brad Pitt -> movies -> directors\nA: 2", "q", parsing),
+            (2, True),
+        )
+
+
+class TestParsingCoverageAssertion(unittest.TestCase):
+    """I1: the parsing rules must be able to express every hop depth the config may predict."""
+
+    def base(self, **over) -> dict:
+        parsing = {
+            "answer_regex": None,
+            "fallback_labels": "hop_words",
+            "default_hop": 2,
+            "truncate_at": [],
+        }
+        parsing.update(over)
+        return parsing
+
+    def test_the_committed_configs_pass(self) -> None:
+        for name in ("router.json", "router_musique.json"):
+            cfg = load_config(name)
+            model_cfg = load_config(
+                REPO_ROOT / "components" / "router" / "models" / ROUTER_MODEL / "config.json"
+            )
+            parsing = rr.apply_overrides(
+                dict(model_cfg["parsing"]),
+                cfg.get("parsing_overrides"),
+                block="parsing",
+                src=name,
+            )
+            record = rr.assert_parsing_covers_hops(parsing, cfg["hops"], src=name)
+            self.assertTrue(record["asserted"])
+            self.assertEqual(sorted(record["labels_per_hop"]), sorted(cfg["hops"]))
+            self.assertIn(record["default_hop"], cfg["hops"])
+
+    def test_a_default_hop_outside_hops_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            rr.assert_parsing_covers_hops(self.base(default_hop=1), [2, 3, 4], src="test")
+        self.assertIn("default_hop=1", str(ctx.exception))
+
+    def test_a_two_digit_hop_depth_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            rr.assert_parsing_covers_hops(self.base(), [2, 10], src="test")
+        self.assertIn("10", str(ctx.exception))
+
+    def test_a_hop_the_number_word_table_cannot_name_is_refused(self) -> None:
+        """With v1's 1/2/3 table and MuSiQue's hops, the gap is a refusal, not a default."""
+        with unittest.mock.patch.dict(
+            rr._NUMBER_WORDS, {"ONE": 1, "TWO": 2, "THREE": 3}, clear=True
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                rr.assert_parsing_covers_hops(
+                    self.base(fallback_labels="number_words"), [2, 3, 4], src="test"
+                )
+        self.assertIn("[4]", str(ctx.exception))
+
+    def test_number_words_cover_every_single_digit_hop(self) -> None:
+        for hop in range(1, rr.MAX_PARSEABLE_HOP + 1):
+            record = rr.assert_parsing_covers_hops(
+                self.base(fallback_labels="number_words", default_hop=hop), [hop], src="test"
+            )
+            self.assertEqual(record["labels_per_hop"][hop][0].isalpha(), True)
+            self.assertTrue(rr.hop_word_labels(hop))
+
+    def test_an_unknown_fallback_table_is_refused(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            rr.assert_parsing_covers_hops(
+                self.base(fallback_labels="roman_numerals"), [2, 3], src="test"
+            )
+        self.assertIn("roman_numerals", str(ctx.exception))
 
 
 class TestRouterConfigs(unittest.TestCase):
@@ -405,6 +539,13 @@ class TestRouterConfigs(unittest.TestCase):
         self.assertEqual(cfg["predictions"]["hop_field"], "predicted_hop")
         self.assertEqual(cfg["prompt_file"], "prompt_few_shot_musique.md")
         self.assertEqual(cfg["retrieval"]["input_key"], "musique_few_shot_top5_pinned600")
+        # C1: the response is cut at the answer, and the "A:"-prefix regex is off because
+        # this prompt consumes that cue itself.
+        self.assertEqual(cfg["response_truncate_at"], ["\n"])
+        self.assertIsNone(cfg["parsing_overrides"]["answer_regex"])
+        # N2: no dead zero-shot output root - this config has no zero-shot arm.
+        self.assertNotIn("output_subdir_zero_shot", cfg)
+        self.assertIn("output_subdir_few_shot", cfg)
 
     def test_the_predictions_field_names_are_the_consumers_defaults(self) -> None:
         router = load_config("router_musique.json")["predictions"]
@@ -424,6 +565,34 @@ class TestRouterConfigs(unittest.TestCase):
         self.assertIsNone(cfg["prompt_file"])
         self.assertNotIn("eval_rows_per_hop", cfg)
         self.assertNotIn("parsing_overrides", cfg)
+        # No truncation on this path: its responses are multi-line by design, so v1 parsing
+        # is untouched.
+        self.assertEqual(cfg["response_truncate_at"], [])
+        self.assertIn("output_subdir_zero_shot", cfg)
+
+
+class TestAccuracyReporting(unittest.TestCase):
+    """I2: the accuracy numbers carry their definitions, and defaults are broken out."""
+
+    def test_definitions_cover_every_reported_accuracy_key(self) -> None:
+        metrics = rr.compute_metrics(
+            [2, 3, 2], [2, 3, 4], 42, "stub/model", "run", [2, 3, 4]
+        )
+        self.assertAlmostEqual(metrics["overall_accuracy"], 2 / 3)
+        self.assertEqual(metrics["hop_4_accuracy"], 0.0)
+        self.assertEqual(metrics["hop_4_total"], 1)
+        for key in ("gold_hop_count", "overall_accuracy", "hop_<h>_accuracy",
+                    "hop_<h>_total", "unparsed_response_rows"):
+            self.assertIn(key, rr.ACCURACY_DEFINITIONS)
+        # The per-hop rows are recall, and the definition has to say so - it is the reading a
+        # routing table invites.
+        self.assertIn("recall", rr.ACCURACY_DEFINITIONS["hop_<h>_accuracy"])
+
+    def test_defaulted_rows_are_counted_per_gold_hop(self) -> None:
+        per_hop = rr.unparsed_rows_per_hop(
+            [2, 3, 4, 4], [True, False, False, False], [2, 3, 4]
+        )
+        self.assertEqual(per_hop, {"2": 0, "3": 1, "4": 2})
 
 
 # ------------------------------------------ the decomposer's side of the join
@@ -468,6 +637,31 @@ class TestHopSourceResolution(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             self.resolve("oracle_guided", cli="p.jsonl")
         self.assertIn("would be ignored", str(ctx.exception))
+
+    def test_a_condition_with_an_explicit_null_hop_source_is_refused(self) -> None:
+        """N4: a null reads as "this arm names no source", not as "inherit the default"."""
+        cfg = dict(self.cfg)
+        cfg["conditions"] = dict(cfg["conditions"], nulled={"guided": True, "hop_source": None})
+        name, block = rd.resolve_condition(cfg, "nulled")
+        with self.assertRaises(SystemExit) as ctx:
+            rd.resolve_hop_source(name, block, cfg, guided=True, cli_predictions=None)
+        self.assertIn("hop_source", str(ctx.exception))
+
+    def test_predictions_with_query_exemplar_hop_lines_is_refused(self) -> None:
+        """I3: that mode would stamp the PREDICTION on every exemplar (ADR 0013's defect)."""
+        cfg = dict(self.cfg)
+        cfg["few_shot_exemplar_hop_count"] = "query"
+        name, block = rd.resolve_condition(cfg, "router_guided")
+        with self.assertRaises(SystemExit) as ctx:
+            rd.resolve_hop_source(name, block, cfg, guided=True, cli_predictions="p.jsonl")
+        message = str(ctx.exception)
+        self.assertIn("few_shot_exemplar_hop_count", message)
+        self.assertIn("exemplar_gold", message)
+
+    def test_the_committed_musique_config_uses_exemplar_gold(self) -> None:
+        # The combination above is unreachable from the committed configs, which is what
+        # makes the refusal a guard rather than a fix.
+        self.assertEqual(self.cfg["few_shot_exemplar_hop_count"], "exemplar_gold")
 
     def test_an_unknown_hop_source_is_refused(self) -> None:
         cfg = dict(self.cfg)
@@ -574,6 +768,11 @@ class TestRouterCliDryRun(unittest.TestCase):
             self.assertIn("not written", metrics["predictions_note"])
             self.assertIsNone(metrics["accuracy_metrics"])
             self.assertFalse(metrics["model_size"]["ceiling_asserted"])
+            # The parsing-coverage guard runs with no weights, so a dry run proves the
+            # config's hops are all expressible and default_hop is one of them (I1).
+            self.assertTrue(metrics["parsing_coverage"]["asserted"])
+            self.assertEqual(metrics["parsing_coverage"]["digit_class"], "[234]")
+            self.assertIn(metrics["parsing_coverage"]["default_hop"], [2, 3, 4])
 
             snapshot = json.loads((run_dir / "config.json").read_text())
             self.assertTrue(snapshot["predictions"]["enabled"])
@@ -611,6 +810,18 @@ class TestRouterCliDryRun(unittest.TestCase):
             # rather than silently prompting zero-shot under a few-shot label.
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("retrieval", (proc.stdout + proc.stderr).lower())
+
+    def test_a_zero_shot_prompt_has_no_output_root_in_this_config(self) -> None:
+        """N2: the removed knob becomes a named refusal, not a KeyError or a silent path."""
+        proc = run_cli([
+            ROUTER_RUNNER, "--model", ROUTER_MODEL,
+            "--config", "router_musique.json",
+            "--prompt-file", "prompt_zero_shot.md",
+            "--retrieval-input", RETRIEVAL_FIXTURE,
+            "--dry-run", UNPINNED,
+        ])
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("output_subdir_zero_shot", proc.stdout + proc.stderr)
 
     def test_the_v1_prompt_is_refused_by_the_few_shot_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

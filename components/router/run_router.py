@@ -50,15 +50,19 @@ import re
 import statistics
 import sys
 from pathlib import Path
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_REPO_ROOT / "src"))
-#: Four rules this component must not own a second copy of: how a question source with ids
+#: Three rules this component must not own a second copy of: how a question source with ids
 #: is read, what "this exemplar IS the query" means, and what the pinned ADR 0007 evaluation
 #: set is (by id, not only by count). They live in the decomposer's runner and are *imported*
 #: here rather than duplicated, the same way ``components/answerer/run_answerer.py`` imports
 #: the eval-set assertion — a second copy of a leakage rule is a rule that drifts.
+#:
+#: Inserted BEFORE ``src`` so that ``src`` ends up first on the path: the shared modules must
+#: not be shadowed by a same-named file in a component directory (PR #43 review, N3).
 sys.path.insert(0, str(_REPO_ROOT / "components" / "decomposer"))
+sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from hop_matching import parse_hop_from_id  # noqa: E402
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
@@ -73,12 +77,23 @@ from run_config import (  # noqa: E402
     runs_path,
 )
 from seeding import new_rng, set_global_seed  # noqa: E402
+from step_lines import post_process_generation  # noqa: E402
 
 import run_decomposer as rd  # noqa: E402
 
-_THINK_RX = re.compile(r"<think>.*?</think>", re.DOTALL)
+#: Number words, for the response-parsing fallbacks. Covers 1-9 rather than v1's 1-3 so the
+#: fallback follows the config's ``hops`` instead of MetaQA's: with 1/2/3 only, a MuSiQue
+#: router's "four hops" fell through to ``parsing.default_hop`` and was scored as a
+#: prediction (PR #43 review, I1). The upper bound is 9 because the digit-class rule builds a
+#: single-character regex class; :func:`assert_parsing_covers_hops` refuses a two-digit hop
+#: depth rather than mis-parsing it.
+_NUMBER_WORDS = {
+    "ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5,
+    "SIX": 6, "SEVEN": 7, "EIGHT": 8, "NINE": 9,
+}
 
-_NUMBER_WORDS = {"ONE": 1, "TWO": 2, "THREE": 3}
+#: The largest hop depth the digit-class parsing rule can read (single character class).
+MAX_PARSEABLE_HOP = 9
 
 #: How many offending ids / rows an error message lists before it truncates.
 _MAX_REPORTED = 10
@@ -179,6 +194,7 @@ def examples_from_retrieval_row(
             f"k, or lower few_shot k in the config."
         )
     examples: list[dict] = []
+    query_question = row.get("query_question")
     for cand in kept[:k]:
         hop = parse_hop_from_id(cand.get("pool_id"))
         if hop is None:
@@ -198,6 +214,17 @@ def examples_from_retrieval_row(
         examples.append(
             {"pool_id": cand.get("pool_id"), "question": question.strip(), "hop_count": hop}
         )
+    # The point of the exclusion is that no exemplar is the query; assert it on the kept set
+    # rather than trusting the filter above (the decomposer asserts the same thing after its
+    # own filter - PR #43 review, N1).
+    wanted = rd.normalize_for_self_exclusion(query_question)
+    for ex in examples:
+        if wanted and rd.normalize_for_self_exclusion(ex["question"]) == wanted:
+            raise AssertionError(
+                f"[router] query_id={query_id!r} kept an exemplar identical to the query "
+                f"after self-exclusion (pool_id={ex['pool_id']!r}); this is a bug in "
+                f"examples_from_retrieval_row."
+            )
     return examples, self_excluded
 
 
@@ -282,6 +309,112 @@ def write_predictions_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def clean_response(response: str, truncate_at: list[str] | tuple[str, ...] | None) -> str:
+    """The part of a response that is the model's answer, before any hop count is read.
+
+    Two steps, in this order:
+
+    1. ``<think>`` blocks and outer whitespace go, with the shared helper the decomposer
+       uses (``src/step_lines.py``), so there is one definition of "generation artifact";
+    2. the text is cut at the first of the configured tail markers.
+
+    The order matters and is the reason this is not a single call to
+    ``post_process_generation``: that helper truncates *before* stripping outer whitespace,
+    so a response beginning with a newline would be cut down to the empty string by a
+    ``"\\n"`` marker.
+
+    Why truncation exists at all (PR #43 review, C1). The retrieved-few-shot prompt ends with
+    the ``A:`` cue, so the model's own answer is the *first* thing in the response - and a
+    model with tokens left over then happily writes a fresh ``Q: … A: …`` pair of its own.
+    Read against the untruncated response, an ``A:\\s*(\\d)`` rule matches that regurgitated
+    pair instead of the answer, and returns another question's hop count as this query's
+    prediction with ``parse_fallback`` false. Cutting the response at its first line ends the
+    read at the answer. Markers come from the config, because what counts as the tail depends
+    on the prompt: the v1 MetaQA prompts elicit a multi-line ``Trace:``/``A:`` response and
+    set no markers at all, so their parsing is unchanged.
+    """
+    cleaned = post_process_generation(response, strip_think=True, truncate_at=None)
+    for marker in truncate_at or []:
+        cleaned = cleaned.split(marker)[0]
+    return cleaned.strip()
+
+
+def hop_word_labels(hop: int) -> tuple[str, ...]:
+    """The written forms of "<hop> hops" the ``hop_words`` fallback recognises.
+
+    Derived from the hop depth rather than listed per depth, so the fallback follows the
+    config's ``hops`` and cannot silently cover 1/2/3 only (PR #43 review, I1).
+    """
+    word = next((w for w, v in _NUMBER_WORDS.items() if v == hop), None)
+    labels = [f"{hop}-hop", f"{hop} hop"]
+    if word:
+        labels += [f"{word.lower()}-hop", f"{word.lower()} hop"]
+    return tuple(labels)
+
+
+def assert_parsing_covers_hops(parsing: dict, hops: list[int], *, src: str) -> dict[str, Any]:
+    """Refuse a config whose parsing rules cannot express every hop depth it may predict.
+
+    A source-level guard for what the configs used to say in prose only (ADR 0016: an
+    invariant that matters is asserted, not documented). Three refusals:
+
+    - a hop depth above :data:`MAX_PARSEABLE_HOP`, because the digit-class rule is a
+      single-character regex class and a two-digit depth would read as its first digit;
+    - a hop depth the configured ``fallback_labels`` table has no word for, which would send
+      an otherwise readable response ("four hops") to ``default_hop``;
+    - a ``default_hop`` outside ``hops``, which would score every defaulted row against a
+      class the run does not evaluate.
+
+    The reason this is a refusal and not a warning (PR #43 review, I1): the default is
+    returned *as if it were a prediction*, so an uncovered depth does not look like a
+    failure - it looks like a router that always answers ``default_hop``, and on a set with
+    200 questions per hop that is a plausible-looking accuracy number.
+    """
+    if not hops:
+        raise SystemExit(f"{src} declares no 'hops', so there is nothing to predict")
+    too_deep = [h for h in hops if h < 1 or h > MAX_PARSEABLE_HOP]
+    if too_deep:
+        raise SystemExit(
+            f"{src} declares hop depth(s) {too_deep} outside 1..{MAX_PARSEABLE_HOP}. The "
+            f"response-parsing rules read a single digit (a regex character class), so a "
+            f"two-digit depth would be read as its first digit. Widening the range means "
+            f"changing the parsing rules, not the config."
+        )
+    fallback = require(parsing, "fallback_labels")
+    if fallback == "hop_words":
+        uncovered = [h for h in hops if not hop_word_labels(h)]
+        covered = {h: list(hop_word_labels(h)) for h in hops}
+    elif fallback == "number_words":
+        words = {v: w for w, v in _NUMBER_WORDS.items()}
+        uncovered = [h for h in hops if h not in words]
+        covered = {h: [words[h]] for h in hops if h in words}
+    else:
+        raise SystemExit(f"{src}: unknown parsing.fallback_labels {fallback!r}")
+    if uncovered:
+        raise SystemExit(
+            f"{src}: the {fallback!r} response-parsing fallback has no label for hop "
+            f"depth(s) {uncovered}, so a response naming one in words would fall through to "
+            f"parsing.default_hop and be recorded as a prediction. Extend _NUMBER_WORDS in "
+            f"{Path(__file__).name} (and its test) rather than accepting the gap."
+        )
+    default_hop = int(require(parsing, "default_hop"))
+    if default_hop not in hops:
+        raise SystemExit(
+            f"{src}: parsing.default_hop={default_hop} is not one of hops {hops}. Every "
+            f"unreadable response is recorded as that depth, so a default outside the "
+            f"evaluated classes would be counted as wrong for every query by construction. "
+            f"Set it with parsing_overrides if the model folder's value does not fit."
+        )
+    return {
+        "hops": list(hops),
+        "fallback_labels": fallback,
+        "labels_per_hop": covered,
+        "default_hop": default_hop,
+        "digit_class": "[" + "".join(str(h) for h in hops) + "]",
+        "asserted": True,
+    }
+
+
 def parse_hop_response(response: str, question: str, parsing: dict) -> tuple[int, bool]:
     """Extract a hop count from the model response, per the model's parsing config.
 
@@ -299,7 +432,7 @@ def parse_hop_response(response: str, question: str, parsing: dict) -> tuple[int
     digit_class = "[" + "".join(str(h) for h in hops) + "]"
     default_hop = int(require(parsing, "default_hop"))
 
-    clean = _THINK_RX.sub("", response, count=0).strip()
+    clean = clean_response(response, require(parsing, "truncate_at"))
 
     answer_regex = optional(parsing, "answer_regex")
     if answer_regex:
@@ -313,12 +446,8 @@ def parse_hop_response(response: str, question: str, parsing: dict) -> tuple[int
     fallback = require(parsing, "fallback_labels")
     if fallback == "hop_words":
         lower = clean.lower()
-        for hop, words in (
-            (1, ("1-hop", "one hop")),
-            (2, ("2-hop", "two hop")),
-            (3, ("3-hop", "three hop")),
-        ):
-            if hop in hops and any(w in lower for w in words):
+        for hop in hops:
+            if any(w in lower for w in hop_word_labels(hop)):
                 return hop, True
     elif fallback == "number_words":
         upper = clean.upper()
@@ -354,6 +483,13 @@ def classify_hop_count(
     The prompt is assembled by the caller (once per query, before anything is loaded) so
     that the retrieved-few-shot mode, the dry run and the real run all render the *same*
     text, and so a ``--dry-run`` exercises prompt assembly for real.
+
+    ``eos_token_id`` is passed explicitly (as the decomposer does) so a model that has
+    finished its answer can stop instead of spending the rest of the token budget writing
+    further question/answer pairs of its own. It is the same value ``generate`` would take
+    from the model's generation config, so this changes no v1 decoding; it is the stopping
+    behaviour that is *stated* rather than assumed. It is not what makes the parsing safe -
+    :func:`clean_response` is, because a model can always keep going (PR #43 review, C1).
     """
     import torch
 
@@ -370,6 +506,7 @@ def classify_hop_count(
             top_p=float(require(generation, "top_p")),
             do_sample=bool(require(generation, "do_sample")),
             pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
     response = tokenizer.decode(
@@ -550,6 +687,52 @@ def rows_from_retrieval(path: Path, *, sample_size) -> list[dict]:
     return rows
 
 
+#: What the accuracy numbers mean, recorded next to them. A metrics file read on its own has
+#: to say what "accuracy" was computed against, and a per-hop row of a routing table is easy
+#: to read as precision when it is recall (PR #43 review, I2).
+ACCURACY_DEFINITIONS = {
+    "gold_hop_count": (
+        "the query's GOLD hop depth: parsed from its MuSiQue id ('2hop__…' -> 2) on the "
+        "retrieval path, or the depth of the per-hop question file it was read from. Never a "
+        "prediction."
+    ),
+    "overall_accuracy": (
+        "exact-hop accuracy: predicted hop == gold hop, over every query in the run. Rows "
+        "whose response carried no readable hop count are INCLUDED, scored at "
+        "parsing.default_hop (see unparsed_response_rows)."
+    ),
+    "hop_<h>_accuracy": (
+        "within-gold-class recall: of the queries whose GOLD depth is h, the fraction "
+        "predicted h. It is not precision - it says nothing about how many other queries "
+        "were also predicted h, so the rows do not decompose a confusion matrix."
+    ),
+    "hop_<h>_total": "how many queries have gold depth h (the denominator above)",
+    "unparsed_response_rows": (
+        "rows whose response carried no readable hop count, so parsing.default_hop was "
+        "recorded as the prediction. They are counted in the accuracies above, which means a "
+        "high count inflates the accuracy of whichever class default_hop belongs to; "
+        "unparsed_response_rows_per_gold_hop breaks them out."
+    ),
+}
+
+
+def unparsed_rows_per_hop(
+    all_expected: list[int], parsed_flags: list[bool], hops: list[int]
+) -> dict[str, int]:
+    """How many defaulted rows sit in each gold hop class.
+
+    Reported because a defaulted row is scored as a prediction: with default_hop = 2, every
+    unreadable response is correct for a 2-hop query and wrong for a 3- or 4-hop one, so
+    where the defaults fell decides how much of a per-hop number is real (PR #43 review, I1).
+    """
+    return {
+        str(hop): sum(
+            1 for expected, ok in zip(all_expected, parsed_flags) if expected == hop and not ok
+        )
+        for hop in hops
+    }
+
+
 def compute_metrics(
     predictions: list[int],
     all_expected: list[int],
@@ -559,7 +742,7 @@ def compute_metrics(
     hops: list[int],
     run_idx: int | None = None,
 ) -> dict:
-    """Metrics for one run."""
+    """Metrics for one run. See :data:`ACCURACY_DEFINITIONS` for what they measure."""
     correct = sum(1 for p, e in zip(predictions, all_expected) if p == e)
     accuracy = correct / len(predictions) if predictions else 0.0
     per_hop: dict[str, float | int] = {}
@@ -703,10 +886,17 @@ def main() -> None:
     if args.output_root is not None:
         output_root = Path(args.output_root)
     else:
-        subdir = (
-            require(cfg, "output_subdir_zero_shot") if zero_shot
-            else require(cfg, "output_subdir_few_shot")
-        )
+        # A config declares an output root only for the prompting modes it supports, so a
+        # config with no zero-shot arm does not carry a dead zero-shot subdir (PR #43 review,
+        # N2). Selecting a prompt that mode does not cover is a refusal naming the key.
+        subdir_key = "output_subdir_zero_shot" if zero_shot else "output_subdir_few_shot"
+        subdir = optional(cfg, subdir_key)
+        if not subdir:
+            raise SystemExit(
+                f"{cfg.get('_config_path', '<config>')} declares no {subdir_key!r}, so it has "
+                f"no output root for the prompt this run selected ({prompt_file!r}). Pass "
+                f"--output-root, or use a config that supports this prompting mode."
+            )
         output_root = runs_path(paths_cfg, subdir)
 
     device = "cpu"
@@ -728,6 +918,14 @@ def main() -> None:
         src=config_src,
     )
     parsing["hops"] = hops
+    # Which tail markers end the answer in this prompt's responses. Declared per config
+    # because it is a property of the prompt shape, not of the model: the v1 MetaQA prompts
+    # set none (their responses are multi-line), the retrieved-few-shot prompt cuts at the
+    # first line break (see clean_response).
+    parsing["truncate_at"] = list(require(cfg, "response_truncate_at"))
+    # Before anything is loaded, and reachable by --dry-run: the parsing rules must be able to
+    # express every hop depth this config may predict, and default_hop must be one of them.
+    parsing_coverage = assert_parsing_covers_hops(parsing, hops, src=config_src)
 
     retrieval_mode: str | None = None
     retrieval_k: int | None = None
@@ -785,8 +983,10 @@ def main() -> None:
         "device": device,
         "generation": generation,
         "loader": loader,
-        "parsing": {k: v for k, v in parsing.items() if k != "hops"},
+        "parsing": {k: v for k, v in parsing.items() if k not in ("hops", "truncate_at")},
         "parsing_overrides": optional(cfg, "parsing_overrides"),
+        "response_truncate_at": parsing["truncate_at"],
+        "parsing_coverage": parsing_coverage,
         "few_shot": {
             "enabled": few_shot_enabled,
             "k": retrieval_k,
@@ -1005,6 +1205,7 @@ def main() -> None:
                 sum(len(r["prompt"]) for r in logged) / len(logged) if logged else 0
             ),
             "few_shot": few_shot_record,
+            "parsing_coverage": parsing_coverage,
             "model_size": unasserted_note("router", require(model_cfg, "model_id")),
             "accuracy_metrics": None,
             "accuracy_metrics_note": "unmeasured: --dry-run does not load a model or generate",
@@ -1092,11 +1293,18 @@ def main() -> None:
     metrics["questions_per_hop"] = counts
     metrics["evaluation_set"] = eval_set_record
     metrics["few_shot"] = few_shot_record
+    metrics["parsing_coverage"] = parsing_coverage
+    metrics["accuracy_definitions"] = ACCURACY_DEFINITIONS
     metrics["dry_run"] = False
     # A prediction that fell back to parsing.default_hop is a default, not a routing
     # decision; counted so a reader of the metrics can see how much of the accuracy is
-    # actually predicted. Reported for run 0, which is the run the outputs come from.
+    # actually predicted, and broken out per gold hop because a default is scored as a
+    # prediction (default_hop is correct for its own class and wrong for every other).
+    # Reported for run 0, which is the run the outputs come from.
     metrics["unparsed_response_rows"] = sum(1 for ok in all_runs_parsed[0] if not ok)
+    metrics["unparsed_response_rows_per_gold_hop"] = unparsed_rows_per_hop(
+        all_expected, all_runs_parsed[0], hops
+    )
 
     print("\n" + "=" * 30)
     if num_runs == 1:
@@ -1198,8 +1406,12 @@ def main() -> None:
                 else " (prompt carries its own examples, or none)"
             ),
             headline,
-            f"- Responses with no readable hop count (defaulted): "
-            f"{metrics['unparsed_response_rows']} of {len(rows)}",
+            f"- Responses with no readable hop count (recorded as "
+            f"parsing.default_hop={parsing_coverage['default_hop']}, and counted in the "
+            f"accuracies above): {metrics['unparsed_response_rows']} of {len(rows)}, per gold "
+            f"hop {metrics['unparsed_response_rows_per_gold_hop']}",
+            f"- Accuracy is exact-hop against the GOLD depth; the per-hop rows are "
+            f"within-gold-class recall (see accuracy_definitions in metrics.json)",
             f"- Detailed predictions: `{output_dir / detailed_name}`",
             (
                 f"- Predictions keyed by `{predictions_id_field}`: `{predictions_path}` "
