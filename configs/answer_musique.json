@@ -40,6 +40,8 @@
   },
   "_substitution_note": "Each [#k] in a sub-question is replaced by the answer the reader produced for step k (src/step_lines.py::substitute_step_references). accept_bare_references also recognises MuSiQue's bare '#k', which is both the gold convention read by --gold-decompositions and, per ADR 0012 (target_reference_style 'as_is'), the style the fine-tuned arm emits; without it the oracle ceiling could not be executed at all. A reference with no answer yet (a forward reference, an out-of-range k, a failed or empty generation) is left in the text verbatim and counted, never dropped. dry_run_answer_template stands in for a generated answer under --dry-run so the substitution chain is exercised with no model loaded.",
 
+  "_step_failure_taxonomy_note": "The step-level failure taxonomy (issue #16) has no knobs here on purpose: its category names and the rule that decides each one are code (src/step_failures.py), the same way the MetaQA compile-error taxonomy is code in scripts/evaluate_decompositions.py. Every flag is derived from fields this run already writes to <out_prefix>_per_item.json (unresolved_references, error, answer), so the counts in metrics.step_failure_taxonomy are re-derivable by hand from that file. Three categories named in issue #16 are reported as UNAVAILABLE rather than zero - empty_retrieval and unresolvable_entity do not exist in this design (there is no retriever and no knowledge base; ADR 0019 decision 2), and wrong_intermediate_answer would need the gold sub-answers that ADR 0019 keeps out of this path. Adding any of them is Jahid's call with his supervisor, not a config edit.",
+
   "answer_post_process": {
     "take_first_line": true,
     "strip_prefixes": ["Answer:", "answer:", "A:"],

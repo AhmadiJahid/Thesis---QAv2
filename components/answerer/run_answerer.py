@@ -16,7 +16,13 @@ What it does, per item:
 3. ask the reader model each sub-question over the item's **full paragraph list**;
 4. take the **final** step's answer as the predicted answer for the item;
 5. score it with MuSiQue's official answer EM and answer F1 against the item's gold answer
-   plus its alias list (``src/answer_metrics.py``).
+   plus its alias list (``src/answer_metrics.py``);
+6. flag each sub-question with a **step-level failure taxonomy**
+   (``src/step_failures.py``) — broken reference, generation error, empty answer — so a
+   wrong answer can be located rather than only counted. Two categories issue #16 named
+   (empty retrieval, unresolvable entity) do not exist in this design and a third (wrong
+   intermediate answer) needs gold sub-answers ADR 0019 keeps out of this path; all three
+   are emitted in the metrics JSON as unavailable, with the reason, rather than as zero.
 
 The three methodology choices — reader from the decomposer's registry, full-paragraph
 context, official EM/F1 — are Jahid's, made 2026-08-20 in session and pending supervisor
@@ -107,6 +113,13 @@ from run_config import (  # noqa: E402
     runs_path,
 )
 from seeding import set_global_seed  # noqa: E402
+from step_failures import (  # noqa: E402
+    STEP_FAILURE_DEFINITIONS,
+    STEP_FAILURE_TAXONOMY_NOTE,
+    UNAVAILABLE_STEP_FAILURE_CATEGORIES,
+    classify_step,
+    summarize_step_failures,
+)
 from step_lines import (  # noqa: E402
     post_process_generation,
     split_step_lines,
@@ -120,7 +133,10 @@ _WS_RX = re.compile(r"\s+")
 #: The only context policy that may ship (ADR 0019 decision 2).
 CONTEXT_POLICIES = ("all_paragraphs",)
 
-PER_ITEM_SCHEMA = "musique_answer_per_item/1"
+#: Bumped to /2 when each step record gained ``failure_flags`` (the step-level failure
+#: taxonomy, ``src/step_failures.py``). The change is additive — every /1 field is still
+#: there — but the version says which files carry the flags without having to open them.
+PER_ITEM_SCHEMA = "musique_answer_per_item/2"
 
 
 # ------------------------------------------------------------------ pure helpers
@@ -987,6 +1003,10 @@ def main() -> None:
     answers_truncated = 0
     rows_at_max_new_tokens = 0
     paragraph_counts: list[int] = []
+    #: Failure flags per sub-question (``src/step_failures.py``): every step of every item,
+    #: and separately the step whose answer *is* the item's prediction.
+    step_failure_flags: list[list[str]] = []
+    final_step_failure_flags: list[list[str]] = []
 
     for i, row in enumerate(eval_rows):
         if (i + 1) % progress_every == 0:
@@ -1088,6 +1108,15 @@ def main() -> None:
                     generation_records.append(dict(cost))
 
             answers[k] = answer
+            failure_flags = classify_step(
+                answer=answer,
+                unresolved_references=unresolved,
+                error=error,
+                executed=not args.dry_run,
+            )
+            step_failure_flags.append(failure_flags)
+            if k == len(steps):
+                final_step_failure_flags.append(failure_flags)
             step_records.append(
                 {
                     "step": k,
@@ -1098,6 +1127,7 @@ def main() -> None:
                     "resolved_references": resolved,
                     "unresolved_references": unresolved,
                     "error": error,
+                    "failure_flags": failure_flags,
                     **cost,
                 }
             )
@@ -1203,6 +1233,20 @@ def main() -> None:
                 1 for n in paragraph_counts if n < expected_paragraphs
             ),
         },
+        "step_failure_taxonomy": {
+            "note": STEP_FAILURE_TAXONOMY_NOTE,
+            "definitions": STEP_FAILURE_DEFINITIONS,
+            "not_available": UNAVAILABLE_STEP_FAILURE_CATEGORIES,
+            "all_steps": summarize_step_failures(step_failure_flags),
+            # The final step's answer is the item's prediction (see the loop), so a flag here
+            # is decisive for EM/F1 in a way an earlier step's is not - it is reported apart
+            # rather than averaged into the whole.
+            "final_step_only": summarize_step_failures(final_step_failure_flags),
+            "items_with_any_step_flag": sum(
+                1 for it in per_item if any(s["failure_flags"] for s in it["steps"])
+            ),
+            "items_with_no_steps_so_no_flags": items_with_no_steps,
+        },
         "evaluation_set": eval_set_record,
         "cost": cost_summary(generation_records),
         "metric_definitions": ANSWER_METRIC_DEFINITIONS,
@@ -1295,6 +1339,15 @@ def main() -> None:
             f"failed generations: "
             f"{failed_generations}; references resolved/unresolved: "
             f"{resolved_refs}/{unresolved_refs}",
+            "- Step failures: "
+            + json.dumps(metrics["step_failure_taxonomy"]["all_steps"]["by_category"])
+            + f" over {metrics['step_failure_taxonomy']['all_steps']['steps']} step(s) "
+            f"({metrics['step_failure_taxonomy']['all_steps']['steps_clean']} clean); "
+            "final-step flags: "
+            + json.dumps(metrics["step_failure_taxonomy"]["final_step_only"]["by_category"])
+            + "; not available here: "
+            + ", ".join(sorted(UNAVAILABLE_STEP_FAILURE_CATEGORIES))
+            + " (see the metrics JSON for why each is absent rather than zero)",
             (
                 f"- Parameters: {size_record['parameter_count']:,} "
                 f"(ceiling {size_record['parameter_ceiling']:,})"
