@@ -1,0 +1,1560 @@
+{
+  "_note": "Machine-readable metrics for exp-005 (issue #12): per-condition run metrics (generation cost, truncation), per-condition evaluator metrics (headline + per_gold_hop_metrics), and the 3 within-model pairwise --compare outputs (bootstrap CI + McNemar + paired t-test).",
+  "run_metrics": {
+    "unguided": {
+      "dry_run": false,
+      "total_rows": 600,
+      "rows_loaded_total": 600,
+      "rows_loaded_per_hop": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "distinct_query_ids": 600,
+      "evaluation_set": {
+        "expected_rows_per_hop": 200,
+        "expected_hops": [
+          2,
+          3,
+          4
+        ],
+        "rows_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
+        "pinned": true,
+        "allow_unpinned_flag": false,
+        "id_identity_checked": true,
+        "pinned_id_files": [
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+        ],
+        "pinned_id_count": 600,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 600,
+        "rows_loaded_per_hop": {
+          "2": 200,
+          "3": 200,
+          "4": 200
+        },
+        "distinct_query_ids": 600
+      },
+      "rows_with_empty_decomposition": 0,
+      "few_shot_enabled": true,
+      "few_shot_source_mode": "reranked",
+      "few_shot_source_counts": {
+        "reranked": 600
+      },
+      "few_shot_self_exclusion": {
+        "enabled": true,
+        "rows_with_a_self_example_dropped": 0,
+        "self_examples_dropped": 0,
+        "note": "counted on the reranked retrieval path only (the bi-encoder and random paths exclude by filtering, without a counter)"
+      },
+      "condition": "unguided",
+      "guided": false,
+      "stop_after_step_lines": null,
+      "rows_at_step_line_cap": null,
+      "rows_stopped_at_step_line_cap": null,
+      "max_new_tokens": 1024,
+      "rows_at_max_new_tokens": 0,
+      "step_lines_per_row_total": 2039,
+      "truncation_definitions": {
+        "rows_at_step_line_cap": "rows whose recorded decomposition has at least stop_after_step_lines steps under src/step_lines.py::split_step_lines - a property of the output, not evidence that the cap intervened",
+        "rows_stopped_at_step_line_cap": "rows where the step-line StoppingCriteria fired during decoding (read from the criterion's state): the generation was cut off by the cap",
+        "rows_at_max_new_tokens": "rows whose completion reached generation.max_new_tokens, i.e. the token budget ended the generation"
+      },
+      "seed": 42,
+      "few_shot_exemplar_hop_count": "exemplar_gold",
+      "adapter": null,
+      "no_few_shot": false,
+      "adapter_few_shot_override": false,
+      "adapter_prompt_parity": {
+        "checked": false,
+        "override": false,
+        "run": {
+          "guided": false,
+          "prompt_file": "prompt_unguided.md",
+          "prompt_style": "chat_template",
+          "few_shot_examples_in_prompt": true,
+          "prompt_sha256": "473221aaa3f24d2a63882a32445e6c3ebfcbd98eb40d7a6649490103172ff1fe"
+        },
+        "mismatches": [],
+        "note": "no --adapter in this run, so there is no training prompt to match"
+      },
+      "adapter_base_model": null,
+      "no_few_shot_ineffective": false,
+      "model_size": {
+        "component": "decomposer",
+        "model_id": "Qwen/Qwen3.5-9B",
+        "parameter_count": 8953803264,
+        "parameter_ceiling": 10000000000,
+        "ceiling_asserted": true
+      },
+      "embedding_model_size": null,
+      "cost": {
+        "rows_measured": 600,
+        "rows_total": 600,
+        "mean_prompt_tokens_per_query": 398.35333333333335,
+        "median_prompt_tokens_per_query": 396.5,
+        "mean_completion_tokens_per_query": 34.84,
+        "median_completion_tokens_per_query": 33.0,
+        "mean_total_tokens_per_query": 433.1933333333333,
+        "mean_latency_seconds_per_query": 2.478706896404425,
+        "median_latency_seconds_per_query": 2.3286069417372346,
+        "total_generation_seconds": 1487.2241378426552,
+        "definitions": {
+          "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+          "completion_tokens": "number of newly generated tokens for that row",
+          "latency_seconds": "wall clock around model.generate for that row (CUDA synchronized), excluding tokenization and decoding",
+          "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded"
+        }
+      },
+      "results_path": "runs/exp-005/20260821_233524/results.json",
+      "embedding_model_size_note": "no bi-encoder was loaded in this run (retrieval input supplied, few-shot disabled, or --dry-run), so its parameter count is unmeasured",
+      "git": {
+        "commit": "6fc4bba1b9df023625eb76a9d1d0ce6a53005858",
+        "branch": "main",
+        "dirty": true,
+        "dirty_file_count": 1,
+        "dirty_files": [
+          "?? \"Plan after the meeting.md\""
+        ]
+      }
+    },
+    "oracle_guided": {
+      "dry_run": false,
+      "total_rows": 600,
+      "rows_loaded_total": 600,
+      "rows_loaded_per_hop": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "distinct_query_ids": 600,
+      "evaluation_set": {
+        "expected_rows_per_hop": 200,
+        "expected_hops": [
+          2,
+          3,
+          4
+        ],
+        "rows_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
+        "pinned": true,
+        "allow_unpinned_flag": false,
+        "id_identity_checked": true,
+        "pinned_id_files": [
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+        ],
+        "pinned_id_count": 600,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 600,
+        "rows_loaded_per_hop": {
+          "2": 200,
+          "3": 200,
+          "4": 200
+        },
+        "distinct_query_ids": 600
+      },
+      "rows_with_empty_decomposition": 0,
+      "few_shot_enabled": true,
+      "few_shot_source_mode": "reranked",
+      "few_shot_source_counts": {
+        "reranked": 600
+      },
+      "few_shot_self_exclusion": {
+        "enabled": true,
+        "rows_with_a_self_example_dropped": 0,
+        "self_examples_dropped": 0,
+        "note": "counted on the reranked retrieval path only (the bi-encoder and random paths exclude by filtering, without a counter)"
+      },
+      "condition": "oracle_guided",
+      "guided": true,
+      "stop_after_step_lines": null,
+      "rows_at_step_line_cap": null,
+      "rows_stopped_at_step_line_cap": null,
+      "max_new_tokens": 1024,
+      "rows_at_max_new_tokens": 6,
+      "step_lines_per_row_total": 2083,
+      "truncation_definitions": {
+        "rows_at_step_line_cap": "rows whose recorded decomposition has at least stop_after_step_lines steps under src/step_lines.py::split_step_lines - a property of the output, not evidence that the cap intervened",
+        "rows_stopped_at_step_line_cap": "rows where the step-line StoppingCriteria fired during decoding (read from the criterion's state): the generation was cut off by the cap",
+        "rows_at_max_new_tokens": "rows whose completion reached generation.max_new_tokens, i.e. the token budget ended the generation"
+      },
+      "seed": 42,
+      "few_shot_exemplar_hop_count": "exemplar_gold",
+      "adapter": null,
+      "no_few_shot": false,
+      "adapter_few_shot_override": false,
+      "adapter_prompt_parity": {
+        "checked": false,
+        "override": false,
+        "run": {
+          "guided": true,
+          "prompt_file": "prompt.md",
+          "prompt_style": "chat_template",
+          "few_shot_examples_in_prompt": true,
+          "prompt_sha256": "f57117bff2f0c4b916d0a3521b9b651f58733cf2bd943aaef9139e0a7ffea12c"
+        },
+        "mismatches": [],
+        "note": "no --adapter in this run, so there is no training prompt to match"
+      },
+      "adapter_base_model": null,
+      "no_few_shot_ineffective": false,
+      "model_size": {
+        "component": "decomposer",
+        "model_id": "Qwen/Qwen3.5-9B",
+        "parameter_count": 8953803264,
+        "parameter_ceiling": 10000000000,
+        "ceiling_asserted": true
+      },
+      "embedding_model_size": null,
+      "cost": {
+        "rows_measured": 600,
+        "rows_total": 600,
+        "mean_prompt_tokens_per_query": 446.35333333333335,
+        "median_prompt_tokens_per_query": 444.5,
+        "mean_completion_tokens_per_query": 44.17,
+        "median_completion_tokens_per_query": 31.0,
+        "mean_total_tokens_per_query": 490.5233333333333,
+        "mean_latency_seconds_per_query": 3.128943187970047,
+        "median_latency_seconds_per_query": 2.2725278539583087,
+        "total_generation_seconds": 1877.3659127820283,
+        "definitions": {
+          "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+          "completion_tokens": "number of newly generated tokens for that row",
+          "latency_seconds": "wall clock around model.generate for that row (CUDA synchronized), excluding tokenization and decoding",
+          "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded"
+        }
+      },
+      "results_path": "runs/exp-005/20260822_000025/results.json",
+      "embedding_model_size_note": "no bi-encoder was loaded in this run (retrieval input supplied, few-shot disabled, or --dry-run), so its parameter count is unmeasured",
+      "git": {
+        "commit": "6fc4bba1b9df023625eb76a9d1d0ce6a53005858",
+        "branch": "main",
+        "dirty": true,
+        "dirty_file_count": 1,
+        "dirty_files": [
+          "?? \"Plan after the meeting.md\""
+        ]
+      }
+    },
+    "unguided_capped": {
+      "dry_run": false,
+      "total_rows": 600,
+      "rows_loaded_total": 600,
+      "rows_loaded_per_hop": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "distinct_query_ids": 600,
+      "evaluation_set": {
+        "expected_rows_per_hop": 200,
+        "expected_hops": [
+          2,
+          3,
+          4
+        ],
+        "rows_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
+        "pinned": true,
+        "allow_unpinned_flag": false,
+        "id_identity_checked": true,
+        "pinned_id_files": [
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+          "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+        ],
+        "pinned_id_count": 600,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 600,
+        "rows_loaded_per_hop": {
+          "2": 200,
+          "3": 200,
+          "4": 200
+        },
+        "distinct_query_ids": 600
+      },
+      "rows_with_empty_decomposition": 0,
+      "few_shot_enabled": true,
+      "few_shot_source_mode": "reranked",
+      "few_shot_source_counts": {
+        "reranked": 600
+      },
+      "few_shot_self_exclusion": {
+        "enabled": true,
+        "rows_with_a_self_example_dropped": 0,
+        "self_examples_dropped": 0,
+        "note": "counted on the reranked retrieval path only (the bi-encoder and random paths exclude by filtering, without a counter)"
+      },
+      "condition": "unguided_capped",
+      "guided": false,
+      "stop_after_step_lines": 8,
+      "rows_at_step_line_cap": 4,
+      "rows_stopped_at_step_line_cap": 2,
+      "max_new_tokens": 1024,
+      "rows_at_max_new_tokens": 0,
+      "step_lines_per_row_total": 2034,
+      "truncation_definitions": {
+        "rows_at_step_line_cap": "rows whose recorded decomposition has at least stop_after_step_lines steps under src/step_lines.py::split_step_lines - a property of the output, not evidence that the cap intervened",
+        "rows_stopped_at_step_line_cap": "rows where the step-line StoppingCriteria fired during decoding (read from the criterion's state): the generation was cut off by the cap",
+        "rows_at_max_new_tokens": "rows whose completion reached generation.max_new_tokens, i.e. the token budget ended the generation"
+      },
+      "seed": 42,
+      "few_shot_exemplar_hop_count": "exemplar_gold",
+      "adapter": null,
+      "no_few_shot": false,
+      "adapter_few_shot_override": false,
+      "adapter_prompt_parity": {
+        "checked": false,
+        "override": false,
+        "run": {
+          "guided": false,
+          "prompt_file": "prompt_unguided.md",
+          "prompt_style": "chat_template",
+          "few_shot_examples_in_prompt": true,
+          "prompt_sha256": "473221aaa3f24d2a63882a32445e6c3ebfcbd98eb40d7a6649490103172ff1fe"
+        },
+        "mismatches": [],
+        "note": "no --adapter in this run, so there is no training prompt to match"
+      },
+      "adapter_base_model": null,
+      "no_few_shot_ineffective": false,
+      "model_size": {
+        "component": "decomposer",
+        "model_id": "Qwen/Qwen3.5-9B",
+        "parameter_count": 8953803264,
+        "parameter_ceiling": 10000000000,
+        "ceiling_asserted": true
+      },
+      "embedding_model_size": null,
+      "cost": {
+        "rows_measured": 600,
+        "rows_total": 600,
+        "mean_prompt_tokens_per_query": 398.35333333333335,
+        "median_prompt_tokens_per_query": 396.5,
+        "mean_completion_tokens_per_query": 34.75333333333333,
+        "median_completion_tokens_per_query": 33.0,
+        "mean_total_tokens_per_query": 433.1066666666667,
+        "mean_latency_seconds_per_query": 2.474445170170317,
+        "median_latency_seconds_per_query": 2.335685092024505,
+        "total_generation_seconds": 1484.6671021021903,
+        "definitions": {
+          "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+          "completion_tokens": "number of newly generated tokens for that row",
+          "latency_seconds": "wall clock around model.generate for that row (CUDA synchronized), excluding tokenization and decoding",
+          "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded"
+        }
+      },
+      "results_path": "runs/exp-005/20260822_003156/results.json",
+      "embedding_model_size_note": "no bi-encoder was loaded in this run (retrieval input supplied, few-shot disabled, or --dry-run), so its parameter count is unmeasured",
+      "git": {
+        "commit": "6fc4bba1b9df023625eb76a9d1d0ce6a53005858",
+        "branch": "main",
+        "dirty": true,
+        "dirty_file_count": 1,
+        "dirty_files": [
+          "?? \"Plan after the meeting.md\""
+        ]
+      }
+    }
+  },
+  "eval_metrics": {
+    "unguided": {
+      "script": "musique_decompositions_evaluator.py",
+      "created_utc": "2026-08-22T10:02:19.815026+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260821_233524/results.json",
+      "gold_path": "/cta/users/fyilmaz/Thesis---QA/MusiQue/Data/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+      "total_predictions_input": 600,
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.06166666666666667,
+      "step_precision_macro": 0.20787896825396826,
+      "step_recall_macro": 0.22152777777777777,
+      "step_f1_macro": 0.21310209235209235,
+      "ordered_step_accuracy_macro": 0.19112698412698412,
+      "rouge_l_precision_macro": 0.549446533454807,
+      "rouge_l_recall_macro": 0.5875539419606374,
+      "rouge_l_f1_macro": 0.5588554282350716,
+      "reference_validity_macro": 1.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.6416666666666667,
+      "step_count_mae": 0.6416666666666667,
+      "mean_signed_step_count_error": 0.3983333333333333,
+      "over_decomposition_rate": 0.365,
+      "under_decomposition_rate": 0.115,
+      "step_count_exact_rate": 0.52,
+      "hop_count_exact_match_rate": 0.52,
+      "hop_count_abs_error_mae": 0.6416666666666667,
+      "predicted_hop_distribution": {
+        "3": 181,
+        "2": 173,
+        "4": 133,
+        "5": 77,
+        "6": 22,
+        "1": 1,
+        "7": 9,
+        "11": 1,
+        "8": 2,
+        "10": 1
+      },
+      "gold_hop_distribution": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "per_gold_hop_metrics": {
+        "2": {
+          "num_rows": 200,
+          "exact_match_rate": 0.125,
+          "step_precision_macro": 0.32333333333333336,
+          "step_recall_macro": 0.3425,
+          "step_f1_macro": 0.331,
+          "ordered_step_accuracy_macro": 0.3183333333333333,
+          "rouge_l_precision_macro": 0.637383009195272,
+          "rouge_l_recall_macro": 0.6813031246792722,
+          "rouge_l_f1_macro": 0.6489493377532625,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.335,
+          "step_count_mae": 0.335,
+          "mean_signed_step_count_error": 0.325,
+          "over_decomposition_rate": 0.28,
+          "under_decomposition_rate": 0.005,
+          "step_count_exact_rate": 0.715,
+          "hop_count_exact_match_rate": 0.715,
+          "hop_count_abs_error_mae": 0.335,
+          "predicted_hop_distribution": {
+            "3": 49,
+            "2": 143,
+            "4": 5,
+            "5": 1,
+            "6": 1,
+            "1": 1
+          }
+        },
+        "3": {
+          "num_rows": 200,
+          "exact_match_rate": 0.03,
+          "step_precision_macro": 0.16691666666666666,
+          "step_recall_macro": 0.17833333333333332,
+          "step_f1_macro": 0.17077380952380952,
+          "ordered_step_accuracy_macro": 0.14275000000000002,
+          "rouge_l_precision_macro": 0.5343522491387344,
+          "rouge_l_recall_macro": 0.5710560845418251,
+          "rouge_l_f1_macro": 0.5429462924886947,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.695,
+          "step_count_mae": 0.695,
+          "mean_signed_step_count_error": 0.435,
+          "over_decomposition_rate": 0.4,
+          "under_decomposition_rate": 0.13,
+          "step_count_exact_rate": 0.47,
+          "hop_count_exact_match_rate": 0.47,
+          "hop_count_abs_error_mae": 0.695,
+          "predicted_hop_distribution": {
+            "2": 26,
+            "3": 94,
+            "4": 53,
+            "5": 22,
+            "6": 4,
+            "7": 1
+          }
+        },
+        "4": {
+          "num_rows": 200,
+          "exact_match_rate": 0.03,
+          "step_precision_macro": 0.13338690476190476,
+          "step_recall_macro": 0.14375,
+          "step_f1_macro": 0.13753246753246753,
+          "ordered_step_accuracy_macro": 0.11229761904761905,
+          "rouge_l_precision_macro": 0.47660434203041474,
+          "rouge_l_recall_macro": 0.5103026166608148,
+          "rouge_l_f1_macro": 0.48467065446325747,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.895,
+          "step_count_mae": 0.895,
+          "mean_signed_step_count_error": 0.435,
+          "over_decomposition_rate": 0.415,
+          "under_decomposition_rate": 0.21,
+          "step_count_exact_rate": 0.375,
+          "hop_count_exact_match_rate": 0.375,
+          "hop_count_abs_error_mae": 0.895,
+          "predicted_hop_distribution": {
+            "5": 54,
+            "3": 38,
+            "4": 75,
+            "6": 17,
+            "11": 1,
+            "7": 8,
+            "2": 4,
+            "8": 2,
+            "10": 1
+          }
+        }
+      },
+      "composite_score": 0.42119004329004334,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "metric_definitions": {
+        "step_normalization": "each step is lowercased, punctuation is stripped except '#' (so [#k] references survive), and whitespace is collapsed to single spaces",
+        "step_splitting": "a string decomposition is split on newlines and a leading '<n>. ' enumerator is removed per line (src/step_lines.py::split_step_lines, shared with the decomposer's step-line budget so both count the same steps); a list decomposition takes each string, or each item's 'question' field",
+        "question_matching": "a prediction is joined to gold by its question text, lowercased and whitespace-collapsed (not by id); unmatched predictions are counted in missing_gold_count and excluded from every metric",
+        "exact_match_rate": "1.0 when the predicted step list equals the gold step list in length and in normalized text at every position, else 0.0; averaged over evaluated rows",
+        "step_precision_macro": "set-based: |normalized pred steps AND gold steps| / |pred steps|, averaged over rows",
+        "step_recall_macro": "set-based: |normalized pred steps AND gold steps| / |gold steps|, averaged over rows",
+        "step_f1_macro": "harmonic mean of the per-row set-based precision and recall, averaged over rows (macro, not computed from the averaged P and R). Unordered and duplicate-insensitive: identical steps collapse in the set",
+        "ordered_step_accuracy_macro": "positional: matches at the same index / max(len(pred), len(gold)), averaged over rows; a length mismatch is penalised through the denominator",
+        "rouge_l_macro": "ROUGE-L on the newline-joined step text, LCS over whitespace tokens of the lowercased text (no punctuation stripping at this stage), averaged over rows",
+        "reference_validity": "a [#k] reference is valid when 1 <= k < its own step index. macro = mean of per-row valid rates (a row with no references scores 1.0); micro = total valid references / total references across all rows",
+        "step_count_abs_error_mae": "mean of |len(pred steps) - len(gold steps)|",
+        "step_count_mae": "same number as step_count_abs_error_mae, reported again so the directional step-count family (over/under rates, signed mean, MAE) reads as one block",
+        "step_count_signed_error": "per item: len(pred steps) - len(gold steps). Positive = over-decomposition (more steps than gold), negative = under-decomposition",
+        "mean_signed_step_count_error": "mean of the per-item signed error. Near zero does NOT mean accurate step counts: over- and under-decomposition cancel, which is why the two rates and the MAE are reported next to it",
+        "over_decomposition_rate": "fraction of rows with len(pred steps) > len(gold steps)",
+        "under_decomposition_rate": "fraction of rows with len(pred steps) < len(gold steps)",
+        "step_count_exact_rate": "fraction of rows with len(pred steps) == len(gold steps), i.e. exactly 1 - over_decomposition_rate - under_decomposition_rate. NOT the same as hop_count_exact_match_rate, which compares against the gold 'hop_count' field instead of the gold step count (see gold_step_count_vs_hop_count)",
+        "gold_step_count_vs_hop_count": "two gold denominators exist: len(gold steps) for the directional step-count family, and the gold 'hop_count' field for the hop-count family. The gold loader asserts they agree on every row that carries a positive 'hop_count' and aborts naming the offending ids, so the two families cannot silently diverge",
+        "item_id": "the prediction's 'query_id', else its 'id', else its normalized question text; this is the key --compare aligns two runs on",
+        "hop_count_metrics": "predicted hop count is the number of predicted steps; gold hop count is the gold 'hop_count' field when present and positive, else the gold step count",
+        "composite_score": "weighted sum of step_f1_macro, ordered_step_accuracy_macro, reference_validity_micro and a step-count term max(0, 1 - step_count_abs_error_mae / scale); the weights and scale are recorded alongside as composite_score_weights and composite_step_count_error_scale",
+        "not_a_semantic_metric": "every metric here is string-level. Two decompositions that mean the same thing but word a step differently score as a mismatch"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    },
+    "oracle_guided": {
+      "script": "musique_decompositions_evaluator.py",
+      "created_utc": "2026-08-22T10:02:21.999486+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_000025/results.json",
+      "gold_path": "/cta/users/fyilmaz/Thesis---QA/MusiQue/Data/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+      "total_predictions_input": 600,
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.07333333333333333,
+      "step_precision_macro": 0.23583333333333334,
+      "step_recall_macro": 0.23833333333333334,
+      "step_f1_macro": 0.23683994708994707,
+      "ordered_step_accuracy_macro": 0.2204722222222222,
+      "rouge_l_precision_macro": 0.5675121177896328,
+      "rouge_l_recall_macro": 0.5949390044501569,
+      "rouge_l_f1_macro": 0.5710410956364557,
+      "reference_validity_macro": 1.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.5383333333333333,
+      "step_count_mae": 0.5383333333333333,
+      "mean_signed_step_count_error": 0.4716666666666667,
+      "over_decomposition_rate": 0.09333333333333334,
+      "under_decomposition_rate": 0.03333333333333333,
+      "step_count_exact_rate": 0.8733333333333333,
+      "hop_count_exact_match_rate": 0.8733333333333333,
+      "hop_count_abs_error_mae": 0.5383333333333333,
+      "predicted_hop_distribution": {
+        "3": 180,
+        "2": 207,
+        "4": 175,
+        "12": 1,
+        "60": 1,
+        "10": 1,
+        "5": 24,
+        "9": 1,
+        "17": 1,
+        "30": 1,
+        "33": 1,
+        "7": 1,
+        "6": 4,
+        "50": 1,
+        "57": 1
+      },
+      "gold_hop_distribution": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "per_gold_hop_metrics": {
+        "2": {
+          "num_rows": 200,
+          "exact_match_rate": 0.155,
+          "step_precision_macro": 0.365,
+          "step_recall_macro": 0.3675,
+          "step_f1_macro": 0.366,
+          "ordered_step_accuracy_macro": 0.36166666666666664,
+          "rouge_l_precision_macro": 0.6770932912811127,
+          "rouge_l_recall_macro": 0.6826318298910674,
+          "rouge_l_f1_macro": 0.674358172527212,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.025,
+          "step_count_mae": 0.025,
+          "mean_signed_step_count_error": 0.025,
+          "over_decomposition_rate": 0.025,
+          "under_decomposition_rate": 0.0,
+          "step_count_exact_rate": 0.975,
+          "hop_count_exact_match_rate": 0.975,
+          "hop_count_abs_error_mae": 0.025,
+          "predicted_hop_distribution": {
+            "3": 5,
+            "2": 195
+          }
+        },
+        "3": {
+          "num_rows": 200,
+          "exact_match_rate": 0.035,
+          "step_precision_macro": 0.19458333333333333,
+          "step_recall_macro": 0.195,
+          "step_f1_macro": 0.1946190476190476,
+          "ordered_step_accuracy_macro": 0.17375,
+          "rouge_l_precision_macro": 0.5509078624977571,
+          "rouge_l_recall_macro": 0.5809722361781797,
+          "rouge_l_f1_macro": 0.5528508746966376,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.745,
+          "step_count_mae": 0.745,
+          "mean_signed_step_count_error": 0.625,
+          "over_decomposition_rate": 0.105,
+          "under_decomposition_rate": 0.06,
+          "step_count_exact_rate": 0.835,
+          "hop_count_exact_match_rate": 0.835,
+          "hop_count_abs_error_mae": 0.745,
+          "predicted_hop_distribution": {
+            "2": 12,
+            "3": 167,
+            "4": 13,
+            "12": 1,
+            "60": 1,
+            "10": 1,
+            "5": 2,
+            "9": 1,
+            "17": 1,
+            "30": 1
+          }
+        },
+        "4": {
+          "num_rows": 200,
+          "exact_match_rate": 0.03,
+          "step_precision_macro": 0.14791666666666667,
+          "step_recall_macro": 0.1525,
+          "step_f1_macro": 0.14990079365079365,
+          "ordered_step_accuracy_macro": 0.126,
+          "rouge_l_precision_macro": 0.47453519959002866,
+          "rouge_l_recall_macro": 0.5212129472812237,
+          "rouge_l_f1_macro": 0.48591423968551745,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.845,
+          "step_count_mae": 0.845,
+          "mean_signed_step_count_error": 0.765,
+          "over_decomposition_rate": 0.15,
+          "under_decomposition_rate": 0.04,
+          "step_count_exact_rate": 0.81,
+          "hop_count_exact_match_rate": 0.81,
+          "hop_count_abs_error_mae": 0.845,
+          "predicted_hop_distribution": {
+            "4": 162,
+            "5": 22,
+            "3": 8,
+            "33": 1,
+            "7": 1,
+            "6": 4,
+            "50": 1,
+            "57": 1
+          }
+        }
+      },
+      "composite_score": 0.44293320105820105,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "metric_definitions": {
+        "step_normalization": "each step is lowercased, punctuation is stripped except '#' (so [#k] references survive), and whitespace is collapsed to single spaces",
+        "step_splitting": "a string decomposition is split on newlines and a leading '<n>. ' enumerator is removed per line (src/step_lines.py::split_step_lines, shared with the decomposer's step-line budget so both count the same steps); a list decomposition takes each string, or each item's 'question' field",
+        "question_matching": "a prediction is joined to gold by its question text, lowercased and whitespace-collapsed (not by id); unmatched predictions are counted in missing_gold_count and excluded from every metric",
+        "exact_match_rate": "1.0 when the predicted step list equals the gold step list in length and in normalized text at every position, else 0.0; averaged over evaluated rows",
+        "step_precision_macro": "set-based: |normalized pred steps AND gold steps| / |pred steps|, averaged over rows",
+        "step_recall_macro": "set-based: |normalized pred steps AND gold steps| / |gold steps|, averaged over rows",
+        "step_f1_macro": "harmonic mean of the per-row set-based precision and recall, averaged over rows (macro, not computed from the averaged P and R). Unordered and duplicate-insensitive: identical steps collapse in the set",
+        "ordered_step_accuracy_macro": "positional: matches at the same index / max(len(pred), len(gold)), averaged over rows; a length mismatch is penalised through the denominator",
+        "rouge_l_macro": "ROUGE-L on the newline-joined step text, LCS over whitespace tokens of the lowercased text (no punctuation stripping at this stage), averaged over rows",
+        "reference_validity": "a [#k] reference is valid when 1 <= k < its own step index. macro = mean of per-row valid rates (a row with no references scores 1.0); micro = total valid references / total references across all rows",
+        "step_count_abs_error_mae": "mean of |len(pred steps) - len(gold steps)|",
+        "step_count_mae": "same number as step_count_abs_error_mae, reported again so the directional step-count family (over/under rates, signed mean, MAE) reads as one block",
+        "step_count_signed_error": "per item: len(pred steps) - len(gold steps). Positive = over-decomposition (more steps than gold), negative = under-decomposition",
+        "mean_signed_step_count_error": "mean of the per-item signed error. Near zero does NOT mean accurate step counts: over- and under-decomposition cancel, which is why the two rates and the MAE are reported next to it",
+        "over_decomposition_rate": "fraction of rows with len(pred steps) > len(gold steps)",
+        "under_decomposition_rate": "fraction of rows with len(pred steps) < len(gold steps)",
+        "step_count_exact_rate": "fraction of rows with len(pred steps) == len(gold steps), i.e. exactly 1 - over_decomposition_rate - under_decomposition_rate. NOT the same as hop_count_exact_match_rate, which compares against the gold 'hop_count' field instead of the gold step count (see gold_step_count_vs_hop_count)",
+        "gold_step_count_vs_hop_count": "two gold denominators exist: len(gold steps) for the directional step-count family, and the gold 'hop_count' field for the hop-count family. The gold loader asserts they agree on every row that carries a positive 'hop_count' and aborts naming the offending ids, so the two families cannot silently diverge",
+        "item_id": "the prediction's 'query_id', else its 'id', else its normalized question text; this is the key --compare aligns two runs on",
+        "hop_count_metrics": "predicted hop count is the number of predicted steps; gold hop count is the gold 'hop_count' field when present and positive, else the gold step count",
+        "composite_score": "weighted sum of step_f1_macro, ordered_step_accuracy_macro, reference_validity_micro and a step-count term max(0, 1 - step_count_abs_error_mae / scale); the weights and scale are recorded alongside as composite_score_weights and composite_step_count_error_scale",
+        "not_a_semantic_metric": "every metric here is string-level. Two decompositions that mean the same thing but word a step differently score as a mismatch"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    },
+    "unguided_capped": {
+      "script": "musique_decompositions_evaluator.py",
+      "created_utc": "2026-08-22T10:02:24.148638+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_003156/results.json",
+      "gold_path": "/cta/users/fyilmaz/Thesis---QA/MusiQue/Data/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+      "total_predictions_input": 600,
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.06166666666666667,
+      "step_precision_macro": 0.20787896825396826,
+      "step_recall_macro": 0.22152777777777777,
+      "step_f1_macro": 0.21310209235209235,
+      "ordered_step_accuracy_macro": 0.19112698412698412,
+      "rouge_l_precision_macro": 0.5495441370202492,
+      "rouge_l_recall_macro": 0.5874587038653993,
+      "rouge_l_f1_macro": 0.5589223641881967,
+      "reference_validity_macro": 1.0,
+      "reference_validity_micro": 1.0,
+      "step_count_abs_error_mae": 0.6333333333333333,
+      "step_count_mae": 0.6333333333333333,
+      "mean_signed_step_count_error": 0.39,
+      "over_decomposition_rate": 0.365,
+      "under_decomposition_rate": 0.115,
+      "step_count_exact_rate": 0.52,
+      "hop_count_exact_match_rate": 0.52,
+      "hop_count_abs_error_mae": 0.6333333333333333,
+      "predicted_hop_distribution": {
+        "3": 181,
+        "2": 173,
+        "4": 133,
+        "5": 77,
+        "6": 22,
+        "1": 1,
+        "7": 9,
+        "8": 4
+      },
+      "gold_hop_distribution": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "per_gold_hop_metrics": {
+        "2": {
+          "num_rows": 200,
+          "exact_match_rate": 0.125,
+          "step_precision_macro": 0.32333333333333336,
+          "step_recall_macro": 0.3425,
+          "step_f1_macro": 0.331,
+          "ordered_step_accuracy_macro": 0.3183333333333333,
+          "rouge_l_precision_macro": 0.637383009195272,
+          "rouge_l_recall_macro": 0.6813031246792722,
+          "rouge_l_f1_macro": 0.6489493377532625,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.335,
+          "step_count_mae": 0.335,
+          "mean_signed_step_count_error": 0.325,
+          "over_decomposition_rate": 0.28,
+          "under_decomposition_rate": 0.005,
+          "step_count_exact_rate": 0.715,
+          "hop_count_exact_match_rate": 0.715,
+          "hop_count_abs_error_mae": 0.335,
+          "predicted_hop_distribution": {
+            "3": 49,
+            "2": 143,
+            "4": 5,
+            "5": 1,
+            "6": 1,
+            "1": 1
+          }
+        },
+        "3": {
+          "num_rows": 200,
+          "exact_match_rate": 0.03,
+          "step_precision_macro": 0.16691666666666666,
+          "step_recall_macro": 0.17833333333333332,
+          "step_f1_macro": 0.17077380952380952,
+          "ordered_step_accuracy_macro": 0.14275000000000002,
+          "rouge_l_precision_macro": 0.5343522491387344,
+          "rouge_l_recall_macro": 0.5710560845418251,
+          "rouge_l_f1_macro": 0.5429462924886947,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.695,
+          "step_count_mae": 0.695,
+          "mean_signed_step_count_error": 0.435,
+          "over_decomposition_rate": 0.4,
+          "under_decomposition_rate": 0.13,
+          "step_count_exact_rate": 0.47,
+          "hop_count_exact_match_rate": 0.47,
+          "hop_count_abs_error_mae": 0.695,
+          "predicted_hop_distribution": {
+            "2": 26,
+            "3": 94,
+            "4": 53,
+            "5": 22,
+            "6": 4,
+            "7": 1
+          }
+        },
+        "4": {
+          "num_rows": 200,
+          "exact_match_rate": 0.03,
+          "step_precision_macro": 0.13338690476190476,
+          "step_recall_macro": 0.14375,
+          "step_f1_macro": 0.13753246753246753,
+          "ordered_step_accuracy_macro": 0.11229761904761905,
+          "rouge_l_precision_macro": 0.47689715272674116,
+          "rouge_l_recall_macro": 0.5100169023751006,
+          "rouge_l_f1_macro": 0.4848714623226331,
+          "reference_validity_macro": 1.0,
+          "reference_validity_micro": 1.0,
+          "step_count_abs_error_mae": 0.87,
+          "step_count_mae": 0.87,
+          "mean_signed_step_count_error": 0.41,
+          "over_decomposition_rate": 0.415,
+          "under_decomposition_rate": 0.21,
+          "step_count_exact_rate": 0.375,
+          "hop_count_exact_match_rate": 0.375,
+          "hop_count_abs_error_mae": 0.87,
+          "predicted_hop_distribution": {
+            "5": 54,
+            "3": 38,
+            "4": 75,
+            "6": 17,
+            "8": 4,
+            "7": 8,
+            "2": 4
+          }
+        }
+      },
+      "composite_score": 0.4214678210678211,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "metric_definitions": {
+        "step_normalization": "each step is lowercased, punctuation is stripped except '#' (so [#k] references survive), and whitespace is collapsed to single spaces",
+        "step_splitting": "a string decomposition is split on newlines and a leading '<n>. ' enumerator is removed per line (src/step_lines.py::split_step_lines, shared with the decomposer's step-line budget so both count the same steps); a list decomposition takes each string, or each item's 'question' field",
+        "question_matching": "a prediction is joined to gold by its question text, lowercased and whitespace-collapsed (not by id); unmatched predictions are counted in missing_gold_count and excluded from every metric",
+        "exact_match_rate": "1.0 when the predicted step list equals the gold step list in length and in normalized text at every position, else 0.0; averaged over evaluated rows",
+        "step_precision_macro": "set-based: |normalized pred steps AND gold steps| / |pred steps|, averaged over rows",
+        "step_recall_macro": "set-based: |normalized pred steps AND gold steps| / |gold steps|, averaged over rows",
+        "step_f1_macro": "harmonic mean of the per-row set-based precision and recall, averaged over rows (macro, not computed from the averaged P and R). Unordered and duplicate-insensitive: identical steps collapse in the set",
+        "ordered_step_accuracy_macro": "positional: matches at the same index / max(len(pred), len(gold)), averaged over rows; a length mismatch is penalised through the denominator",
+        "rouge_l_macro": "ROUGE-L on the newline-joined step text, LCS over whitespace tokens of the lowercased text (no punctuation stripping at this stage), averaged over rows",
+        "reference_validity": "a [#k] reference is valid when 1 <= k < its own step index. macro = mean of per-row valid rates (a row with no references scores 1.0); micro = total valid references / total references across all rows",
+        "step_count_abs_error_mae": "mean of |len(pred steps) - len(gold steps)|",
+        "step_count_mae": "same number as step_count_abs_error_mae, reported again so the directional step-count family (over/under rates, signed mean, MAE) reads as one block",
+        "step_count_signed_error": "per item: len(pred steps) - len(gold steps). Positive = over-decomposition (more steps than gold), negative = under-decomposition",
+        "mean_signed_step_count_error": "mean of the per-item signed error. Near zero does NOT mean accurate step counts: over- and under-decomposition cancel, which is why the two rates and the MAE are reported next to it",
+        "over_decomposition_rate": "fraction of rows with len(pred steps) > len(gold steps)",
+        "under_decomposition_rate": "fraction of rows with len(pred steps) < len(gold steps)",
+        "step_count_exact_rate": "fraction of rows with len(pred steps) == len(gold steps), i.e. exactly 1 - over_decomposition_rate - under_decomposition_rate. NOT the same as hop_count_exact_match_rate, which compares against the gold 'hop_count' field instead of the gold step count (see gold_step_count_vs_hop_count)",
+        "gold_step_count_vs_hop_count": "two gold denominators exist: len(gold steps) for the directional step-count family, and the gold 'hop_count' field for the hop-count family. The gold loader asserts they agree on every row that carries a positive 'hop_count' and aborts naming the offending ids, so the two families cannot silently diverge",
+        "item_id": "the prediction's 'query_id', else its 'id', else its normalized question text; this is the key --compare aligns two runs on",
+        "hop_count_metrics": "predicted hop count is the number of predicted steps; gold hop count is the gold 'hop_count' field when present and positive, else the gold step count",
+        "composite_score": "weighted sum of step_f1_macro, ordered_step_accuracy_macro, reference_validity_micro and a step-count term max(0, 1 - step_count_abs_error_mae / scale); the weights and scale are recorded alongside as composite_score_weights and composite_step_count_error_scale",
+        "not_a_semantic_metric": "every metric here is string-level. Two decompositions that mean the same thing but word a step differently score as a mismatch"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    }
+  },
+  "comparisons": {
+    "unguided_vs_oracle_guided": {
+      "script": "musique_decompositions_evaluator.py",
+      "mode": "compare",
+      "created_utc": "2026-08-22T10:03:11.420210+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "system_a_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260821_233524/eval_unguided_per_item.json",
+      "system_b_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_000025/eval_oracle_guided_per_item.json",
+      "num_aligned_items": 600,
+      "bootstrap_iterations": 10000,
+      "bootstrap_chunk_size": 1000,
+      "alpha": 0.05,
+      "confidence_level": 0.95,
+      "difference_direction": "system_a minus system_b",
+      "significance_floor": {
+        "num_items": 600,
+        "min_items_for_significance_claim": 30,
+        "below_min_items": false,
+        "warning": null
+      },
+      "bootstrap": {
+        "rouge_l_f1": {
+          "system_a": 0.5588554282350716,
+          "system_b": 0.5710410956364557,
+          "difference": -0.012185667401384048,
+          "ci_low": -0.02137267643954062,
+          "ci_high": -0.003205866778361535,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "step_f1": {
+          "system_a": 0.21310209235209232,
+          "system_b": 0.23683994708994707,
+          "difference": -0.023737854737854752,
+          "ci_low": -0.0350633898508898,
+          "ci_high": -0.012323605098605098,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.19112698412698412,
+          "system_b": 0.22047222222222226,
+          "difference": -0.029345238095238146,
+          "ci_low": -0.040289682539682514,
+          "ci_high": -0.018801289682539676,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "composite_score": {
+          "system_a": 0.42119004329004334,
+          "system_b": 0.4429332010582011,
+          "difference": -0.021743157768157773,
+          "ci_low": -0.03476741642616646,
+          "ci_high": -0.006986440897065926,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        }
+      },
+      "mcnemar": {
+        "exact_match": {
+          "system_a_rate": 0.06166666666666667,
+          "system_b_rate": 0.07333333333333333,
+          "difference": -0.011666666666666667,
+          "correct_only_in_a": 1,
+          "correct_only_in_b": 8,
+          "discordant_pairs": 9,
+          "p_value": 0.0390625,
+          "significant": true,
+          "n": 600,
+          "min_attainable_p_value": 0.00390625,
+          "min_attainable_p_reaches_alpha": true,
+          "underpowered": false
+        },
+        "hop_count_exact_match": {
+          "system_a_rate": 0.52,
+          "system_b_rate": 0.8733333333333333,
+          "difference": -0.35333333333333333,
+          "correct_only_in_a": 18,
+          "correct_only_in_b": 230,
+          "discordant_pairs": 248,
+          "p_value": 5.011457255912804e-48,
+          "significant": true,
+          "n": 600,
+          "min_attainable_p_value": 4.421718300208356e-75,
+          "min_attainable_p_reaches_alpha": true,
+          "underpowered": false
+        }
+      },
+      "t_test": {
+        "rouge_l_f1": {
+          "system_a": 0.5588554282350716,
+          "system_b": 0.5710410956364557,
+          "difference": -0.01218566740138411,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -2.6309548940911913,
+          "p_value": 0.008733652017126855,
+          "significant": true,
+          "degenerate": null
+        },
+        "step_f1": {
+          "system_a": 0.21310209235209232,
+          "system_b": 0.23683994708994707,
+          "difference": -0.023737854737854735,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -4.093905923228785,
+          "p_value": 4.823833439899754e-05,
+          "significant": true,
+          "degenerate": null
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.19112698412698412,
+          "system_b": 0.22047222222222226,
+          "difference": -0.029345238095238094,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -5.338244100696254,
+          "p_value": 1.3337570154108532e-07,
+          "significant": true,
+          "degenerate": null
+        },
+        "exact_match": {
+          "system_a": 0.06166666666666667,
+          "system_b": 0.07333333333333333,
+          "difference": -0.011666666666666667,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -2.3420382071887675,
+          "p_value": 0.019505384488683445,
+          "significant": true,
+          "degenerate": null
+        },
+        "hop_count_exact_match": {
+          "system_a": 0.52,
+          "system_b": 0.8733333333333333,
+          "difference": -0.35333333333333333,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -16.100281754118743,
+          "p_value": 9.954987369316875e-49,
+          "significant": true,
+          "degenerate": null
+        }
+      },
+      "tests_reported": {
+        "bootstrap": 4,
+        "mcnemar": 2,
+        "paired_t_test": 5,
+        "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+        "multiple_comparison_correction": null
+      },
+      "v1_format_inputs": null,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "per_item_composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "per_item_composite_step_count_error_scale": 3.0,
+      "config_weights_match_per_item_files": true,
+      "comparison_definitions": {
+        "alignment": "the two per-item files are aligned on 'item_id' and must cover exactly the same ids; any id present in one and not the other aborts the run",
+        "difference_direction": "every reported difference is system_a minus system_b",
+        "paired_bootstrap": "percentile bootstrap over items: each of the bootstrap_iterations resamples draws n item indices with replacement and applies the SAME indices to both systems (paired), then recomputes each statistic from the resampled items. The reported interval is the [alpha/2, 1-alpha/2] percentile of the difference",
+        "bootstrap_significance": "significant = the confidence interval of the difference excludes 0. This is a CI-based decision, not a p-value",
+        "composite_score_in_bootstrap": "recomputed on each resample from the resampled items (its reference-validity term is a micro rate and its step-count term a MAE, so neither is an average of per-item values), using the weights and scale of THIS config \u2014 which are the config's, not necessarily the ones the per-item files were produced with",
+        "mcnemar": "exact two-sided McNemar on the discordant pairs of a binary metric: with b = #(a correct, b wrong) and c = #(a wrong, b correct), p = min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs",
+        "mcnemar_significance": "significant = p_value < alpha",
+        "mcnemar_min_attainable_p_value": "the smallest p this test could have produced given its discordant count m = b + c, reached when all discordant pairs favour one system: min(1, 2 * 0.5**m), and 1.0 when m = 0. When it is >= alpha the test cannot reject at alpha no matter how one-sided the result is, so 'significant: false' says nothing about the effect",
+        "bootstrap_has_no_p_value": "bootstrap rows carry no p-value and therefore no minimum attainable p: their decision is whether the percentile interval excludes 0. Their resolution is instead bounded by n (recorded per row as 'n')",
+        "paired_t_test": "two-sided paired t-test (scipy.stats.ttest_rel) over the per-item differences system_a minus system_b \u2014 the same pairing and the same items the bootstrap resamples. Reports the t statistic, degrees of freedom (n - 1) and the p-value. It is ADDITIVE (ADR 0009 as amended by ADR 0017, issue #30): the bootstrap CIs and McNemar remain the headline protocol, and no verdict here replaces one of theirs",
+        "t_test_significance": "significant = p_value < alpha",
+        "t_test_statistics_covered": "every compared metric that has a per-item value: the bootstrap statistics except composite_score, plus the two McNemar metrics. composite_score has no per-item value (its reference term is a micro rate and its step-count term a MAE), so no paired difference exists to t-test and only its bootstrap CI is reported",
+        "t_test_degenerate_rows": "a row carries t_statistic = null, p_value = null, significant = false and a 'degenerate' reason when the t statistic is undefined: n < 2, or a zero standard deviation of the per-item differences (every item differs by exactly the same amount, including the all-zeros case of comparing a file with itself). No significance claim is made from such a row; its bootstrap CI still is",
+        "t_test_normality_caveat": "the compared per-item scores are bounded and often exactly 0 or 1, so the normality-of-differences assumption is doubtful \u2014 the reason ADR 0009 chose the bootstrap and McNemar as the headline. The t-test is reported because the supervisor asked for it by name (ADR 0017 item 4), next to tests that do not assume it",
+        "underpowered": "true when n is below paired_comparison.min_items_for_significance_claim, or (for McNemar) when min_attainable_p_value >= alpha. A 'significant' flag on an underpowered row is not evidence. It applies to the t-test rows on the same terms as the rest",
+        "multiple_comparisons": "the headline protocol is six tests per comparison (four bootstrap intervals + two McNemar p-values, ADR 0009); the paired t-tests are reported alongside them. The exact counts are in 'tests_reported'. None of the p-values or intervals is corrected for multiple comparisons, and the t-test rows overlap the other two families by construction (same items, same metrics) \u2014 so they are not six independent extra tests",
+        "v1_format_inputs": "null for normal (v2) inputs. When --v1-per-item was passed it is an object recording that both inputs were v1 prior-work per-item files (ADR 0020): their sha256 and mtime (v1 runs carry no commit SHA), the alignment used, and the caveat that the result is citable prior work and not a v2 measurement",
+        "v1_same_item_check": "v1 rows carry no id, so the pairing rests on a reconstructed key and something must witness that it paired the right rows. 'verification_fields' names the fields that did (present on every row of both files, and not the alignment key itself \u2014 a question matching the question it was keyed on witnesses nothing), and 'fields_verified_equal' counts the pairs each one matched on. With no usable witness field the comparison is refused rather than reported",
+        "composite_score_weights_provenance": "the per-item files stamp the weights and scale they were scored under; --compare refuses when the two files disagree with each other, and records config_weights_match_per_item_files when the config it recomputes the bootstrap composite with differs from them"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    },
+    "unguided_vs_unguided_capped": {
+      "script": "musique_decompositions_evaluator.py",
+      "mode": "compare",
+      "created_utc": "2026-08-22T10:03:13.588335+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "system_a_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260821_233524/eval_unguided_per_item.json",
+      "system_b_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_003156/eval_unguided_capped_per_item.json",
+      "num_aligned_items": 600,
+      "bootstrap_iterations": 10000,
+      "bootstrap_chunk_size": 1000,
+      "alpha": 0.05,
+      "confidence_level": 0.95,
+      "difference_direction": "system_a minus system_b",
+      "significance_floor": {
+        "num_items": 600,
+        "min_items_for_significance_claim": 30,
+        "below_min_items": false,
+        "warning": null
+      },
+      "bootstrap": {
+        "rouge_l_f1": {
+          "system_a": 0.5588554282350716,
+          "system_b": 0.5589223641881967,
+          "difference": -6.693595312512457e-05,
+          "ci_low": -0.0001875803461481862,
+          "ci_high": 0.0,
+          "significant": false,
+          "n": 600,
+          "underpowered": false
+        },
+        "step_f1": {
+          "system_a": 0.21310209235209232,
+          "system_b": 0.21310209235209232,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "significant": false,
+          "n": 600,
+          "underpowered": false
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.19112698412698412,
+          "system_b": 0.19112698412698412,
+          "difference": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "significant": false,
+          "n": 600,
+          "underpowered": false
+        },
+        "composite_score": {
+          "system_a": 0.42119004329004334,
+          "system_b": 0.4214678210678211,
+          "difference": -0.0002777777777777657,
+          "ci_low": -0.0007222222222222352,
+          "ci_high": 0.0,
+          "significant": false,
+          "n": 600,
+          "underpowered": false
+        }
+      },
+      "mcnemar": {
+        "exact_match": {
+          "system_a_rate": 0.06166666666666667,
+          "system_b_rate": 0.06166666666666667,
+          "difference": 0.0,
+          "correct_only_in_a": 0,
+          "correct_only_in_b": 0,
+          "discordant_pairs": 0,
+          "p_value": 1.0,
+          "significant": false,
+          "n": 600,
+          "min_attainable_p_value": 1.0,
+          "min_attainable_p_reaches_alpha": false,
+          "underpowered": true
+        },
+        "hop_count_exact_match": {
+          "system_a_rate": 0.52,
+          "system_b_rate": 0.52,
+          "difference": 0.0,
+          "correct_only_in_a": 0,
+          "correct_only_in_b": 0,
+          "discordant_pairs": 0,
+          "p_value": 1.0,
+          "significant": false,
+          "n": 600,
+          "min_attainable_p_value": 1.0,
+          "min_attainable_p_reaches_alpha": false,
+          "underpowered": true
+        }
+      },
+      "t_test": {
+        "rouge_l_f1": {
+          "system_a": 0.5588554282350716,
+          "system_b": 0.5589223641881967,
+          "difference": -6.693595312521144e-05,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": -1.210592907025356,
+          "p_value": 0.22652891691153443,
+          "significant": false,
+          "degenerate": null
+        },
+        "step_f1": {
+          "system_a": 0.21310209235209232,
+          "system_b": 0.21310209235209232,
+          "difference": 0.0,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": null,
+          "p_value": null,
+          "significant": false,
+          "degenerate": "the standard deviation of the per-item differences is 0 (every item differs by exactly the same amount, e.g. a file compared with itself), so the t statistic is undefined or infinite; the bootstrap CI for this metric still applies"
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.19112698412698412,
+          "system_b": 0.19112698412698412,
+          "difference": 0.0,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": null,
+          "p_value": null,
+          "significant": false,
+          "degenerate": "the standard deviation of the per-item differences is 0 (every item differs by exactly the same amount, e.g. a file compared with itself), so the t statistic is undefined or infinite; the bootstrap CI for this metric still applies"
+        },
+        "exact_match": {
+          "system_a": 0.06166666666666667,
+          "system_b": 0.06166666666666667,
+          "difference": 0.0,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": null,
+          "p_value": null,
+          "significant": false,
+          "degenerate": "the standard deviation of the per-item differences is 0 (every item differs by exactly the same amount, e.g. a file compared with itself), so the t statistic is undefined or infinite; the bootstrap CI for this metric still applies"
+        },
+        "hop_count_exact_match": {
+          "system_a": 0.52,
+          "system_b": 0.52,
+          "difference": 0.0,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": null,
+          "p_value": null,
+          "significant": false,
+          "degenerate": "the standard deviation of the per-item differences is 0 (every item differs by exactly the same amount, e.g. a file compared with itself), so the t statistic is undefined or infinite; the bootstrap CI for this metric still applies"
+        }
+      },
+      "tests_reported": {
+        "bootstrap": 4,
+        "mcnemar": 2,
+        "paired_t_test": 5,
+        "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+        "multiple_comparison_correction": null
+      },
+      "v1_format_inputs": null,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "per_item_composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "per_item_composite_step_count_error_scale": 3.0,
+      "config_weights_match_per_item_files": true,
+      "comparison_definitions": {
+        "alignment": "the two per-item files are aligned on 'item_id' and must cover exactly the same ids; any id present in one and not the other aborts the run",
+        "difference_direction": "every reported difference is system_a minus system_b",
+        "paired_bootstrap": "percentile bootstrap over items: each of the bootstrap_iterations resamples draws n item indices with replacement and applies the SAME indices to both systems (paired), then recomputes each statistic from the resampled items. The reported interval is the [alpha/2, 1-alpha/2] percentile of the difference",
+        "bootstrap_significance": "significant = the confidence interval of the difference excludes 0. This is a CI-based decision, not a p-value",
+        "composite_score_in_bootstrap": "recomputed on each resample from the resampled items (its reference-validity term is a micro rate and its step-count term a MAE, so neither is an average of per-item values), using the weights and scale of THIS config \u2014 which are the config's, not necessarily the ones the per-item files were produced with",
+        "mcnemar": "exact two-sided McNemar on the discordant pairs of a binary metric: with b = #(a correct, b wrong) and c = #(a wrong, b correct), p = min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs",
+        "mcnemar_significance": "significant = p_value < alpha",
+        "mcnemar_min_attainable_p_value": "the smallest p this test could have produced given its discordant count m = b + c, reached when all discordant pairs favour one system: min(1, 2 * 0.5**m), and 1.0 when m = 0. When it is >= alpha the test cannot reject at alpha no matter how one-sided the result is, so 'significant: false' says nothing about the effect",
+        "bootstrap_has_no_p_value": "bootstrap rows carry no p-value and therefore no minimum attainable p: their decision is whether the percentile interval excludes 0. Their resolution is instead bounded by n (recorded per row as 'n')",
+        "paired_t_test": "two-sided paired t-test (scipy.stats.ttest_rel) over the per-item differences system_a minus system_b \u2014 the same pairing and the same items the bootstrap resamples. Reports the t statistic, degrees of freedom (n - 1) and the p-value. It is ADDITIVE (ADR 0009 as amended by ADR 0017, issue #30): the bootstrap CIs and McNemar remain the headline protocol, and no verdict here replaces one of theirs",
+        "t_test_significance": "significant = p_value < alpha",
+        "t_test_statistics_covered": "every compared metric that has a per-item value: the bootstrap statistics except composite_score, plus the two McNemar metrics. composite_score has no per-item value (its reference term is a micro rate and its step-count term a MAE), so no paired difference exists to t-test and only its bootstrap CI is reported",
+        "t_test_degenerate_rows": "a row carries t_statistic = null, p_value = null, significant = false and a 'degenerate' reason when the t statistic is undefined: n < 2, or a zero standard deviation of the per-item differences (every item differs by exactly the same amount, including the all-zeros case of comparing a file with itself). No significance claim is made from such a row; its bootstrap CI still is",
+        "t_test_normality_caveat": "the compared per-item scores are bounded and often exactly 0 or 1, so the normality-of-differences assumption is doubtful \u2014 the reason ADR 0009 chose the bootstrap and McNemar as the headline. The t-test is reported because the supervisor asked for it by name (ADR 0017 item 4), next to tests that do not assume it",
+        "underpowered": "true when n is below paired_comparison.min_items_for_significance_claim, or (for McNemar) when min_attainable_p_value >= alpha. A 'significant' flag on an underpowered row is not evidence. It applies to the t-test rows on the same terms as the rest",
+        "multiple_comparisons": "the headline protocol is six tests per comparison (four bootstrap intervals + two McNemar p-values, ADR 0009); the paired t-tests are reported alongside them. The exact counts are in 'tests_reported'. None of the p-values or intervals is corrected for multiple comparisons, and the t-test rows overlap the other two families by construction (same items, same metrics) \u2014 so they are not six independent extra tests",
+        "v1_format_inputs": "null for normal (v2) inputs. When --v1-per-item was passed it is an object recording that both inputs were v1 prior-work per-item files (ADR 0020): their sha256 and mtime (v1 runs carry no commit SHA), the alignment used, and the caveat that the result is citable prior work and not a v2 measurement",
+        "v1_same_item_check": "v1 rows carry no id, so the pairing rests on a reconstructed key and something must witness that it paired the right rows. 'verification_fields' names the fields that did (present on every row of both files, and not the alignment key itself \u2014 a question matching the question it was keyed on witnesses nothing), and 'fields_verified_equal' counts the pairs each one matched on. With no usable witness field the comparison is refused rather than reported",
+        "composite_score_weights_provenance": "the per-item files stamp the weights and scale they were scored under; --compare refuses when the two files disagree with each other, and records config_weights_match_per_item_files when the config it recomputes the bootstrap composite with differs from them"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    },
+    "oracle_guided_vs_unguided_capped": {
+      "script": "musique_decompositions_evaluator.py",
+      "mode": "compare",
+      "created_utc": "2026-08-22T10:03:15.777003+00:00",
+      "seed": 42,
+      "seeded": {
+        "seed": 42,
+        "python_random": true,
+        "pythonhashseed_exported_for_subprocesses": "42",
+        "numpy": true,
+        "torch": true,
+        "torch_cuda": true
+      },
+      "system_a_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_000025/eval_oracle_guided_per_item.json",
+      "system_b_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_003156/eval_unguided_capped_per_item.json",
+      "num_aligned_items": 600,
+      "bootstrap_iterations": 10000,
+      "bootstrap_chunk_size": 1000,
+      "alpha": 0.05,
+      "confidence_level": 0.95,
+      "difference_direction": "system_a minus system_b",
+      "significance_floor": {
+        "num_items": 600,
+        "min_items_for_significance_claim": 30,
+        "below_min_items": false,
+        "warning": null
+      },
+      "bootstrap": {
+        "rouge_l_f1": {
+          "system_a": 0.5710410956364557,
+          "system_b": 0.5589223641881967,
+          "difference": 0.012118731448258924,
+          "ci_low": 0.0031325602092124346,
+          "ci_high": 0.021335394256883564,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "step_f1": {
+          "system_a": 0.23683994708994707,
+          "system_b": 0.21310209235209232,
+          "difference": 0.023737854737854752,
+          "ci_low": 0.012323605098605094,
+          "ci_high": 0.0350633898508898,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.22047222222222226,
+          "system_b": 0.19112698412698412,
+          "difference": 0.029345238095238146,
+          "ci_low": 0.018801289682539673,
+          "ci_high": 0.040289682539682514,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        },
+        "composite_score": {
+          "system_a": 0.4429332010582011,
+          "system_b": 0.4214678210678211,
+          "difference": 0.021465379990380007,
+          "ci_low": 0.006722244468494433,
+          "ci_high": 0.03450695947570946,
+          "significant": true,
+          "n": 600,
+          "underpowered": false
+        }
+      },
+      "mcnemar": {
+        "exact_match": {
+          "system_a_rate": 0.07333333333333333,
+          "system_b_rate": 0.06166666666666667,
+          "difference": 0.011666666666666667,
+          "correct_only_in_a": 8,
+          "correct_only_in_b": 1,
+          "discordant_pairs": 9,
+          "p_value": 0.0390625,
+          "significant": true,
+          "n": 600,
+          "min_attainable_p_value": 0.00390625,
+          "min_attainable_p_reaches_alpha": true,
+          "underpowered": false
+        },
+        "hop_count_exact_match": {
+          "system_a_rate": 0.8733333333333333,
+          "system_b_rate": 0.52,
+          "difference": 0.35333333333333333,
+          "correct_only_in_a": 230,
+          "correct_only_in_b": 18,
+          "discordant_pairs": 248,
+          "p_value": 5.011457255912804e-48,
+          "significant": true,
+          "n": 600,
+          "min_attainable_p_value": 4.421718300208356e-75,
+          "min_attainable_p_reaches_alpha": true,
+          "underpowered": false
+        }
+      },
+      "t_test": {
+        "rouge_l_f1": {
+          "system_a": 0.5710410956364557,
+          "system_b": 0.5589223641881967,
+          "difference": 0.0121187314482589,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": 2.616228533714799,
+          "p_value": 0.009114931369634486,
+          "significant": true,
+          "degenerate": null
+        },
+        "step_f1": {
+          "system_a": 0.23683994708994707,
+          "system_b": 0.21310209235209232,
+          "difference": 0.023737854737854735,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": 4.093905923228785,
+          "p_value": 4.823833439899754e-05,
+          "significant": true,
+          "degenerate": null
+        },
+        "ordered_step_accuracy": {
+          "system_a": 0.22047222222222226,
+          "system_b": 0.19112698412698412,
+          "difference": 0.029345238095238094,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": 5.338244100696254,
+          "p_value": 1.3337570154108532e-07,
+          "significant": true,
+          "degenerate": null
+        },
+        "exact_match": {
+          "system_a": 0.07333333333333333,
+          "system_b": 0.06166666666666667,
+          "difference": 0.011666666666666667,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": 2.3420382071887675,
+          "p_value": 0.019505384488683445,
+          "significant": true,
+          "degenerate": null
+        },
+        "hop_count_exact_match": {
+          "system_a": 0.8733333333333333,
+          "system_b": 0.52,
+          "difference": 0.35333333333333333,
+          "n": 600,
+          "degrees_of_freedom": 599,
+          "underpowered": false,
+          "t_statistic": 16.100281754118743,
+          "p_value": 9.954987369316875e-49,
+          "significant": true,
+          "degenerate": null
+        }
+      },
+      "tests_reported": {
+        "bootstrap": 4,
+        "mcnemar": 2,
+        "paired_t_test": 5,
+        "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+        "multiple_comparison_correction": null
+      },
+      "v1_format_inputs": null,
+      "composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "composite_step_count_error_scale": 3.0,
+      "per_item_composite_score_weights": {
+        "step_f1_macro": 0.4,
+        "ordered_step_accuracy_macro": 0.3,
+        "reference_validity_micro": 0.2,
+        "step_count_error": 0.1
+      },
+      "per_item_composite_step_count_error_scale": 3.0,
+      "config_weights_match_per_item_files": true,
+      "comparison_definitions": {
+        "alignment": "the two per-item files are aligned on 'item_id' and must cover exactly the same ids; any id present in one and not the other aborts the run",
+        "difference_direction": "every reported difference is system_a minus system_b",
+        "paired_bootstrap": "percentile bootstrap over items: each of the bootstrap_iterations resamples draws n item indices with replacement and applies the SAME indices to both systems (paired), then recomputes each statistic from the resampled items. The reported interval is the [alpha/2, 1-alpha/2] percentile of the difference",
+        "bootstrap_significance": "significant = the confidence interval of the difference excludes 0. This is a CI-based decision, not a p-value",
+        "composite_score_in_bootstrap": "recomputed on each resample from the resampled items (its reference-validity term is a micro rate and its step-count term a MAE, so neither is an average of per-item values), using the weights and scale of THIS config \u2014 which are the config's, not necessarily the ones the per-item files were produced with",
+        "mcnemar": "exact two-sided McNemar on the discordant pairs of a binary metric: with b = #(a correct, b wrong) and c = #(a wrong, b correct), p = min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs",
+        "mcnemar_significance": "significant = p_value < alpha",
+        "mcnemar_min_attainable_p_value": "the smallest p this test could have produced given its discordant count m = b + c, reached when all discordant pairs favour one system: min(1, 2 * 0.5**m), and 1.0 when m = 0. When it is >= alpha the test cannot reject at alpha no matter how one-sided the result is, so 'significant: false' says nothing about the effect",
+        "bootstrap_has_no_p_value": "bootstrap rows carry no p-value and therefore no minimum attainable p: their decision is whether the percentile interval excludes 0. Their resolution is instead bounded by n (recorded per row as 'n')",
+        "paired_t_test": "two-sided paired t-test (scipy.stats.ttest_rel) over the per-item differences system_a minus system_b \u2014 the same pairing and the same items the bootstrap resamples. Reports the t statistic, degrees of freedom (n - 1) and the p-value. It is ADDITIVE (ADR 0009 as amended by ADR 0017, issue #30): the bootstrap CIs and McNemar remain the headline protocol, and no verdict here replaces one of theirs",
+        "t_test_significance": "significant = p_value < alpha",
+        "t_test_statistics_covered": "every compared metric that has a per-item value: the bootstrap statistics except composite_score, plus the two McNemar metrics. composite_score has no per-item value (its reference term is a micro rate and its step-count term a MAE), so no paired difference exists to t-test and only its bootstrap CI is reported",
+        "t_test_degenerate_rows": "a row carries t_statistic = null, p_value = null, significant = false and a 'degenerate' reason when the t statistic is undefined: n < 2, or a zero standard deviation of the per-item differences (every item differs by exactly the same amount, including the all-zeros case of comparing a file with itself). No significance claim is made from such a row; its bootstrap CI still is",
+        "t_test_normality_caveat": "the compared per-item scores are bounded and often exactly 0 or 1, so the normality-of-differences assumption is doubtful \u2014 the reason ADR 0009 chose the bootstrap and McNemar as the headline. The t-test is reported because the supervisor asked for it by name (ADR 0017 item 4), next to tests that do not assume it",
+        "underpowered": "true when n is below paired_comparison.min_items_for_significance_claim, or (for McNemar) when min_attainable_p_value >= alpha. A 'significant' flag on an underpowered row is not evidence. It applies to the t-test rows on the same terms as the rest",
+        "multiple_comparisons": "the headline protocol is six tests per comparison (four bootstrap intervals + two McNemar p-values, ADR 0009); the paired t-tests are reported alongside them. The exact counts are in 'tests_reported'. None of the p-values or intervals is corrected for multiple comparisons, and the t-test rows overlap the other two families by construction (same items, same metrics) \u2014 so they are not six independent extra tests",
+        "v1_format_inputs": "null for normal (v2) inputs. When --v1-per-item was passed it is an object recording that both inputs were v1 prior-work per-item files (ADR 0020): their sha256 and mtime (v1 runs carry no commit SHA), the alignment used, and the caveat that the result is citable prior work and not a v2 measurement",
+        "v1_same_item_check": "v1 rows carry no id, so the pairing rests on a reconstructed key and something must witness that it paired the right rows. 'verification_fields' names the fields that did (present on every row of both files, and not the alignment key itself \u2014 a question matching the question it was keyed on witnesses nothing), and 'fields_verified_equal' counts the pairs each one matched on. With no usable witness field the comparison is refused rather than reported",
+        "composite_score_weights_provenance": "the per-item files stamp the weights and scale they were scored under; --compare refuses when the two files disagree with each other, and records config_weights_match_per_item_files when the config it recomputes the bootstrap composite with differs from them"
+      },
+      "git": {
+        "commit": "0068842aecbdca5b32d0f8c2291a015e1ebdf3ff",
+        "branch": "main",
+        "dirty": false,
+        "dirty_file_count": 0,
+        "dirty_files": []
+      }
+    }
+  }
+}
