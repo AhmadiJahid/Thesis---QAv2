@@ -118,8 +118,12 @@ reports a documented upper bound where Break drops the item.
    `tests/test_ged_cost_benchmark.py` — and times the evaluator's own `_normalized_ged` with the
    node cap lifted, against the committed fixture gold.
 
-   Measured at commit **`b207b33`**, on LittleGazor (AMD EPYC 7513, CPU only, networkx 3.6.1,
-   Python 3.13.9), gold hop depth stated per column because the gold's size is part of the cost:
+   Measured at commit **`94b8ea8`**, on LittleGazor (AMD EPYC 7513, CPU only, networkx 3.6.1,
+   Python 3.13.9), gold hop depth stated per column because the gold's size is part of the cost.
+   The script's own legend travels with the rows (PR #45 review, nit 2), because a marked cell
+   pasted without it is uninterpretable: **per-cell stop 300.0 s; `*` = the stop fired, so the
+   time is a lower bound; `†` = networkx yielded no approximation, so the cell is not a timing.**
+   No cell below carries a mark.
 
    | prediction shape | nodes | edges | vs 2-hop gold | vs 4-hop gold |
    |---|---|---|---|---|
@@ -130,17 +134,29 @@ reports a documented upper bound where Break drops the item.
    | `repeated_step_text` | 20 | 0 | 0.00 s | 0.00 s |
    | `repeated_step_text` | 30 | 0 | 0.00 s | 0.00 s |
    | `gold_step_texts_repeated` | 8 | 6 | 0.00 s | 0.04 s |
-   | `gold_step_texts_repeated` | 12 | 9 | 0.01 s | 0.24 s |
-   | `gold_step_texts_repeated` | 16 | 12 | 0.01 s | **0.98 s** |
-   | `gold_step_texts_repeated` | 20 | 15 | 0.02 s | 2.90 s |
-   | `gold_step_texts_repeated` | 30 | 22 | 0.04 s | 18.55 s |
+   | `gold_step_texts_repeated` | 12 | 9 | 0.01 s | 0.25 s |
+   | `gold_step_texts_repeated` | 16 | 12 | 0.01 s | **1.00 s** |
+   | `gold_step_texts_repeated` | 20 | 15 | 0.02 s | 2.92 s |
+   | `gold_step_texts_repeated` | 30 | 22 | 0.04 s | 18.64 s |
    | `chain_shaped` | 12 | 11 | 0.00 s | 0.00 s |
    | `chain_shaped` | 39 | 38 | 0.01 s | 0.01 s |
    | `all_pairs_referencing` | 20 | 190 | 0.04 s | 0.01 s |
    | `all_pairs_referencing` | 30 | 435 | 0.19 s | 0.06 s |
+   | `nonsense_text_repeated_no_reference` | 8 | 0 | 0.00 s | 0.00 s |
+   | `nonsense_text_repeated_no_reference` | 16 | 0 | 0.00 s | 0.00 s |
+   | `nonsense_text_repeated_no_reference` | 30 | 0 | 0.00 s | 0.00 s |
+   | `nonsense_text_repeated_with_reference` | 8 | 8 | 0.00 s | 0.08 s |
+   | `nonsense_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.04 s** |
+   | `nonsense_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.30 s |
+   | `gold_step_text_repeated_no_reference` | 8 | 0 | 0.00 s | 0.00 s |
+   | `gold_step_text_repeated_no_reference` | 16 | 0 | 0.00 s | 0.00 s |
+   | `gold_step_text_repeated_no_reference` | 30 | 0 | 0.00 s | 0.00 s |
+   | `gold_step_text_repeated_with_reference` | 8 | 8 | 0.00 s | 0.08 s |
+   | `gold_step_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.04 s** |
+   | `gold_step_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.29 s |
 
    **Which of the previous revision's numbers survived re-measurement, and which did not.** The
-   `gold_step_texts_repeated` row reproduced (0.04 / 0.24 / 0.98 / 2.90 / 18.55 s against
+   `gold_step_texts_repeated` row reproduced (0.04 / 0.25 / 1.00 / 2.92 / 18.64 s against
    0.04 / 0.24 / 0.98 / 3.05 / 20.05 s — the two largest cells differ by wall-clock load, not by
    arithmetic), and it is the row the Gate-1 reviewer independently reproduced (0.99 s @ 16,
    18.4 s @ 30). `all_pairs_referencing` reproduced exactly against the 4-hop gold (0.01 / 0.06 s)
@@ -151,20 +167,45 @@ reports a documented upper bound where Break drops the item.
    and 0.07 / 1.27 s the old table showed. Nothing in this repo produced those numbers, so
    nothing here can defend them; what the shape-name prose meant is unrecoverable.
 
-   Three things follow, and they are why an edge bound was **considered and rejected**. (a) Edge
-   count does not drive the cost: the densest graph measured (435 edges) is among the *fastest*.
-   (b) Neither does raw label ambiguity on its own: `repeated_step_text` is maximally ambiguous
-   — N identical labels, no references — and it costs ~0.00 s at every size measured, because
-   networkx yields exactly one approximation and stops (checked directly: one yielded value at
-   16 nodes and at 30). (c) What is expensive is a prediction whose
-   labels **near-tie against the gold's own labels** while carrying references, and it rises
-   steeply with the gold's depth: `gold_step_texts_repeated` costs 0.04 s vs the 2-hop gold and
-   18.55 s vs the 4-hop gold at 30 nodes. So the honest guard is the node cap, set where the
-   measured worst case is far inside the budget: **at 16 nodes the worst case measured is
-   ~1.0 s against a 4-hop gold**, against ~18.6 s at 30 — an order of magnitude inside the 20 s
-   budget, so the machine-dependent path is effectively unreachable under the cap. 16 is still
-   twice the capped arm's 8-step budget and four times the deepest gold, so no plausible
-   decomposition is near it.
+   **What drives the cost, read off the 2×2 the PR #45 review asked for.** The first attempt at
+   this paragraph asserted that the expensive case is a prediction whose labels *near-tie against
+   the gold's own labels* while carrying references. That was past what the table could carry —
+   the only expensive shape in it was simultaneously gold-derived *and* edge-carrying — and the
+   reviewer falsified the gold-similarity half with a two-line counter-construction. The last
+   four rows above are the resulting factorial: {nonsense label, gold-derived label} ×
+   {no reference, one reference}, with label ties held at maximum in all four, the nonsense pair
+   sharing vocabulary and token count and differing in exactly one token. What they settle:
+
+   - **Similarity to the gold's labels costs nothing.** Holding ties and references fixed, a
+     label that shares **no word** with the gold and a label that **is** one of the gold's steps
+     cost the same to a hundredth of a second: 0.08 / 1.04 / 10.30 s against 0.08 / 1.04 /
+     10.29 s at 8 / 16 / 30 nodes. The earlier claim is **withdrawn**, not softened.
+   - **Carrying references is necessary.** Toggle the reference off the same nonsense sentence
+     and every size drops to 0.00 s. It is the reference, and nothing else about the text, that
+     turns the cell on.
+   - **Ties among the prediction's own steps are necessary too.** `chain_shaped` and
+     `all_pairs_referencing` carry edges — up to 435 of them — but their labels are
+     distinguishable, and they cost ≤ 0.19 s everywhere.
+   - **Gold depth is the third factor.** Both referenced shapes cost 0.00 s against the 2-hop
+     gold and 10.3 s against the 4-hop gold at 30 nodes.
+   - **Edge *count* is not a factor**, which is why an edge bound was considered and rejected:
+     the densest graph measured (435 edges) is among the fastest, while a 30-edge star is the
+     second most expensive shape in the table.
+
+   So, stated as narrowly as the measurements allow: **cost rises with the prediction's step
+   labels tying with *each other*, × the prediction carrying `#k` references at all, × the
+   gold's depth — all three necessary in the measured set, and none of them the same thing as
+   resembling the gold's text.** The mechanism behind the ~0.00 s cells is visible in the
+   optimizer: with no edges and N identical labels networkx yields exactly one approximation and
+   stops (checked directly: one yielded value at 16 nodes and at 30).
+
+   The honest guard is therefore the node cap, set where the measured worst case is far inside
+   the budget: **at 16 nodes the worst case measured is ~1.0 s against a 4-hop gold**, against
+   ~18.6 s at 30 — an order of magnitude inside the 20 s budget, so the machine-dependent path
+   is effectively unreachable under the cap. (The Gate-1 reviewer's own adversarial probing of
+   five further shapes at 16 nodes found 1.11 s as its worst, the same order.) 16 is still twice
+   the capped arm's 8-step budget and four times the deepest gold, so no plausible decomposition
+   is near it.
 
    What the cap trades away is small and measured. The same script prints the reported bound
    beside the optimizer's own value just above the cap, against the 4-hop gold (same commit):
@@ -175,13 +216,17 @@ reports a documented upper bound where Break drops the item.
    | `gold_step_texts_repeated` | 17 | 0.7586 | 0.7586 | +0.0000 |
    | `chain_shaped` | 17 | 0.8485 | 0.8485 | +0.0000 |
    | `chain_shaped` | 39 | 0.9351 | 0.9351 | +0.0000 |
+   | `nonsense_text_repeated_with_reference` | 17 | 0.9622 | 1.0210 | +0.0588 |
 
-   On these shapes the bound is **tight** — it equals the optimizer's value to four decimals,
-   including on the 39-step runaway. (The previous revision reported a 0.0071 gap on "the chain
-   shape"; that shape is one of the two that did not reproduce, so the gap is not carried
-   forward.) A bound is an upper bound by construction, never below the true distance, and
-   `tests/test_ged_cost_benchmark.py` asserts that ordering rather than trusting it. Neither
-   guard fires on well-behaved predictions, and `ged_fallback_counts` says so per run.
+   On four of these five shapes the bound is **tight** — equal to the optimizer's value to four
+   decimals, including on the 39-step runaway. On the fifth, the star-shaped shape added after
+   the PR #45 review, it is **0.0588 above** it: the bound is an upper bound, not an estimate,
+   and the honest statement is second-decimal on a junk-by-construction item rather than "tight
+   everywhere". (The revision before this one reported a 0.0071 gap on "the chain shape"; that
+   shape is one of the two that did not reproduce, so its gap is not carried forward either.) A
+   bound is never *below* the true distance, and `tests/test_ged_cost_benchmark.py` asserts that
+   ordering across every shape at three sizes rather than trusting it. Neither guard fires on
+   well-behaved predictions, and `ged_fallback_counts` says so per run.
 
    **What is and is not reproducible here.** The shapes, the graphs and the GED *values* are
    deterministic and reproduce on any machine; the *seconds* are wall clock on a shared box and
@@ -294,6 +339,18 @@ key):
   existed in a comparison's), so a machine reader can discover that `ged_macro` points the
   other way without parsing prose. The nine arms re-scored by exp-011 predate the key; their
   committed metrics files do not have it, which changes no value they carry.
+
+The **PR #45** review of that pass then found that the paragraph replacing the cost story was
+itself past its evidence, and the fix is above: four shapes were added to
+`configs/ged_cost_benchmark.json`, the table was regenerated at `94b8ea8`, the gold-similarity
+claim is **withdrawn** on measurement, the script's `*`/`†` legend now travels with the rows,
+and the bound-versus-optimizer table gained the one shape where the bound is *not* tight
+(+0.0588). The evaluator was not touched in that pass, so the additivity evidence above still
+holds unchanged. The convention this whole episode establishes — a number that justifies a
+config constant is a committed script that prints its own table plus the SHA it was measured
+at, and a tool that scores no system takes no `experiments/log.md` entry — is recorded on its
+own in [ADR 0027](./0027-a-number-that-justifies-a-constant-is-a-committed-script.md), because
+the next person needing that rule will not look for it in a Break-metrics record.
 
 **Not measured here, and therefore not claimed:** any number on the ADR 0007 pinned 600 or on
 any committed run. Re-scoring the nine committed arms with these columns is a separate run and

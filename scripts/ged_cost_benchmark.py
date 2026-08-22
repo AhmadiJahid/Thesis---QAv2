@@ -74,9 +74,10 @@ EVAL = _import_evaluator()
 # --------------------------------------------------------------------------------------
 
 #: The single sentence every step of the ``repeated_step_text`` shape carries. Its point is
-#: maximal label ambiguity: N identical labels means the optimizer sees N! equally-good node
-#: alignments, which is what makes the search branch. The sentence itself is arbitrary; only
-#: its being identical across steps, and its token length, matter.
+#: maximal label ambiguity — N identical labels, so no node alignment is better than another.
+#: Measured: that on its own is *cheap* (the shape has no edges, and networkx yields one
+#: approximation and stops). The sentence itself is arbitrary; only its being identical across
+#: steps, and its token length, matter.
 _REPEATED_STEP_TEXT = "Who leads the organisation?"
 
 #: Step 1 of the reference-carrying shapes, so that ``#1`` always names a real step.
@@ -119,9 +120,10 @@ def _shape_gold_step_texts_repeated(nodes: int, gold_steps: list[str]) -> list[s
     """The gold's own step texts, cycled until there are ``nodes`` of them.
 
     Verbatim, so the gold's ``[#k]`` references come with them: a 4-hop gold contributes
-    ``[#1]``, ``[#2]``, ``[#3]``, which become edges into steps 1-3. This is the shape that
-    is hardest for the optimizer in a realistic way — the labels are the ones it is being
-    compared against, so every alignment is nearly as good as every other.
+    ``[#1]``, ``[#2]``, ``[#3]``, which become edges into steps 1-3. It was the most
+    expensive shape in the first committed table, and its two ingredients — labels that
+    repeat, and references — are separated from "resembles the gold" by the 2x2 below;
+    resembling the gold turns out to cost nothing.
     """
     return [gold_steps[i % len(gold_steps)] for i in range(nodes)]
 
@@ -144,8 +146,10 @@ def _shape_all_pairs_referencing(nodes: int, gold_steps: list[str]) -> list[str]
 
     Step 1 is :data:`_CHAIN_FIRST_STEP`; step k lists ``[#1] ... [#k-1]``. Graph: ``nodes``
     nodes and ``nodes * (nodes - 1) / 2`` edges (20 -> 190, 30 -> 435). It is in the table
-    to show that edge count is *not* what drives the cost — a saturated graph has few
-    near-identical alternatives, so the search barely branches.
+    to show that edge count is *not* what drives the cost: measured, the densest graph here
+    is among the fastest cells, while a 30-edge star is among the slowest. Its labels are all
+    distinguishable (each lists a different set of references), which is the factor it holds
+    apart from the repeated-label shapes.
     """
     steps = [_CHAIN_FIRST_STEP]
     for k in range(2, nodes + 1):
