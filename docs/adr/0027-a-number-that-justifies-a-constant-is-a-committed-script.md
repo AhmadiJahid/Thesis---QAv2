@@ -1,6 +1,6 @@
 # 0027. A Number That Justifies a Config Constant Is a Committed Script, Not Prose
 
-- **Status**: Accepted (implementer convention, pending Jahid)
+- **Status**: Accepted (implementer convention, pending Jahid) — specifically, **point 5 is the clause that needs Jahid's nod**: it narrows CLAUDE.md's "no experiment exists unless it is in the log" by carving out tools that score no system. Points 1–4 are implementer record-keeping and stand on their own.
 - **Date**: 2026-08-23
 
 ## Context
