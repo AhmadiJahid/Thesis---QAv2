@@ -3,6 +3,15 @@
 - **Status**: Accepted (Jahid, 2026-08-20, in session; pending supervisor confirmation)
 - **Date**: 2026-08-20
 
+> **2026-08-22 (issue #16, PR #42).** None of the three decisions below changed. The
+> *implementation conventions* that came with completing issue #16 — the step-level failure
+> taxonomy added to this backend, the "a category that cannot be produced is reported as
+> unavailable with a reason, never as zero" rule, and the conventions of the sibling MetaQA
+> compile-execute path — are recorded in ADR
+> [0025](./0025-end-to-end-backend-conventions-the-implementers-design.md). One item there is
+> queued for Jahid *against* this record: implementing `wrong_intermediate_answer` would mean
+> reading the gold sub-answers this ADR deliberately keeps out of the path, which amends it.
+
 ## Context
 
 ADR [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) gives MuSiQue

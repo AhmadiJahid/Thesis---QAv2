@@ -217,6 +217,11 @@ def _stages() -> list[Stage]:
                 sys.executable, SCRIPTS / "run_metaqa_compile_execute.py",
                 "--predictions", FIXTURES / "predictions" / "decomposer_results_metaqa.json",
                 "--run-dir", metaqa_e2e_dir,
+                # Two of the five fixture rows carry invented questions that are in no gold
+                # file, which the eval-set assertion refuses for an experiment arm. Same
+                # reason the answerer stages pass their equivalent flag: a fixture run is
+                # not an arm.
+                "--allow-unpinned-eval-set",
             ],
             expect_files=[
                 metaqa_e2e_dir / "metaqa_e2e_metrics.json",

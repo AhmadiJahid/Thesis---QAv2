@@ -10,6 +10,11 @@
   "answer_accuracy_config": "answer_accuracy.json",
   "_composed_config_note": "kg_eval_config supplies kb_key and max_items (the compile+execute half). answer_accuracy_config supplies hops, the gold question/answer path templates, answer_separator, exact_match_jaccard and analysis_subdir (the gold-comparison half). One exception is deliberate: metaqa_kg_eval.json's write_error_analysis is NOT read here, because the gold comparison reads the success dump - the wrapper always writes the three per-item dumps, and they land under the gitignored runs root, never in git.",
 
+  "eval_set": {
+    "require_gold_for_every_item": true
+  },
+  "_eval_set_note": "A processed question with no MetaQA gold answer for its hop depth cannot be scored, so it disappears from every exact-match and Jaccard denominator - the run would then report accuracy over a silently smaller set than it read, and a comparison against another arm would not be a comparison (CLAUDE.md evidence discipline, ADR 0011). With this true the run is REFUSED in that case; --allow-unpinned-eval-set is the recorded per-run opt-out for fixture and probe runs, which are not experiment arms. This mirrors the MuSiQue answering backend's assertion, weaker by necessity: MetaQA has no ADR-pinned id subset the way ADR 0007 pins MuSiQue's 600, so identity is carried by evaluation_set.question_set_sha256 (a fingerprint over the sorted hop+question lines) rather than by an id list. Two MetaQA runs are the same evaluation set iff that fingerprint matches.",
+
   "backend_label": "metaqa_compile_execute_direct_kg",
   "run_subdir": "metaqa_compile_execute",
   "out_prefix": "metaqa_e2e_",
