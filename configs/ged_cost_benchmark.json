@@ -1,0 +1,22 @@
+{
+  "_note": "Config for scripts/ged_cost_benchmark.py, the micro-benchmark behind the GED cost table in docs/adr/0026-break-faithful-metrics-the-implementers-conventions.md. It is a TOOL, not an experiment: it measures how long networkx's optimizer takes on synthetic prediction shapes against the committed fixture gold, which is the evidence for break_metrics.ged.max_nodes_for_optimizer in configs/musique_eval.json. Nothing here scores a system, so there is no experiments/log.md entry. The shapes themselves (their exact step texts and reference patterns) are defined in the script, because a shape IS the measurement's definition and prose cannot state it precisely enough to re-derive; what lives here is which shapes at which sizes are measured, against which gold. timing_budget_seconds is a stop so the tool always terminates: a cell that hits it is printed with a '*' and its seconds are a LOWER BOUND, not a measurement. The seed is threaded for the repo's contract; this tool draws no random numbers, and its output is deterministic apart from wall-clock timings.",
+  "seed": 42,
+  "gold_fixture": "tests/fixtures/data_root/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+  "gold_columns": [
+    { "hop_depth": 2, "gold_id": "2hop__d001_a" },
+    { "hop_depth": 4, "gold_id": "4hop1__d003_c" }
+  ],
+  "timing_budget_seconds": 300.0,
+  "cost_table_cells": [
+    { "shape": "repeated_step_text", "node_counts": [8, 12, 14, 16, 20, 30] },
+    { "shape": "gold_step_texts_repeated", "node_counts": [8, 12, 16, 20, 30] },
+    { "shape": "chain_shaped", "node_counts": [12, 39] },
+    { "shape": "all_pairs_referencing", "node_counts": [20, 30] }
+  ],
+  "bound_vs_optimizer_cells": [
+    { "shape": "repeated_step_text", "nodes": 17 },
+    { "shape": "gold_step_texts_repeated", "nodes": 17 },
+    { "shape": "chain_shaped", "nodes": 17 },
+    { "shape": "chain_shaped", "nodes": 39 }
+  ]
+}

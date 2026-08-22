@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Checks for ``scripts/ged_cost_benchmark.py``, the tool behind ADR 0026's GED cost table.
+
+The benchmark prints *timings*, which are machine-dependent and therefore not assertable.
+What is assertable — and what the PR #44 review actually asked for — is that each shape is
+**defined**, not described: a shape's node count, edge count and step texts are fixed by the
+code, so the table can be re-derived on any machine. Those are pinned here, together with a
+tiny end-to-end run of the CLI (``--max-node-count 8``) so the full path is smoke-testable
+without paying for the expensive cells.
+
+Run::
+
+    .venv/bin/python -m unittest tests.test_ged_cost_benchmark -v
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BENCHMARK = REPO_ROOT / "scripts" / "ged_cost_benchmark.py"
+CONFIG = REPO_ROOT / "configs" / "ged_cost_benchmark.json"
+
+
+def _import(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BENCH = _import(BENCHMARK, "ged_cost_benchmark")
+
+
+class TestShapesAreDefinedNotDescribed(unittest.TestCase):
+    """Each shape's graph is fixed by the code, so a printed row can be reproduced."""
+
+    GOLD_STEPS = [
+        "Who published Quiet Ledger?",
+        "Who founded [#1]?",
+        "Which college did [#2] attend?",
+        "In what year did [#3] open?",
+    ]
+
+    def graph(self, shape: str, nodes: int):
+        return BENCH._graph_of(BENCH.SHAPES[shape](nodes, self.GOLD_STEPS))
+
+    def test_repeated_step_text_is_n_identical_labels_and_no_edges(self) -> None:
+        steps = BENCH.SHAPES["repeated_step_text"](16, self.GOLD_STEPS)
+        self.assertEqual(steps, [BENCH._REPEATED_STEP_TEXT] * 16)
+        g = self.graph("repeated_step_text", 16)
+        self.assertEqual((g.number_of_nodes(), g.number_of_edges()), (16, 0))
+        self.assertEqual({g.nodes[n]["label"] for n in g.nodes}, {BENCH._REPEATED_STEP_TEXT})
+
+    def test_gold_step_texts_repeated_cycles_the_gold_verbatim(self) -> None:
+        steps = BENCH.SHAPES["gold_step_texts_repeated"](6, self.GOLD_STEPS)
+        self.assertEqual(steps, self.GOLD_STEPS + self.GOLD_STEPS[:2])
+        # The gold's own references come with the texts: 4 of every 6 steps carry one.
+        g = self.graph("gold_step_texts_repeated", 6)
+        self.assertEqual((g.number_of_nodes(), g.number_of_edges()), (6, 4))
+
+    def test_chain_shaped_is_a_path(self) -> None:
+        steps = BENCH.SHAPES["chain_shaped"](4, self.GOLD_STEPS)
+        self.assertEqual(
+            steps,
+            [
+                BENCH._CHAIN_FIRST_STEP,
+                "Who founded [#1]?",
+                "Who founded [#2]?",
+                "Who founded [#3]?",
+            ],
+        )
+        g = self.graph("chain_shaped", 12)
+        self.assertEqual((g.number_of_nodes(), g.number_of_edges()), (12, 11))
+
+    def test_all_pairs_referencing_is_the_densest_graph_of_its_size(self) -> None:
+        steps = BENCH.SHAPES["all_pairs_referencing"](3, self.GOLD_STEPS)
+        self.assertEqual(
+            steps,
+            [
+                BENCH._CHAIN_FIRST_STEP,
+                "Which of [#1] is the earliest?",
+                "Which of [#1] [#2] is the earliest?",
+            ],
+        )
+        # The edge counts ADR 0026 quotes for this shape.
+        for nodes, edges in ((20, 190), (30, 435)):
+            with self.subTest(nodes=nodes):
+                g = self.graph("all_pairs_referencing", nodes)
+                self.assertEqual((g.number_of_nodes(), g.number_of_edges()), (nodes, edges))
+
+    def test_the_committed_config_names_only_known_shapes(self) -> None:
+        cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+        for cell in cfg["cost_table_cells"]:
+            self.assertIn(cell["shape"], BENCH.SHAPES)
+        for cell in cfg["bound_vs_optimizer_cells"]:
+            self.assertIn(cell["shape"], BENCH.SHAPES)
+
+    def test_the_bound_is_never_below_the_optimizer_value(self) -> None:
+        """The reported fallback is an UPPER bound, which is the whole claim ADR 0026 makes.
+
+        Checked on a small cell so the optimizer terminates quickly; a bound that came in
+        *under* the optimizer's value would mean the fallback is not a valid edit path.
+        """
+        gold_graph = BENCH._graph_of(self.GOLD_STEPS)
+        pred_graph = self.graph("gold_step_texts_repeated", 6)
+        measured = BENCH._time_optimizer(pred_graph, gold_graph, 60.0)
+        bound = BENCH._bound(pred_graph, gold_graph)
+        self.assertGreaterEqual(bound + 1e-9, measured["ged"])
+
+
+class TestBenchmarkCli(unittest.TestCase):
+    def test_a_tiny_run_prints_a_table(self) -> None:
+        """`--max-node-count 8`: the full path, in about a second."""
+        with tempfile.TemporaryDirectory(prefix="qav2_ged_bench_") as tmp:
+            out = Path(tmp) / "bench.json"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(BENCHMARK),
+                    "--max-node-count",
+                    "8",
+                    "--json",
+                    str(out),
+                ],
+                cwd=str(REPO_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, f"{proc.stdout}\n{proc.stderr}")
+            self.assertIn("vs 4-hop gold", proc.stdout)
+            self.assertIn("`repeated_step_text`", proc.stdout)
+            # The commit is printed, because that is what the ADR records beside the table.
+            self.assertIn("- commit: `", proc.stdout)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertTrue(payload["cost_table"])
+            for row in payload["cost_table"]:
+                self.assertLessEqual(row["nodes"], 8)
+                for timing in row["timings"].values():
+                    self.assertGreaterEqual(timing["seconds"], 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
