@@ -118,7 +118,7 @@ reports a documented upper bound where Break drops the item.
    `tests/test_ged_cost_benchmark.py` — and times the evaluator's own `_normalized_ged` with the
    node cap lifted, against the committed fixture gold.
 
-   Measured at commit **`94b8ea8`**, on LittleGazor (AMD EPYC 7513, CPU only, networkx 3.6.1,
+   Measured at commit **`21a1203`**, on LittleGazor (AMD EPYC 7513, CPU only, networkx 3.6.1,
    Python 3.13.9), gold hop depth stated per column because the gold's size is part of the cost.
    The script's own legend travels with the rows (PR #45 review, nit 2), because a marked cell
    pasted without it is uninterpretable: **per-cell stop 300.0 s; `*` = the stop fired, so the
@@ -133,11 +133,11 @@ reports a documented upper bound where Break drops the item.
    | `repeated_step_text` | 16 | 0 | 0.00 s | 0.00 s |
    | `repeated_step_text` | 20 | 0 | 0.00 s | 0.00 s |
    | `repeated_step_text` | 30 | 0 | 0.00 s | 0.00 s |
-   | `gold_step_texts_repeated` | 8 | 6 | 0.00 s | 0.04 s |
-   | `gold_step_texts_repeated` | 12 | 9 | 0.01 s | 0.25 s |
-   | `gold_step_texts_repeated` | 16 | 12 | 0.01 s | **1.00 s** |
-   | `gold_step_texts_repeated` | 20 | 15 | 0.02 s | 2.92 s |
-   | `gold_step_texts_repeated` | 30 | 22 | 0.04 s | 18.64 s |
+   | `gold_step_texts_repeated` | 8 | 6 | 0.00 s | 0.03 s |
+   | `gold_step_texts_repeated` | 12 | 9 | 0.01 s | 0.24 s |
+   | `gold_step_texts_repeated` | 16 | 12 | 0.01 s | **0.97 s** |
+   | `gold_step_texts_repeated` | 20 | 15 | 0.02 s | 2.87 s |
+   | `gold_step_texts_repeated` | 30 | 22 | 0.04 s | 18.28 s |
    | `chain_shaped` | 12 | 11 | 0.00 s | 0.00 s |
    | `chain_shaped` | 39 | 38 | 0.01 s | 0.01 s |
    | `all_pairs_referencing` | 20 | 190 | 0.04 s | 0.01 s |
@@ -146,17 +146,17 @@ reports a documented upper bound where Break drops the item.
    | `nonsense_text_repeated_no_reference` | 16 | 0 | 0.00 s | 0.00 s |
    | `nonsense_text_repeated_no_reference` | 30 | 0 | 0.00 s | 0.00 s |
    | `nonsense_text_repeated_with_reference` | 8 | 8 | 0.00 s | 0.08 s |
-   | `nonsense_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.04 s** |
-   | `nonsense_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.30 s |
+   | `nonsense_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.01 s** |
+   | `nonsense_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.10 s |
    | `gold_step_text_repeated_no_reference` | 8 | 0 | 0.00 s | 0.00 s |
    | `gold_step_text_repeated_no_reference` | 16 | 0 | 0.00 s | 0.00 s |
    | `gold_step_text_repeated_no_reference` | 30 | 0 | 0.00 s | 0.00 s |
    | `gold_step_text_repeated_with_reference` | 8 | 8 | 0.00 s | 0.08 s |
-   | `gold_step_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.04 s** |
-   | `gold_step_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.29 s |
+   | `gold_step_text_repeated_with_reference` | 16 | 16 | 0.00 s | **1.01 s** |
+   | `gold_step_text_repeated_with_reference` | 30 | 30 | 0.00 s | 10.12 s |
 
    **Which of the previous revision's numbers survived re-measurement, and which did not.** The
-   `gold_step_texts_repeated` row reproduced (0.04 / 0.25 / 1.00 / 2.92 / 18.64 s against
+   `gold_step_texts_repeated` row reproduced (0.03 / 0.24 / 0.97 / 2.87 / 18.28 s against
    0.04 / 0.24 / 0.98 / 3.05 / 20.05 s — the two largest cells differ by wall-clock load, not by
    arithmetic), and it is the row the Gate-1 reviewer independently reproduced (0.99 s @ 16,
    18.4 s @ 30). `all_pairs_referencing` reproduced exactly against the 4-hop gold (0.01 / 0.06 s)
@@ -178,8 +178,8 @@ reports a documented upper bound where Break drops the item.
 
    - **Similarity to the gold's labels costs nothing.** Holding ties and references fixed, a
      label that shares **no word** with the gold and a label that **is** one of the gold's steps
-     cost the same to a hundredth of a second: 0.08 / 1.04 / 10.30 s against 0.08 / 1.04 /
-     10.29 s at 8 / 16 / 30 nodes. The earlier claim is **withdrawn**, not softened.
+     cost the same to a hundredth of a second: 0.08 / 1.01 / 10.10 s against 0.08 / 1.01 /
+     10.12 s at 8 / 16 / 30 nodes. The earlier claim is **withdrawn**, not softened.
    - **Carrying references is necessary.** Toggle the reference off the same nonsense sentence
      and every size drops to 0.00 s. It is the reference, and nothing else about the text, that
      turns the cell on.
@@ -187,7 +187,7 @@ reports a documented upper bound where Break drops the item.
      `all_pairs_referencing` carry edges — up to 435 of them — but their labels are
      distinguishable, and they cost ≤ 0.19 s everywhere.
    - **Gold depth is the third factor.** Both referenced shapes cost 0.00 s against the 2-hop
-     gold and 10.3 s against the 4-hop gold at 30 nodes.
+     gold and ~10.1 s against the 4-hop gold at 30 nodes.
    - **Edge *count* is not a factor**, which is why an edge bound was considered and rejected:
      the densest graph measured (435 edges) is among the fastest, while a 30-edge star is the
      second most expensive shape in the table.
@@ -342,7 +342,7 @@ key):
 
 The **PR #45** review of that pass then found that the paragraph replacing the cost story was
 itself past its evidence, and the fix is above: four shapes were added to
-`configs/ged_cost_benchmark.json`, the table was regenerated at `94b8ea8`, the gold-similarity
+`configs/ged_cost_benchmark.json`, the table was regenerated at `21a1203`, the gold-similarity
 claim is **withdrawn** on measurement, the script's `*`/`†` legend now travels with the rows,
 and the bound-versus-optimizer table gained the one shape where the bound is *not* tight
 (+0.0588). The evaluator was not touched in that pass, so the additivity evidence above still
