@@ -1,0 +1,51 @@
+{
+  "_note": "Config snapshot for exp-007 (issue #15 / ADR 0022): CPU-side retrieval artifact production for the two runnable hop-matched-retrieval conditions (mixed, oracle-hop-matched) over the ADR 0007 pinned 600 (200/hop). Router-hop-matched is not attempted (ADR 0022 item 5/Consequences: no predictions file, today's router writes no query id). Committed config files were not edited; MusiQue/scripts/check_question_similarity.py -> truncate_top20.py -> rerank_similarity_results.py were invoked directly (not via an orchestrator), per launcher runs/exp-007/run_cpu_stages.sh.",
+
+  "commit_at_launch": "6fc4bba1b9df023625eb76a9d1d0ce6a53005858",
+  "pipeline_code_commit_for_hop_match_feature": "d81dd5bd18e2db6137b4f6eb566c6ba49abbc078",
+  "seed": 42,
+  "device": "cpu",
+
+  "pool_file": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_0_questions_all.jsonl",
+  "pool_file_sha256": "212c27634291b27ef55cebdb5feaba08a32a59f21976dd72a96a8f9f1ae66b2a",
+  "pool_rows": 9156,
+  "pool_hop_bucket_counts": {"2": 3594, "3": 4387, "4": 1175},
+
+  "query_glob": "musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl",
+  "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop)",
+
+  "conditions": {
+    "mixed": {
+      "hop_match_flag": "--no-hop-match",
+      "hop_match_enabled": false
+    },
+    "oracle": {
+      "hop_match_flag": "--hop-match --hop-source gold",
+      "hop_match_enabled": true,
+      "hop_source": "gold",
+      "min_candidates": "top_k (resolved 20)"
+    }
+  },
+
+  "shared_flags": {
+    "mode": "typed",
+    "top_k": 20,
+    "truncate_k": 5,
+    "rerank_k": 5,
+    "embed_model": "e5-small (intfloat/e5-small-v2)",
+    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    "device": "cpu",
+    "seed": 42
+  },
+
+  "commands_run": [
+    "MusiQue/scripts/check_question_similarity.py --pool-file <pool> --query-glob <glob> --n 200 --mode typed --top-k 20 --device cpu --seed 42 --no-hop-match --out runs/exp-007/mixed/mixed_similarity_top20.jsonl --run-dir runs/exp-007/mixed/similarity",
+    "MusiQue/scripts/truncate_top20.py --input runs/exp-007/mixed/mixed_similarity_top20.jsonl --out runs/exp-007/mixed/mixed_truncate_top5.jsonl --k 5 --seed 42 --run-dir runs/exp-007/mixed/truncate",
+    "MusiQue/scripts/rerank_similarity_results.py --input runs/exp-007/mixed/mixed_similarity_top20.jsonl --out runs/exp-007/mixed/mixed_rerank_top5.jsonl --rerank-k 5 --device cpu --seed 42 --run-dir runs/exp-007/mixed/rerank",
+    "MusiQue/scripts/check_question_similarity.py --pool-file <pool> --query-glob <glob> --n 200 --mode typed --top-k 20 --device cpu --seed 42 --hop-match --hop-source gold --out runs/exp-007/oracle/oracle_similarity_top20.jsonl --run-dir runs/exp-007/oracle/similarity",
+    "MusiQue/scripts/truncate_top20.py --input runs/exp-007/oracle/oracle_similarity_top20.jsonl --out runs/exp-007/oracle/oracle_truncate_top5.jsonl --k 5 --seed 42 --run-dir runs/exp-007/oracle/truncate",
+    "MusiQue/scripts/rerank_similarity_results.py --input runs/exp-007/oracle/oracle_similarity_top20.jsonl --out runs/exp-007/oracle/oracle_rerank_top5.jsonl --rerank-k 5 --device cpu --seed 42 --run-dir runs/exp-007/oracle/rerank"
+  ],
+
+  "full_launcher_script": "runs/exp-007/run_cpu_stages.sh"
+}

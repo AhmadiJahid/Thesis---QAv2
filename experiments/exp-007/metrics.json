@@ -1,0 +1,40 @@
+{
+  "_note": "exp-007 covers artifact production only (issue #15 / ADR 0022); no decomposition-quality metric exists yet. All counts below are read directly from runs/exp-007/**/{similarity,truncate,rerank}/*_metrics.json and independently re-verified by this entry (row counts, hop split by query_id prefix, sha256 of final files).",
+
+  "row_counts": {
+    "mixed": {"similarity_top20": 600, "truncate_top5": 600, "rerank_top5": 600},
+    "oracle": {"similarity_top20": 600, "truncate_top5": 600, "rerank_top5": 600}
+  },
+  "hop_split_verified_by_query_id_prefix": {
+    "mixed_rerank_top5": {"2": 200, "3": 200, "4": 200},
+    "oracle_rerank_top5": {"2": 200, "3": 200, "4": 200}
+  },
+  "pool": {
+    "path": "musique/chunks_only_question_masked_fixed/roberta_large_ner_english/musique_ans_v1.0_train_0_questions_all.jsonl",
+    "sha256": "212c27634291b27ef55cebdb5feaba08a32a59f21976dd72a96a8f9f1ae66b2a",
+    "rows": 9156,
+    "hop_bucket_counts": {"2": 3594, "3": 4387, "4": 1175}
+  },
+  "hop_match_provenance": {
+    "mixed": {"enabled": false},
+    "oracle": {
+      "enabled": true,
+      "hop_source": "gold",
+      "min_candidates_resolved": 20,
+      "candidates_per_query_by_hop": {"2": 3594, "3": 4387, "4": 1175}
+    }
+  },
+  "final_artifact_sha256": {
+    "runs/exp-007/mixed/mixed_similarity_top20.jsonl": "7c9cb695563e766a0ab6b7008378fb0f8bcd27388b50a24b0a76b08f327aacb6",
+    "runs/exp-007/mixed/mixed_truncate_top5.jsonl": "92fbf0182b9c9a3226a7b8f7f3e15193bf31aa8d646301eb907c4c13ee0f31ab",
+    "runs/exp-007/mixed/mixed_rerank_top5.jsonl": "68a07a74c87baa5e3a8880d4e61710e5da01368c80bbfc17f0fcff22bac8aea4",
+    "runs/exp-007/oracle/oracle_similarity_top20.jsonl": "d89049c012e95ad989abf13a300790bb0c90d4726dedd14965ba4eacdd66a8ab",
+    "runs/exp-007/oracle/oracle_truncate_top5.jsonl": "e3c70881855106fc2b0cb8799d7e9d33fb2e9e646f9df26e20d1d2caa7eedfc1",
+    "runs/exp-007/oracle/oracle_rerank_top5.jsonl": "56a7d392544e2353ca8f3091d0ef044e1cff963c3509aaaa7df6709c2eb882de"
+  },
+  "example_capacity_per_row": {
+    "mixed_rerank_top5_typed_top_k_len_row0": 5,
+    "oracle_rerank_top5_typed_top_k_len_row0": 5
+  },
+  "decomposition_quality": "UNMEASURED in this entry -- deferred to the GPU follow-up (exp-009)"
+}
