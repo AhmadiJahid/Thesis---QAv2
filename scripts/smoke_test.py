@@ -24,7 +24,7 @@ What is NOT covered, and why:
   for the same reason: the arm selection, the train/eval overlap assertion and the
   prompt/completion formatting run, but no adapter is trained and no cost is measured.
 
-Two stages also carry golden metric values (``expect_metrics``). The fixture never
+Several stages also carry golden metric values (``expect_metrics``). The fixture never
 changes, so those numbers are fixed: if one moves, a metric's normalization or matching
 rule changed, and that must be a deliberate, reviewed edit rather than a silent drift.
 
@@ -112,6 +112,7 @@ def _stages() -> list[Stage]:
     scored = WORK / "retrieval" / "top5_scored.jsonl"
     musique_eval_dir = WORK / "musique_eval"
     kg_eval_dir = WORK / "kg_eval"
+    metaqa_e2e_dir = WORK / "metaqa_compile_execute"
     plots_dir = WORK / "sweep_plots"
     analysis_dir = WORK / "router_analysis"
     router_dry = WORK / "router_dry"
@@ -203,6 +204,61 @@ def _stages() -> list[Stage]:
                 (kg_eval_dir / "kg_eval_metrics.json", "kg_triples", 17),
             ],
             note="compile + execute decompositions against the fabricated MetaQA KG",
+        ),
+        # The same compile-and-execute path plus the gold comparison, in one command
+        # (issue #16). It calls the two scripts above rather than reimplementing them, so its
+        # coverage numbers MUST be the kg_eval numbers; the equivalence itself is pinned
+        # item-for-item by tests/test_metaqa_compile_execute.py. This is NOT GRAG - ADR 0006
+        # routes MetaQA end-to-end through the supervisor's GRAG system, which is external
+        # and not available, and the run's artifacts say so.
+        Stage(
+            name="metaqa_compile_execute",
+            cmd=[
+                sys.executable, SCRIPTS / "run_metaqa_compile_execute.py",
+                "--predictions", FIXTURES / "predictions" / "decomposer_results_metaqa.json",
+                "--run-dir", metaqa_e2e_dir,
+                # Two of the five fixture rows carry invented questions that are in no gold
+                # file, which the eval-set assertion refuses for an experiment arm. Same
+                # reason the answerer stages pass their equivalent flag: a fixture run is
+                # not an arm.
+                "--allow-unpinned-eval-set",
+            ],
+            expect_files=[
+                metaqa_e2e_dir / "metaqa_e2e_metrics.json",
+                metaqa_e2e_dir / "metaqa_e2e_config.json",
+                metaqa_e2e_dir / "metaqa_e2e_notes.md",
+                metaqa_e2e_dir / "analysis" / "success.json",
+                metaqa_e2e_dir / "analysis" / "compile_fail.json",
+                metaqa_e2e_dir / "analysis" / "exec_fail.json",
+                metaqa_e2e_dir / "analysis" / "answer_details.json",
+            ],
+            expect_metrics=[
+                # Same 5 fixture rows as kg_eval, so the same 5 / 4 / 3 / 1 / 1.
+                (metaqa_e2e_dir / "metaqa_e2e_metrics.json", "coverage.total", 5),
+                (metaqa_e2e_dir / "metaqa_e2e_metrics.json", "coverage.compiled_ok", 4),
+                (metaqa_e2e_dir / "metaqa_e2e_metrics.json", "coverage.executed_ok", 3),
+                (metaqa_e2e_dir / "metaqa_e2e_metrics.json", "coverage.compile_fail", 1),
+                (metaqa_e2e_dir / "metaqa_e2e_metrics.json", "coverage.exec_fail", 1),
+                # Ada Mireles directed all three fixture movies, so the three executable
+                # rows reproduce the gold answer sets exactly: 3 of 3 exact, Jaccard 1.0.
+                (
+                    metaqa_e2e_dir / "metaqa_e2e_metrics.json",
+                    "answer_accuracy_over_executed_items.total_exact_match",
+                    3,
+                ),
+                (
+                    metaqa_e2e_dir / "metaqa_e2e_metrics.json",
+                    "answer_accuracy_over_executed_items.overall_mean_jaccard",
+                    1.0,
+                ),
+                (
+                    metaqa_e2e_dir / "metaqa_e2e_metrics.json",
+                    "answer_accuracy_over_all_items_with_gold.items_with_gold",
+                    3,
+                ),
+            ],
+            note="MetaQA end-to-end in one command: compile + execute, then exact match and "
+            "Jaccard against the fabricated gold (NOT GRAG - that stays external)",
         ),
         Stage(
             name="kg_summary",

@@ -157,6 +157,11 @@ def run_analysis(
         "total_exact_match": total_exact,
         "overall_pct_exact": round(100.0 * total_exact / total_with_gold, 2) if total_with_gold else None,
         "overall_mean_jaccard": round(total_jaccard_sum / total_with_gold, 4) if total_with_gold else None,
+        # The UNROUNDED sum, so a caller that needs a different denominator (the MetaQA
+        # end-to-end wrapper counts compile/execute failures too) can recompute exactly
+        # instead of multiplying the 4-dp mean back out (PR #42 review, nit 1). The rounded
+        # mean above is unchanged: it is what this script has always reported.
+        "overall_jaccard_sum": total_jaccard_sum,
         "per_hop": {},
     }
 

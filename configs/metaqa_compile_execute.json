@@ -1,0 +1,23 @@
+{
+  "_note": "Config for scripts/run_metaqa_compile_execute.py: the MetaQA end-to-end backend of issue #16, in ONE command. It composes two existing scripts rather than reimplementing either - scripts/evaluate_decompositions.py compiles a predicted decomposition into KG ops and executes them (its step templates, relation rules, compile-error taxonomy and execution-error categories are code and stay code), and scripts/compare_answer_accuracy.py compares the executed answer set against MetaQA's gold answers with Jaccard. Because it composes them, it owns no methodology knob of its own: every knob is read from the two configs named below, so a value has exactly one home and cannot drift between the wrapper and the script it wraps.",
+
+  "_grag_note": "THIS IS NOT GRAG. ADR 0006 gives MetaQA end-to-end evaluation through the supervisor's GRAG system; GRAG is external, and no interface, endpoint, repository or handover for it exists in this repo or in the v1 repo (searched 2026-08-22). This path is direct execution against the MetaQA KG built from kb.txt (scripts/kg.py) and is labelled as such in every artifact it writes (backend_label below, and backend.grag_wired false in the metrics JSON). It is a separate, self-standing path, not a stand-in for GRAG: a GRAG number and a compile-execute number are not the same measurement and must not be compared as if they were. Wiring GRAG stays blocked on Jahid obtaining it from his supervisor.",
+
+  "seed": 42,
+  "_seed_note": "The one seed this run threads through everything. The composed configs also carry a 'seed' key for when their scripts are run standalone; this wrapper calls their functions directly, so those keys are NOT used here - the snapshot records all three so a reader can see which seed governed.",
+
+  "kg_eval_config": "metaqa_kg_eval.json",
+  "answer_accuracy_config": "answer_accuracy.json",
+  "_composed_config_note": "kg_eval_config supplies kb_key and max_items (the compile+execute half). answer_accuracy_config supplies hops, the gold question/answer path templates, answer_separator, exact_match_jaccard and analysis_subdir (the gold-comparison half). One exception is deliberate: metaqa_kg_eval.json's write_error_analysis is NOT read here, because the gold comparison reads the success dump - the wrapper always writes the three per-item dumps, and they land under the gitignored runs root, never in git.",
+
+  "eval_set": {
+    "require_gold_for_every_item": true
+  },
+  "_eval_set_note": "A processed question with no MetaQA gold answer for its hop depth cannot be scored, so it disappears from every exact-match and Jaccard denominator - the run would then report accuracy over a silently smaller set than it read, and a comparison against another arm would not be a comparison (CLAUDE.md evidence discipline, ADR 0011). With this true the run is REFUSED in that case; --allow-unpinned-eval-set is the recorded per-run opt-out for fixture and probe runs, which are not experiment arms. This mirrors the MuSiQue answering backend's assertion, weaker by necessity: MetaQA has no ADR-pinned id subset the way ADR 0007 pins MuSiQue's 600, so identity is carried by evaluation_set.question_set_sha256 (a fingerprint over the sorted hop+question lines) rather than by an id list. Two MetaQA runs are the same evaluation set iff that fingerprint matches.",
+
+  "backend_label": "metaqa_compile_execute_direct_kg",
+  "run_subdir": "metaqa_compile_execute",
+  "out_prefix": "metaqa_e2e_",
+
+  "paths_config": "paths.json"
+}

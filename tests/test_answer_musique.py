@@ -14,6 +14,10 @@ Three things are pinned here, all without a model and without real data:
 3. **Per-hop aggregation** (``components/answerer/run_answerer.py``) — the reporting shape of
    docs/METRICS.md §2, plus the run's step reading agreeing with the decomposition
    evaluator's.
+4. **The step-level failure taxonomy** (``src/step_failures.py``, issue #16) — which flags
+   fire for which step, that the categories are counters rather than a partition, and that
+   the three categories this backend cannot produce are declared unavailable with a reason
+   instead of reported as zero.
 
 Run::
 
@@ -46,6 +50,13 @@ from answer_metrics import (  # noqa: E402
 )
 from model_size import assert_within_ceiling, ceiling_for, load_limits  # noqa: E402
 from run_config import PATHS_CONFIG_ENV, load_config, require  # noqa: E402
+from step_failures import (  # noqa: E402
+    STEP_FAILURE_CATEGORIES,
+    STEP_FAILURE_DEFINITIONS,
+    UNAVAILABLE_STEP_FAILURE_CATEGORIES,
+    classify_step,
+    summarize_step_failures,
+)
 from step_lines import substitute_step_references  # noqa: E402
 
 import run_answerer as ans  # noqa: E402
@@ -735,6 +746,255 @@ class TestDryRunEndToEnd(unittest.TestCase):
         )
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("exactly one of", proc.stdout + proc.stderr)
+
+
+class TestStepFailureTaxonomy(unittest.TestCase):
+    """``src/step_failures.py``: which flags fire, and what is declared unavailable.
+
+    The categories are deliberately not a partition, so these tests check the flag *sets*
+    rather than a single winning label.
+    """
+
+    def test_a_clean_executed_step_has_no_flags(self) -> None:
+        self.assertEqual(
+            classify_step(
+                answer="Amador County", unresolved_references=[], error=None, executed=True
+            ),
+            [],
+        )
+
+    def test_an_unresolved_reference_is_a_broken_reference(self) -> None:
+        self.assertEqual(
+            classify_step(
+                answer="something", unresolved_references=[1], error=None, executed=True
+            ),
+            ["broken_reference"],
+        )
+
+    def test_an_empty_answer_on_an_executed_step(self) -> None:
+        self.assertEqual(
+            classify_step(answer="   ", unresolved_references=[], error=None, executed=True),
+            ["empty_answer"],
+        )
+
+    def test_a_generation_error_is_not_also_reported_as_an_empty_answer(self) -> None:
+        """The error is the cause and the empty answer is its consequence; flagging both
+        would double-count one failure."""
+        self.assertEqual(
+            classify_step(
+                answer="", unresolved_references=[], error="RuntimeError: boom", executed=True
+            ),
+            ["generation_error"],
+        )
+
+    def test_a_broken_reference_and_an_empty_answer_are_both_reported(self) -> None:
+        """Non-exclusive by design: the step was asked with a placeholder in it AND came
+        back with nothing, and an error analysis needs both facts."""
+        self.assertEqual(
+            classify_step(answer="", unresolved_references=[2], error=None, executed=True),
+            ["broken_reference", "empty_answer"],
+        )
+
+    def test_a_dry_run_step_is_not_judged_on_its_answer(self) -> None:
+        """--dry-run substitutes a stub, so 'empty_answer' would say nothing about a reader
+        that was never called; the step is flagged not_executed instead."""
+        self.assertEqual(
+            classify_step(answer="", unresolved_references=[], error=None, executed=False),
+            ["not_executed"],
+        )
+
+    def test_a_broken_reference_is_still_real_on_a_dry_run(self) -> None:
+        """The substitution chain runs either way, so this flag is meaningful with no
+        weights loaded — which is what makes the taxonomy smoke-testable."""
+        self.assertEqual(
+            classify_step(answer="stub", unresolved_references=[1], error=None, executed=False),
+            ["broken_reference", "not_executed"],
+        )
+
+    def test_the_flag_order_is_the_declared_category_order(self) -> None:
+        flags = classify_step(
+            answer="", unresolved_references=[1], error="E: x", executed=False
+        )
+        self.assertEqual(flags, ["broken_reference", "generation_error", "not_executed"])
+        self.assertEqual(
+            flags, [c for c in STEP_FAILURE_CATEGORIES if c in flags], "order must be stable"
+        )
+
+    def test_the_summary_counts_by_category_and_clean_steps(self) -> None:
+        """Four steps: one clean, one broken reference, one empty answer, one with both.
+        by_category sums to 4 while only 3 steps carry any flag — the counters are not a
+        partition, and steps_clean is what says how many were fine."""
+        summary = summarize_step_failures(
+            [[], ["broken_reference"], ["empty_answer"], ["broken_reference", "empty_answer"]]
+        )
+        self.assertEqual(summary["steps"], 4)
+        self.assertEqual(summary["steps_clean"], 1)
+        self.assertEqual(summary["steps_with_any_flag"], 3)
+        self.assertEqual(summary["by_category"]["broken_reference"], 2)
+        self.assertEqual(summary["by_category"]["empty_answer"], 2)
+        self.assertEqual(summary["by_category"]["generation_error"], 0)
+        self.assertEqual(summary["by_category"]["not_executed"], 0)
+
+    def test_every_declared_category_is_present_even_at_zero(self) -> None:
+        """A missing key would be indistinguishable from a category this code forgot."""
+        summary = summarize_step_failures([])
+        self.assertEqual(set(summary["by_category"]), set(STEP_FAILURE_CATEGORIES))
+        self.assertEqual(summary["steps"], 0)
+
+    def test_an_unknown_category_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            summarize_step_failures([["retrieval_was_empty"]])
+
+    def test_the_unavailable_categories_are_named_with_a_reason(self) -> None:
+        """The three categories issue #16 named that this backend cannot produce are on the
+        record with why — absent, never silently zero (CLAUDE.md: unmeasured is unmeasured).
+        Each is also disjoint from the categories that DO fire, so no reader sees a
+        category both counted and declared unavailable."""
+        self.assertEqual(
+            set(UNAVAILABLE_STEP_FAILURE_CATEGORIES),
+            {"empty_retrieval", "unresolvable_entity", "wrong_intermediate_answer"},
+        )
+        self.assertEqual(
+            set(UNAVAILABLE_STEP_FAILURE_CATEGORIES) & set(STEP_FAILURE_CATEGORIES), set()
+        )
+        for category, reason in UNAVAILABLE_STEP_FAILURE_CATEGORIES.items():
+            self.assertTrue(reason.strip(), f"{category} has no reason recorded")
+
+    def test_every_firing_category_is_defined(self) -> None:
+        self.assertEqual(set(STEP_FAILURE_DEFINITIONS), set(STEP_FAILURE_CATEGORIES))
+
+
+class TestStepFailureTaxonomyEndToEnd(unittest.TestCase):
+    """The taxonomy through the real CLI, on a fabricated predictions file.
+
+    The committed MuSiQue predictions fixture happens to have no broken reference (all 6 of
+    its ``[#k]`` resolve), so the broken-reference path needs its own hand-written input.
+    The ids are the fixture tree's, so the rows still join to a MuSiQue item.
+    """
+
+    #: Item 1: step 2's reference is malformed (``[#1`` with no closing bracket), which
+    #: ``substitute_step_references`` leaves verbatim and reports unresolved; step 3 is a
+    #: forward reference to a step that does not exist. Item 2 is clean.
+    ROWS = [
+        {
+            "query_id": "2hop__d001_a",
+            "question": "Which union organised the Marlow Bay strike and who leads it?",
+            "hop_count": 2,
+            "decomposition": (
+                "1. Which union organised the Marlow Bay strike?\n"
+                "2. Who leads [#1?\n"
+                "3. Where does [#9] live?"
+            ),
+        },
+        {
+            "query_id": "3hop1__d002_b",
+            "question": "What is the capital of the country the River Anwen rises in?",
+            "hop_count": 3,
+            "decomposition": (
+                "1. Where does the River Anwen rise?\n2. Which country contains [#1]?"
+            ),
+        },
+    ]
+
+    def test_broken_references_are_counted_and_located(self) -> None:
+        """5 sub-questions in total. Item 1: step 1 clean, step 2 broken (malformed [#1),
+        step 3 broken (no step 9). Item 2: both steps clean. So broken_reference = 2,
+        all 5 steps are not_executed (dry run), steps_clean = 0 because not_executed is
+        itself a flag, and the final-step block sees 2 steps (one per item) of which item
+        1's step 3 is broken."""
+        env = os.environ.copy()
+        env[PATHS_CONFIG_ENV] = str(SMOKE_PATHS_CONFIG)
+        with tempfile.TemporaryDirectory() as tmp:
+            predictions = Path(tmp) / "broken_reference_predictions.json"
+            predictions.write_text(json.dumps(self.ROWS, indent=2), encoding="utf-8")
+            out = Path(tmp) / "out"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ANSWERER),
+                    "--predictions",
+                    str(predictions),
+                    "--dry-run",
+                    "--dry-run-limit",
+                    "9",
+                    "--allow-unpinned-eval-set",
+                    "--output-root",
+                    str(out),
+                ],
+                cwd=str(REPO_ROOT),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            metrics_paths = sorted(out.glob("*/answer_metrics.json"))
+            self.assertEqual(len(metrics_paths), 1)
+            metrics = json.loads(metrics_paths[0].read_text(encoding="utf-8"))
+            per_item = json.loads(
+                (metrics_paths[0].parent / "answer_per_item.json").read_text(encoding="utf-8")
+            )
+
+        taxonomy = metrics["step_failure_taxonomy"]
+        self.assertEqual(taxonomy["all_steps"]["steps"], 5)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["broken_reference"], 2)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["not_executed"], 5)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["empty_answer"], 0)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["generation_error"], 0)
+        self.assertEqual(taxonomy["all_steps"]["steps_clean"], 0)
+        self.assertEqual(taxonomy["final_step_only"]["steps"], 2)
+        self.assertEqual(taxonomy["final_step_only"]["by_category"]["broken_reference"], 1)
+        self.assertEqual(taxonomy["items_with_any_step_flag"], 2)
+        self.assertEqual(taxonomy["items_with_no_steps_so_no_flags"], 0)
+        self.assertEqual(metrics["counts"]["references_unresolved"], 2)
+
+        # The flags are per step in the per-item file, so an error analysis can point at the
+        # sub-question rather than at a count.
+        first = per_item["items"][0]
+        self.assertEqual([s["failure_flags"] for s in first["steps"]][0], ["not_executed"])
+        self.assertEqual(
+            [s["failure_flags"] for s in first["steps"]][1],
+            ["broken_reference", "not_executed"],
+        )
+        # The malformed reference was never substituted, and never edited away either.
+        self.assertIn("[#1?", first["steps"][1]["sub_question"])
+
+    def test_the_committed_fixture_has_no_broken_reference(self) -> None:
+        """Pins the premise of the class above: if a future fixture edit introduces a broken
+        reference, this test says so instead of the hand-written rows quietly becoming
+        redundant."""
+        env = os.environ.copy()
+        env[PATHS_CONFIG_ENV] = str(SMOKE_PATHS_CONFIG)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ANSWERER),
+                    "--predictions",
+                    str(PREDICTIONS_FIXTURE),
+                    "--dry-run",
+                    "--dry-run-limit",
+                    "9",
+                    "--allow-unpinned-eval-set",
+                    "--output-root",
+                    str(out),
+                ],
+                cwd=str(REPO_ROOT),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            metrics = json.loads(
+                sorted(out.glob("*/answer_metrics.json"))[0].read_text(encoding="utf-8")
+            )
+        taxonomy = metrics["step_failure_taxonomy"]
+        self.assertEqual(taxonomy["all_steps"]["steps"], 11)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["broken_reference"], 0)
+        self.assertEqual(taxonomy["all_steps"]["by_category"]["not_executed"], 11)
+        self.assertEqual(
+            set(taxonomy["not_available"]), set(UNAVAILABLE_STEP_FAILURE_CATEGORIES)
+        )
 
 
 if __name__ == "__main__":
