@@ -14,7 +14,8 @@ placeholders that refer to earlier answers. Ported from v1, with the four per-mo
   few-shot and post-processing settings.
 - `configs/decomposer.json` — MetaQA: seed, guided flag, embedding-model registry, retrieval defaults.
 - `configs/decomposer_musique.json` — the MuSiQue variant (issue #12): the pinned 600-question
-  evaluation set of ADR 0007, hops 2/3/4, and the three run conditions.
+  evaluation set of ADR 0007, hops 2/3/4, and the run conditions (including `router_guided`,
+  issue #27's with-router arm).
 
 ```bash
 # few-shot examples from a reranked/truncated retrieval file
@@ -34,15 +35,35 @@ python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
 ## Run conditions (`configs/decomposer_musique.json`)
 
 `--condition` selects a named block from the config's `conditions`; the config's
-`condition` key is the default when the flag is omitted. A condition may set only `guided`
-and `stop_after_step_lines` — model, seed and decoding are shared, and the runner rejects a
-condition that tries to move them, so the arms cannot drift apart.
+`condition` key is the default when the flag is omitted. A condition may set only `guided`,
+`hop_source` and `stop_after_step_lines` — model, seed and decoding are shared, and the runner
+rejects a condition that tries to move them, so the arms cannot drift apart.
 
 | condition | prompt | generation |
 |---|---|---|
 | `unguided` | no hop count | `generation_overrides.max_new_tokens` only |
 | `oracle_guided` | the query's gold hop count, and each exemplar's own gold hop count | same |
+| `router_guided` | the **router's predicted** hop count for that query id, exemplars unchanged | same |
 | `unguided_capped` | no hop count | stops after `stop_after_step_lines` step lines (default 8) |
+
+**The with-router arm (`router_guided`, issue #27).** Identical to `oracle_guided` except where
+the query's hop count comes from: a router predictions JSONL (`--hop-predictions`, written by
+`components/router/run_router.py`), joined on the **query id**, whose prediction overrides the
+gold depth even when the two disagree — that disagreement is the behaviour under test. Nothing
+falls back: a query with no prediction in the file is refused, naming the offending ids, because
+filling it in from the gold depth would make the arm a blend of two conditions. The per-hop
+reporting and the pinned-set assertion stay on the **gold** depth, so a prediction cannot move a
+row into another hop's table: `results.json` carries `hop_count` (gold, unchanged meaning),
+`prompt_hop_count` (what the prompt stated) and `hop_count_source`, and `metrics.json`'s
+`hop_source` block carries the predictions path, its sha256 and how often the prediction agreed
+with the gold depth.
+
+```bash
+python components/decomposer/run_decomposer.py --model mistral_7b_instruct \
+    --config decomposer_musique.json --condition router_guided \
+    --hop-predictions runs/router_musique/few_shot/<run_id>/predictions.jsonl \
+    --retrieval-input <the pinned top-5 JSONL over the 600 questions of ADR 0007>
+```
 
 The cap is a `StoppingCriteria` during decoding, plus a trim of the partial line the
 criterion can leave behind once it fires. Step lines are counted **after** `<think>`/tail

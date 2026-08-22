@@ -1,0 +1,60 @@
+{
+  "_note": "MuSiQue variant of configs/router.json for components/router/run_router.py: the few-shot-prompted router of issue #27. Same runner and the same per-model folders; only the question source, the hop depths, the prompt, the response-parsing digits and the outputs differ. Nothing here is trained - the router is prompted (ADR 0010 reframes the router as a hop-count regressor and its target encoding / loss / metric are open questions for Jahid and his supervisor; this config takes none of those decisions, it prompts a model to emit a hop count and scores exact-hop accuracy the way the MetaQA path already does). The MetaQA defaults in configs/router.json are untouched.",
+
+  "seed": 42,
+  "num_runs": 1,
+  "sample_size_per_hop": null,
+  "_sample_size_note": "Must stay null: the retrieval artifact is built over the pinned 600 queries of ADR 0007, and a sampled run would write a predictions file that does not cover every query its consumers join on. The runner refuses the combination.",
+
+  "prompt_file": "prompt_few_shot_musique.md",
+  "_prompt_file_note": "The shared retrieved-few-shot prompt in components/router/models/ (not a per-model v1 asset): an instruction, a {few_shot_examples} block filled with retrieved exemplars, and the query. --prompt-file still overrides it. Naming the prompt here rather than relying on a flag is what stops this config from being run with a model folder's MetaQA prompt.md by accident; the runner also refuses a few-shot config whose prompt has no {few_shot_examples} placeholder.",
+
+  "hops": [2, 3, 4],
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_format": "jsonl",
+  "questions_jsonl": {
+    "question_field": "question",
+    "id_field": "id"
+  },
+  "eval_rows_per_hop": 200,
+  "_eval_set_note": "The pinned ADR 0007 evaluation set: 200 questions per hop depth for hops 2/3/4, 600 total, and exactly those ids. Asserted by the shared assertion in run_decomposer.py (assert_pinned_eval_set) - by id, not only by count - because a router prediction file over a different 600 cannot be joined against the decomposition arms it is supposed to route (ADR 0011). On the retrieval path the questions come from the retrieval file, so that file must have been built over exactly those ids. --allow-unpinned-eval-set is the recorded opt-out for fixture and smoke runs, which are not experiment arms.",
+
+  "few_shot": {
+    "enabled": true,
+    "exemplar_hop_source": "pool_id",
+    "_note": "The exemplars are the retrieval artifact's own top-k candidates for that query - the same exemplars the decomposer sees, so 'the router and the decomposer were prompted from the same pool' is true by construction rather than by coincidence. exemplar_hop_source 'pool_id': each exemplar's 'A:' line states the coarse hop depth parsed from its own MuSiQue id ('2hop__...'), which is the same quantity the router is scored against (a query's gold depth is parsed from its id the same way), so the prompt demonstrates the target the metric measures. The alternative - the step count of the exemplar's gold decomposition, which is what the DECOMPOSER's exemplar hop lines state (ADR 0013) - is deliberately not implemented here: it is a different quantity, and choosing it would be a research decision, not an implementation detail. A candidate that IS the query is dropped from the ranked list before the top-k is taken, by pool id and by normalized question text (run_decomposer.is_self_example, imported not copied), so no query can be shown its own answer."
+  },
+
+  "retrieval": {
+    "input": null,
+    "input_key": "musique_few_shot_top5_pinned600",
+    "mode": "typed",
+    "k": 5,
+    "modes": ["raw", "typed", "uniform"]
+  },
+  "_retrieval_note": "input_key names the ONE artifact this condition reads, resolved through datasets.musique_few_shot_top5_pinned600 in configs/paths.json - the repo convention for data outside the tree, no absolute path in a config. It is the ADR 0014 artifact the decomposer conditions read (bi-encoder top-20 -> cross-encoder top-5, typed masking, seed 42, v1 pool of 9,156; 600 rows, one per pinned query). --retrieval-input overrides it, which is how the fixture and smoke runs point at tests/fixtures/retrieval/. The runner records the resolved path AND its sha256 in the config snapshot and the metrics, so two router conditions can be shown to have read the same exemplars. k = 5 matches the decomposer's k on the same artifact; mode 'typed' matches configs/decomposer_musique.json.",
+
+  "response_truncate_at": ["\n"],
+  "_response_truncate_at_note": "The prompt ends with the 'A:' cue, so the model's answer is the FIRST thing in its response and everything after the first line break is the model writing a fresh Q/A pair of its own. The response is therefore cut at that line break before any hop count is read. Without this, a response like '2\\n\\nQ: ...\\nA: 3' returned 3 - another question's answer - as this query's prediction, with parse_fallback false (PR #43 review, C1). Truncation, not the token budget, is what makes the read safe: max_new_tokens is left at the model folder's value because a thinking model needs room to emit and close its <think> block before answering.",
+
+  "parsing_overrides": {
+    "answer_regex": null
+  },
+  "_parsing_overrides_note": "answer_regex null: this prompt puts the 'A:' cue in the PROMPT, so the model's response has no 'A:' prefix of its own - a regex requiring one could only ever match a regurgitated exemplar. Nulling it lets the next rule in run_router.py read the leading digit, and that rule builds its digit class from 'hops' above, so it needs no hop-specific constant (the v1 per-model regexes hardcode MetaQA's 1-3). The model folder's parsing block is otherwise untouched: it is a v1 asset. The runner refuses an override key that block does not define, and asserts at load time that the parsing rules cover every value in 'hops' and that parsing.default_hop is one of them.",
+
+  "predictions": {
+    "enabled": true,
+    "filename": "predictions.jsonl",
+    "id_field": "query_id",
+    "hop_field": "predicted_hop",
+    "_note": "The point of this config (issue #27): one JSON object per query, carrying the query id and the predicted hop, so the two consumers can JOIN on the id - the retrieval chain's 'predictions' hop source (hop_match.predictions_id_field / predictions_hop_field in configs/similarity.json, issue #15's router-hop-matched condition) and the decomposer's router_guided condition (hop_predictions in configs/decomposer_musique.json). The field names are the defaults those consumers already expect (ADR 0022 item 5). Keying on question text was rejected there and is not offered here: the masking modes rewrite that field. The file lands under the gitignored runs root with the rest of the run, because data never enters git."
+  },
+
+  "output_subdir_few_shot": "router_musique/few_shot",
+  "zero_shot_prompt_marker": "zero_shot",
+  "_output_subdir_note": "Only the few-shot root is declared: this config has no zero-shot arm (few_shot.enabled is true, and a prompt without a {few_shot_examples} placeholder is refused), so a zero-shot output root would be a dead knob. Selecting a zero-shot prompt with this config is refused, naming the missing key. A zero-shot MuSiQue router arm would be its own config.",
+
+  "progress_every": 10,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}

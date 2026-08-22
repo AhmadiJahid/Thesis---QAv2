@@ -82,6 +82,13 @@ mixed being the literal absence of the filter. Knobs live in `hop_match` in
    shape (or write a small adapter). Silently keying on question text was rejected: it makes
    an exact-string match load-bearing on the very field the masking modes rewrite.
 
+   *Note added 2026-08-22 (issue #27, ADR [0024](./0024-router-readiness-query-id-keyed-predictions-and-the-router-guided-arm.md)):
+   this gap is closed. `run_router.py` now writes `predictions.jsonl` in exactly the shape
+   documented above — `query_id` / `predicted_hop`, one object per query — whenever its
+   question source carries ids, and `detailed_results.json` carries `query_id` as well. No
+   adapter is needed, and the field names match with no configuration. The decision in this
+   item is unchanged; only its "does not conform" statement of fact is out of date.*
+
 6. **The parsing rule is duplicated, and stays duplicated for now.** This repo already had
    three copies of "hop from id" (`MusiQue/scripts/musique_ids.py`,
    `MusiQue/scripts/score_similarity_results.py`,
@@ -177,6 +184,11 @@ step (this repo sets no torch determinism flags; same caveat as ADR 0021 item 7)
   5. Until one exists, issue #15's "done when" can be met for two of its three conditions
   only. Whether to produce it from the existing router component, from a fine-tuned router
   (ADR 0010), or from a hop predictor yet to be trained is **not** an implementer decision.
+  *(Note added 2026-08-22: the interface is no longer blocked — the existing router component
+  writes conforming predictions since ADR
+  [0024](./0024-router-readiness-query-id-keyed-predictions-and-the-router-guided-arm.md).
+  What is still absent is a predictions **file over the pinned 600**, which needs a real
+  router run; and which router ultimately produces it remains Jahid's decision.)*
 - **A confound to state in the write-up, not to fix in code.** Hop matching necessarily
   shrinks the candidate set: the 4-hop bucket is 1,175 rows against the pool's 9,156, so a
   matched-versus-mixed difference mixes "examples of the same hop depth" with "examples drawn

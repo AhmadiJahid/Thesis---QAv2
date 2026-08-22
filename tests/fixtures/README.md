@@ -76,6 +76,18 @@ retrieval/
                                # 4hop1__d003_c's candidate 4hop1__t010_j repeats the query's
                                # question text under a different id.
 pool_sweep_summary/            # a sweep summary CSV for the plotting script
+router/
+  hop_predictions_musique.jsonl # fabricated ROUTER PREDICTIONS in the shape run_router.py
+                               # writes (query_id + predicted_hop, plus the gold depth and
+                               # the parse-fallback flag): one row per dev_sample fixture
+                               # question (9), ids matching them exactly. Three of the nine
+                               # deliberately DISAGREE with the gold hop parsed from the id
+                               # (2hop__d004_d -> 3, 3hop2__d005_e -> 2, 4hop2__d007_h -> 3),
+                               # which is what makes the decomposer's router_guided arm and
+                               # issue #15's router-hop-matched retrieval do something
+                               # visibly different from the oracle. One row carries
+                               # parse_fallback true, i.e. a defaulted hop rather than a
+                               # predicted one. Not a measurement of any router.
 router_runs/                   # two completed router runs for the analysis script
 decomposer_run/                # a run directory with analysis/ dumps
 ```

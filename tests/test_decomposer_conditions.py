@@ -11,9 +11,11 @@ order they run in.
 What it covers:
 
 1. **Config resolution** - ``configs/decomposer_musique.json`` resolves to the MuSiQue
-   question template, hops [2, 3, 4] and three conditions (``unguided``,
-   ``oracle_guided``, ``unguided_capped``) whose only differences are the hop information
-   in the prompt and the step-line budget.
+   question template, hops [2, 3, 4] and the conditions (``unguided``, ``oracle_guided``,
+   ``unguided_capped``, and issue #27's ``router_guided``) whose only differences are the hop
+   information in the prompt and the step-line budget. The end-to-end checks below cover the
+   three arms of issue #12; ``router_guided`` needs a predictions file and is covered end to
+   end in ``tests/test_router_predictions.py``.
 2. **MetaQA defaults unchanged** - ``configs/decomposer.json`` still has guided=false,
    hops [1, 2, 3], the MetaQA template and no conditions block.
 3. **The prompt invariant** - every model folder that ships an unguided prompt has one that
@@ -154,24 +156,36 @@ def check_conditions(cfg: dict) -> None:
     print("[conditions]")
     conditions = require(cfg, "conditions")
     check(
-        "three conditions, named as briefed",
-        sorted(conditions) == ["oracle_guided", "unguided", "unguided_capped"],
+        "the three conditions briefed for issue #12, plus issue #27's router_guided",
+        sorted(conditions) == [
+            "oracle_guided", "router_guided", "unguided", "unguided_capped"
+        ],
         str(sorted(conditions)),
     )
 
-    # Hand-computed expectation per arm: (guided, stop_after_step_lines).
+    # Hand-computed expectation per arm: (guided, stop_after_step_lines, hop_source).
+    # hop_source is the arm's own key when it sets one, else the config's default; it is what
+    # separates oracle_guided (the gold depth) from router_guided (a router's prediction).
     expected = {
-        "unguided": (False, None),
-        "oracle_guided": (True, None),
-        "unguided_capped": (False, 8),
+        "unguided": (False, None, "gold"),
+        "oracle_guided": (True, None, "gold"),
+        "unguided_capped": (False, 8, "gold"),
+        "router_guided": (True, None, "predictions"),
     }
-    for name, (want_guided, want_cap) in expected.items():
+    for name, (want_guided, want_cap, want_hop_source) in expected.items():
         got_name, block = rd.resolve_condition(cfg, name)
         check(f"condition {name} resolves", got_name == name)
         guided = bool(block["guided"])
         cap = block.get("stop_after_step_lines")
+        hop_source = block.get("hop_source") or require(cfg, "hop_source")
         check(f"condition {name} guided={want_guided}", guided is want_guided, repr(guided))
         check(f"condition {name} cap={want_cap}", cap == want_cap, repr(cap))
+        check(
+            f"condition {name} hop_source={want_hop_source}",
+            hop_source == want_hop_source,
+            repr(hop_source),
+        )
+    check("the config's default hop source is gold", require(cfg, "hop_source") == "gold")
 
     default_name, _ = rd.resolve_condition(cfg, None)
     check("default condition is unguided", default_name == "unguided", str(default_name))
@@ -1050,6 +1064,10 @@ def test_conditions_end_to_end() -> None:
                         "hit_max_new_tokens", "stopped_at_step_line_cap",
                         # the cost fields of issue #13 (PR #24), same shape in every arm
                         "prompt_tokens", "completion_tokens", "latency_seconds",
+                        # issue #27: hop_count stays the GOLD depth in every arm, and these
+                        # two say what the prompt actually stated and where it came from
+                        # (null / "gold" in these three arms; the prediction in router_guided)
+                        "prompt_hop_count", "hop_count_source",
                     }
                     for r in arm["results"]
                 ),
