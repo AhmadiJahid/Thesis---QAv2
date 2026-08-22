@@ -8,7 +8,12 @@ a bug.
 
 Every metric here is **string-level**: no model is in the loop (`METRIC_DEFINITIONS`
 `not_a_semantic_metric`). Two decompositions that mean the same thing but word a step
-differently score as a mismatch.
+differently score as a mismatch. That still holds for the metrics added in §2.1 and §2.2:
+the graph edit distance is computed by `networkx`, a graph library, and every candidate that
+would have put a *model* in the scoring loop is left out — whether the supervisor's
+"no closed commercial model may judge decomposition quality" extends to open-weight scorers
+is his question, recorded as such in
+[`docs/analysis/2026-08-22-metric-candidates.md`](analysis/2026-08-22-metric-candidates.md) §6.
 
 **This file is the decomposition-*quality* half of MuSiQue evaluation only.** The end-to-end
 half — execute the decomposition and score the answer it produces — is
@@ -56,7 +61,8 @@ Two normalizations exist and they are **not** the same:
 | | used by | rule |
 |---|---|---|
 | `_normalize_step` | exact match, step P/R/F1, ordered accuracy | lowercase, strip punctuation **except `#`** (so `[#k]` survives), collapse whitespace |
-| `_tokenize` | ROUGE-L only | lowercase, collapse whitespace, split on spaces — **punctuation is not stripped** |
+| `_tokenize` | ROUGE-L, and GED's node substitution cost (§2.2) | lowercase, collapse whitespace, split on spaces — **punctuation is not stripped** |
+| `_break_steps` / `_break_string` | Break EM, SARI, GED (§2.2) | per step: collapse whitespace, rewrite `#k` → `@@k@@`; steps joined with `" @@SEP@@ "`. **No lowercasing** (EM lowercases the joined string itself) and **no punctuation stripping** |
 
 So `strike?` and `strike` are one token apart for ROUGE-L but identical for the step-level
 metrics. This asymmetry is inherited from v1 and is deliberate only in the sense that
@@ -65,9 +71,10 @@ nobody has changed it; it is worth knowing before reading a ROUGE-L number close
 ## 2. The metrics
 
 Unless stated otherwise, an aggregate is the **macro average**: the metric is computed per
-item and the per-item values are averaged over evaluated rows (`_aggregate`). Three keys are
+item and the per-item values are averaged over evaluated rows (`_aggregate`). Four keys are
 not macro averages: `reference_validity_micro` pools counts across all rows;
-`predicted_hop_distribution` / `gold_hop_distribution` are item counts per hop count; and
+`predicted_hop_distribution` / `gold_hop_distribution` are item counts per hop count;
+`ged_fallback_counts` is an item count per fallback reason (§2.2); and
 `composite_score` is computed from the aggregate values, not averaged from per-item ones
 (§4).
 
@@ -87,7 +94,9 @@ not macro averages: `reference_validity_micro` pools counts across all rows;
 | `step_count_exact_rate` | fraction of rows with len(pred) == len(gold), i.e. exactly 1 − `over_decomposition_rate` − `under_decomposition_rate`. **Not** `hop_count_exact_match_rate`: this one is against len(gold steps), that one against the gold `hop_count` field (§1). The two are equal whenever the gold passes the load-time assertion, but they are different definitions and only one of them belongs next to the over/under rates |
 | `hop_count_exact_match_rate`, `hop_count_abs_error_mae` | predicted hop count = number of predicted steps; gold hop count = the gold row's `hop_count` when it is a positive int, else the gold step count |
 | `predicted_hop_distribution`, `gold_hop_distribution` | counts of items per hop count |
-| `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics |
+| `chain_validity_macro` | see §2.1 |
+| `break_exact_match_rate`, `sari_macro`, `ged_macro`, `ged_fallback_counts` | see §2.2 |
+| `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics and everything in §2.1 / §2.2 |
 
 When reading the two direction rates, note that the errors are **not equally bad**: the
 supervisor's judgment (2026-08-12 meeting, [33:23] — "a three-hop question, it's fine to
@@ -98,7 +107,9 @@ with this asymmetry in mind.
 
 Per item, the same quantities are written to `<prefix>_per_item.json`, plus
 `step_count_signed_error` (`len(pred) − len(gold)`), `pred_steps`, `gold_steps` and
-`item_id`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
+`item_id`, plus the §2.1 / §2.2 columns: `chain_validity`,
+`chain_pred_reference_count`, `chain_gold_reference_count`, `break_exact_match`, `sari`,
+`ged` and `ged_fallback`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
 `predictions_path`, `gold_path`, `composite_score_weights`,
 `composite_step_count_error_scale`, then `items` (the per-item rows). The weights are
 stamped there because `--compare` recomputes the composite (§5) and needs to know what the
@@ -109,7 +120,115 @@ Reference validity checks **predicted** decompositions only; gold is never check
 the sharp edge stated in `METRIC_DEFINITIONS`: a prediction with no `[#k]` references at
 all scores 1.0 macro and contributes nothing to the micro denominator — a near-perfect
 reference-validity number can mean "no references were emitted", not "references were
-correct". (v1 saw exactly this; see `docs/prior-work.md`.)
+correct". (v1 saw exactly this; see `docs/prior-work.md`.) That edge, plus the syntax
+mismatch of [issue #40](https://github.com/AhmadiJahid/Thesis---QAv2/issues/40) (`_REF_RX`
+matches `[#k]`, MuSiQue's gold writes bare `#k`), is why `chain_validity` exists beside it
+— §2.1. **Neither `reference_validity_*` nor `composite_score` was changed:** the two terms
+are reported side by side so both can be read, and issue #40's open question ("is the
+bracketed syntax a defect or an intended v1-carried definition?") is Jahid's, not answered
+by the code.
+
+### 2.1 `chain_validity` — the repaired chaining term (per item, no free credit)
+
+Read off `_chain_validity`, and **additive**: it is a new column, it does not enter
+`composite_score`, and no number that existed before it moved.
+
+Per item, in this order:
+
+| case | value |
+|---|---|
+| the **gold** emits no `#k` reference (chaining is not required) | 1.0 |
+| the gold chains and the prediction emits **no** reference at all | **0.0** — the repair |
+| otherwise | valid predicted references / total predicted references, valid = `1 <= k <` the step's own 1-based index |
+
+Two differences from `reference_validity_*`: references are matched by `#(\d+)`, which sees
+the `#1` in `#1` **and** in `[#1]` (this is Break's own rule — `format_qdmr` rewrites
+`#(\d+)` → `@@\1@@`); and silence is not free. The second is not cosmetic:
+[`docs/analysis/2026-08-22-metric-candidates.md`](analysis/2026-08-22-metric-candidates.md)
+§3.2 measured the free-credit convention **flipping** a model ranking, with 76 of 600 items
+in one arm paid 1.0 for chaining not at all. It has a per-item value, so the whole §5
+battery applies to it. It is **not** a published metric — it is PR #38 §5 option 3(a) made
+concrete, and it is labelled that way wherever it is defined.
+
+Per item the file also carries `chain_pred_reference_count` and
+`chain_gold_reference_count`, so a 0.0 can be told apart from a 0.0: an item that emitted
+nothing versus one whose references were all invalid.
+
+### 2.2 Break's own metrics — EM, SARI, GED
+
+Ported from the **official** Break leaderboard evaluator (`allenai/break-evaluator` at
+master: `scripts/evaluate_predictions.py`, `evaluation/sari_hook.py`,
+`evaluation/graph_matcher.py`, `evaluation/decomposition.py`,
+`evaluation/sequence_matcher.py`), read file by file — the survey note §1.2 and §7 record the
+same reading. Additive, like §2.1: none of the three enters `composite_score`. The
+conventions and the deviations are ADR
+[0024](adr/0024-break-faithful-metrics-the-implementers-conventions.md).
+
+All three score the **`" @@SEP@@ "`-joined** decomposition (`_break_steps` collapses
+whitespace per step and rewrites `#k` → `@@k@@`; `_break_string` joins).
+
+| metrics JSON key | definition (function) |
+|---|---|
+| `break_exact_match_rate` | official `get_exact_match`: `pred.lower() == gold.lower()` on the joined string, **no punctuation stripping** (`_break_exact_match`). Strictly harder than `exact_match_rate`, which normalizes each step — on the fixture row that differs from its gold only by punctuation, `exact_match` is 1.0 and this is 0.0, and both are correct |
+| `sari_macro` | official SARI (`_sari`): `(keep-F1 + add-F1 + delete-precision) / 3`, averaged over n-grams n = 1…4, with the **question** as the source and the joined decompositions as prediction and single target. `_get_fbeta_score`'s 0/0 = 1 convention and `BETA_FOR_SARI_DELETION_F_MEASURE = 0` are reproduced |
+| `ged_macro` | official `normalized_graph_edit_distance` (`_normalized_ged`): the last value `networkx.optimize_graph_edit_distance` yields for (prediction, gold), with the lexical node substitution cost and unit edge/node insert-delete costs, divided by `max(nodes + edges)` of the two graphs. **LOWER IS BETTER** and it can exceed 1.0 |
+| `ged_fallback_counts` | how many items did not get the optimizer's own value, by reason (`node_cap`, `time_budget`, `time_budget_no_yield`). `{}` means every value is the optimizer's |
+| `ged_policy` | the two guards in force for the run, plus the direction and the node-cost convention, copied into the metrics JSON and the config snapshot |
+
+**The graph** (`_decomposition_graph`, official `Decomposition.to_graph`): node `i` is the
+i-th step (1-based) labelled with its text; an edge runs **from** the referencing step **to**
+the step it references (official `(i+1, ref)`); a reference to a step that does not exist
+creates that node with an empty label, so a `#7` in a 3-step plan pays for the dangling node.
+
+**The node substitution cost** (`_node_subst_cost`, `_match_score`) is
+`1 - 2·matches / (len(a) + len(b))` over the two step texts, where `matches` is the number of
+equal pairs on a minimum-edit-distance alignment (`_alignment_matches`, a port of
+`edit_distance.edit_distance` including its tie-break order — the number of matches on a
+*minimum-cost* path is **not** the LCS length).
+
+**Three named deviations from the official code**, so nothing here is read as a leaderboard
+number:
+
+1. **No spaCy.** Break lemmatizes the substitution cost's tokens with `en_core_web_sm`; this
+   implementation uses lowercased whitespace tokens (`_tokenize`), because spaCy is not a
+   dependency and its model needs a download. **Absolute GED values are therefore not
+   comparable to published Break GED.** Within one evaluation every system is scored
+   identically, so comparisons on this data are valid.
+2. **`norm_EM` is not ported.** Break's fourth leaderboard metric normalizes with ~14
+   QDMR-*operation-specific* rewrite rules over spaCy parses plus a 16-way operation
+   classifier; MuSiQue sub-questions are free-form natural language, so porting it means
+   writing a new canonicalizer whose validity is argued from scratch (survey §1.3).
+3. **No `return`-stripping and no `;`-splitting** from `format_qdmr`: the first would eat the
+   substring inside ordinary English words ("returned" → "ed"), the second splits QDMR's step
+   separator where `src/step_lines.py` already split ours. Whitespace collapsing and the
+   reference rewrite **are** applied.
+
+**Cost, and what happens when GED runs out of it.** Break wraps the optimizer in
+`@exit_after(180)` and its aggregator **drops** an item that times out. Dropping is not
+available here — a dropped item has no pair, and the whole §5 battery is paired — so an item
+over budget is reported with a documented **upper bound** and flagged in `ged_fallback`.
+Two guards, both in `configs/musique_eval.json` under `break_metrics.ged`:
+
+- `max_nodes_for_optimizer` (30): above it the optimizer is not called and the value is the
+  cost of one concrete edit path (pair nodes in sorted id order, substitute each pair,
+  delete/insert the surplus, keep the edges whose endpoints are both paired, delete/insert
+  the rest), normalized the same way. Deterministic — the same number on every machine.
+- `per_item_time_budget_seconds` (20.0): a wall-clock backstop under the cap, checked between
+  the optimizer's successive approximations, keeping the last one. This is the **one
+  machine-dependent path** in the report, which is why each firing is counted.
+
+**Two sharp edges to know before quoting a number.** (a) *SARI's floor is not 0 on this
+data*: every decomposition shares the `@@SEP@@` and template boilerplate, which inflates the
+keep and add terms, and SARI rewards deleting question tokens — the survey measured 0.29 for
+an empty prediction over the real 600. **Absolute SARI levels here are not interpretable;
+differences on the same data are.** (b) *GED is order-light, and on a 2-step plan it is
+order-blind*: reversing a 2-step decomposition turns its `#1` into a self-loop, and
+networkx's edit-path search prices that self-loop against an ordinary edge at 0, so a
+reversed 2-step plan scores **GED 0.0** (a 3-step reversal is priced correctly). The official
+evaluator computes GED through the same networkx call, so this is kept and pinned by a test
+rather than "fixed" — fixing it would be inventing a metric. `break_exact_match` catches the
+reversal in both cases, which is the survey's §4 item 2 in one sentence: an order-sensitive
+metric has to stay in the reported set.
 
 ## 3. ROUGE-L — the answer to the supervisor's question
 
@@ -152,6 +271,13 @@ snapshot and metrics JSON):
 | `composite_score_weights.reference_validity_micro` | 0.2 |
 | `composite_score_weights.step_count_error` | 0.1 |
 | `composite_step_count_error_scale` | 3.0 |
+
+**The composite is unchanged by the metrics of §2.1 and §2.2.** None of `chain_validity`,
+`break_exact_match`, `sari` or `ged` enters this formula, and neither
+`reference_validity_micro` nor its `[#k]`-only regex was touched, so every committed
+`composite_score` still has the value it was published with. Whether the composite keeps
+leading — or is repaired, or retired — is issue #6 item 5, Jahid's with his supervisor; the
+code measures, it does not adopt.
 
 The weights are a **choice, not a result**: they were hard-coded literals in v1 and were
 promoted to config in v2 so a run records them. Jahid's supervisor flagged this score as
@@ -225,7 +351,8 @@ Compares two runs **on the same evaluation set**. Parameters live in
   `config_weights_match_per_item_files`, and the run note prints a WARNING line when they
   disagree.
 - **Paired bootstrap CIs** (`_paired_bootstrap`, `_statistics_for`) for `rouge_l_f1`,
-  `step_f1`, `ordered_step_accuracy` and `composite_score`. Each of the 10000 resamples
+  `step_f1`, `ordered_step_accuracy`, `sari`, `ged`, `chain_validity` and `composite_score`
+  (`BOOTSTRAP_STATISTICS`). Each of the 10000 resamples
   draws n item indices with replacement (`numpy.random.default_rng(seed)`) and applies the
   **same** indices to both systems; every statistic is recomputed from the resampled items.
   The interval is the [alpha/2, 1−alpha/2] percentile of the difference **system_a minus
@@ -241,8 +368,17 @@ Compares two runs **on the same evaluation set**. Parameters live in
   consumes one draw per index in row-major order, so chunked draws concatenate to the
   single-block draw (pinned by `TestBootstrapChunking`, which also asserts equality with
   `chunk_size == iterations`, i.e. the un-chunked path).
-- **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the two binary metrics `exact_match` and
-  `hop_count_exact_match`: with b = #(a correct, b wrong) and c = #(a wrong, b correct),
+- **Direction, carried in the data** (`LOWER_IS_BETTER_STATISTICS`, `_direction`,
+  `_favours`). `ged` is a **distance** — lower is better — and it is the only one in the
+  report, so a bare `-0.16` on that row means the *opposite* of what it means on every other
+  row. Every bootstrap, McNemar and t-test row therefore carries `direction`
+  (`higher_is_better` / `lower_is_better`) and, when it is significant, `favours`
+  (`system_a` / `system_b`) with the direction already applied (null otherwise); the metrics
+  JSON also lists `lower_is_better_statistics`; and the run note's table has a `better`
+  column plus a sentence saying which way `ged` reads, with each significant verdict
+  annotated `yes (favours a|b)`.
+- **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the three binary metrics `exact_match`,
+  `hop_count_exact_match` and `break_exact_match`: with b = #(a correct, b wrong) and c = #(a wrong, b correct),
   the exact two-sided p-value is `min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5))`, computed
   with exact integer arithmetic. With no discordant pairs p = 1.0. `significant` is
   `p < alpha`.
@@ -260,9 +396,10 @@ Compares two runs **on the same evaluation set**. Parameters live in
   chosen in config, not a statistical standard** — it exists so a tiny evaluation set
   cannot print a bare `significant: true`; its value is Jahid's and his supervisor's to set.
 - **Paired t-test** (`_paired_t_test`, `_paired_t_test_row`, `scipy.stats.ttest_rel`) over
-  the same per-item differences, the same pairing and the same aligned items, for the five
+  the same per-item differences, the same pairing and the same aligned items, for the nine
   compared metrics that **have** a per-item value: `rouge_l_f1`, `step_f1`,
-  `ordered_step_accuracy`, `exact_match`, `hop_count_exact_match`
+  `ordered_step_accuracy`, `sari`, `ged`, `chain_validity`, `exact_match`,
+  `hop_count_exact_match`, `break_exact_match`
   (`T_TEST_STATISTICS`). Each row carries `t_statistic`, `degrees_of_freedom` (n − 1) and
   `p_value`, with `significant` = `p_value < alpha` and the same `underpowered` flag as the
   rest. `composite_score` gets **no** t-test: its reference term is a micro rate and its
@@ -279,11 +416,20 @@ Compares two runs **on the same evaluation set**. Parameters live in
   Note the assumption it makes and the others do not: these bounded, 0/1-heavy per-item
   scores are not obviously normal in their differences, which is why ADR 0009 chose the
   bootstrap and McNemar as the headline. The run note prints that caveat.
-- **The headline protocol is six tests** (four bootstrap intervals + two McNemar p-values)
-  **and the five t-tests are reported alongside them**; the counts are in the metrics JSON
-  under `tests_reported`. **None** is corrected for multiple comparisons, and the t-test
+- **The headline protocol is the bootstrap intervals plus the McNemar p-values** (ten of
+  them on v2 inputs today: seven bootstrap + three McNemar) **and the t-tests are reported
+  alongside them** (nine). The count grew with the additive metrics of §2.1 / §2.2, so read
+  the exact numbers off `tests_reported` in the metrics JSON rather than off this sentence.
+  **None** is corrected for multiple comparisons, and the t-test
   rows re-test the same metrics on the same items rather than adding independent tests. The
   run note says so too.
+- **A compared metric the inputs do not carry is skipped and named**, not silently omitted:
+  `statistics_not_available_in_inputs` in the metrics JSON, plus a `NOT COMPARED` line in the
+  run note. On v2 artifacts it is empty (the §2.1 / §2.2 columns are **required** — a
+  per-item file written before them gets the existing "re-run the evaluation to regenerate
+  them" refusal). It is non-empty only for `--v1-per-item` inputs, which predate those
+  columns; computing them there from the stored steps would be a *re-score of v1 output*
+  rather than a comparison of what v1 measured.
 - **v1 prior-work inputs** (`--v1-per-item`, `--v1-alignment`; ADR
   [0020](adr/0020-prior-work-re-analysis-convention.md)). `--compare` can read v1's
   bare-list per-item files — the format that predates
