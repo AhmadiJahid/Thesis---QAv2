@@ -659,6 +659,44 @@ class TestBreakMetrics(EvaluatorTestBase):
                 expected = sum(float(row[column]) for row in items) / len(items)
                 self.assertAlmostEqual(metrics[aggregate], expected, places=PLACES)
 
+    def test_a_scoring_run_states_which_metrics_are_lower_is_better(self) -> None:
+        """PR #44 review, nit 6: direction is discoverable from `eval_metrics.json`.
+
+        A comparison's metrics JSON has always carried `lower_is_better_statistics`; a
+        scoring run's did not, so a program reading `ged_macro` beside the score columns had
+        no way to learn from the file that it points the other way. Additive key, same
+        source constant as the comparison path, with its definition in `metric_definitions`.
+        """
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        metrics, _ = self.evaluate("break_direction", preds)
+        self.assertEqual(metrics["lower_is_better_statistics"], ["ged"])
+        self.assertEqual(list(EVAL.LOWER_IS_BETTER_STATISTICS), ["ged"])
+        self.assertIn("lower_is_better_statistics", metrics["metric_definitions"])
+        # The named metric is one this file actually reports, under its '_macro' aggregate.
+        for name in metrics["lower_is_better_statistics"]:
+            self.assertIn(f"{name}_macro", metrics)
+
+    def test_the_run_note_caveat_covers_all_four_new_numbers(self) -> None:
+        """PR #44 review, I2: the caveat counts the numbers on the line above it correctly
+        and names the dataset difference.
+
+        The line above carries FOUR numbers (Break EM, SARI, GED, chain validity) and the
+        caveat used to say "the three numbers above" — and it named only the lemmatizer and
+        the SARI floor, leaving the biggest gap for Break EM unstated: these are scored
+        against MuSiQue gold decompositions, not Break's QDMR annotations. The run note is
+        what gets quoted into `experiments/log.md`, so the wording is pinned here.
+        """
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        _, per_item = self.evaluate("break_note_caveat", preds)
+        note = (per_item.parent / "eval_notes.md").read_text(encoding="utf-8")
+        self.assertIn("CAVEAT on the four numbers above", note)
+        self.assertNotIn("three numbers above", note)
+        self.assertIn("MuSiQue gold decompositions", note)
+        self.assertIn("QDMR", note)
+        # The line the caveat is about still carries all four.
+        for label in ("Break EM:", "SARI:", "GED:", "chain validity:"):
+            self.assertIn(label, note)
+
 
 class TestChainValidity(EvaluatorTestBase):
     """The repaired chaining term: bare `#k`, per item, no free credit for silence."""
@@ -1319,10 +1357,19 @@ class TestPairedComparison(EvaluatorTestBase):
         The regression this pins is a set-difference bug, so it is asserted as a set: every
         compared statistic (and every column the composite is rebuilt from) must be in the
         gate, and `item_id` must not be, because it is a string.
+
+        The issue #40 columns are spelled out **literally** here rather than read from
+        `_ISSUE_40_STATISTICS` (PR #44 review, nit 4). `_REQUIRED_V1_PER_ITEM_FIELDS` is
+        *derived* by subtracting that same constant, so asserting the difference against the
+        constant asserts nothing: emptying the constant would satisfy it. The four names are
+        the four columns issue #40 added, and if one of them ever leaves the gate this test
+        has to fail.
         """
+        issue_40_columns = {"sari", "ged", "chain_validity", "break_exact_match"}
+        self.assertEqual(set(EVAL._ISSUE_40_STATISTICS), issue_40_columns)
         gate = set(EVAL._NUMERIC_PER_ITEM_FIELDS)
         self.assertNotIn("item_id", gate)
-        for name in EVAL._ISSUE_40_STATISTICS:
+        for name in issue_40_columns:
             self.assertIn(name, gate)
         for name in EVAL.MCNEMAR_STATISTICS:
             self.assertIn(name, gate)
@@ -1331,10 +1378,8 @@ class TestPairedComparison(EvaluatorTestBase):
                 self.assertIn(name, gate)
         for name in EVAL._COMPOSITE_INPUT_COLUMNS:
             self.assertIn(name, gate)
-        # The v1 gate is the same set minus the columns v1 could not have written.
-        self.assertEqual(
-            gate - set(EVAL._REQUIRED_V1_PER_ITEM_FIELDS), set(EVAL._ISSUE_40_STATISTICS)
-        )
+        # The v1 gate is the same set minus the four columns v1 could not have written.
+        self.assertEqual(gate - set(EVAL._REQUIRED_V1_PER_ITEM_FIELDS), issue_40_columns)
 
     def test_legacy_bare_list_per_item_file_is_refused(self) -> None:
         """A per-item file with no stamped weights cannot be recomputed against."""

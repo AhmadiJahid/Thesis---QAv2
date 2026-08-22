@@ -227,6 +227,14 @@ METRIC_DEFINITIONS: dict[str, Any] = {
         "recorded alongside as composite_score_weights and "
         "composite_step_count_error_scale"
     ),
+    "lower_is_better_statistics": (
+        "the per-item metric names in this report where a LOWER value is better; every "
+        "other metric here is higher-is-better. The names are the per-item column names, "
+        "whose aggregate in this file is '<name>_macro' (so 'ged' names both the per-item "
+        "'ged' column and 'ged_macro'). The list is emitted as a top-level key of the "
+        "metrics JSON as well, so a program reading this file can discover the direction "
+        "without parsing prose"
+    ),
     "not_a_semantic_metric": (
         "every metric here is string-level. Two decompositions that mean the same thing "
         "but word a step differently score as a mismatch"
@@ -898,9 +906,12 @@ def _normalized_ged(
 
 
 #: Floor for ``break_metrics.ged.max_nodes_for_optimizer``. MuSiQue gold is at most 4 steps
-#: and the ``unguided_capped`` arm's step-line budget is 8, so a cap below 8 would send
-#: ordinary predictions to the fallback and quietly change what ``ged`` measures. Refusing it
-#: at load beats discovering it in a metrics JSON (same contract as ``gold_validation``).
+#: and the longest decomposition any arm may emit is 8 step lines —
+#: ``conditions.unguided_capped.stop_after_step_lines`` in ``configs/decomposer_musique.json``,
+#: which is where this 8 comes from. A cap below it would send ordinary predictions to the
+#: fallback and quietly change what ``ged`` measures. Refusing it at load beats discovering it
+#: in a metrics JSON (same contract as ``gold_validation``). If that config's cap changes,
+#: this floor is the thing to re-read.
 _GED_MIN_NODE_CAP = 8
 
 
@@ -2534,6 +2545,12 @@ def main() -> None:
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
         "ged_policy": ged_policy,
+        # Metric direction, discoverable by a machine reader of this file rather than only
+        # by a human reader of the prose (PR #44 review, nit 6). A comparison's metrics JSON
+        # has carried this key since the metrics landed; a scoring run's did not, so a
+        # program plotting 'ged_macro' beside the score columns had no way to learn from the
+        # file that it points the other way. Same names, same source constant.
+        "lower_is_better_statistics": list(LOWER_IS_BETTER_STATISTICS),
         "metric_definitions": METRIC_DEFINITIONS,
     }
 
@@ -2594,13 +2611,16 @@ def main() -> None:
             f"better) / chain validity: {metrics['chain_validity_macro']:.4f}",
             # This note is what gets quoted into experiments/log.md, so the caveat travels
             # with the numbers rather than living only in docs (PR #44 review, I3).
-            "- CAVEAT on the three numbers above: the GED and SARI **levels** are not "
-            "comparable to published Break leaderboard numbers — GED's node cost uses no "
-            "lemmatizer here (Break uses spaCy), and SARI's floor on this data is well "
-            "above 0 because every decomposition shares the `@@SEP@@`/template "
-            "boilerplate. Differences on the same evaluation set are what these support "
-            "(ADR 0026, docs/METRICS.md §2.2). `chain_validity` is a house repair, not a "
-            "published metric.",
+            "- CAVEAT on the four numbers above: none of them is comparable to a published "
+            "Break leaderboard number, and the first reason is the data — these are scored "
+            "against **MuSiQue gold decompositions**, not Break's QDMR annotations, so even "
+            "Break EM (an exact string match) is measuring agreement with a different kind "
+            "of target. Beyond that, the GED and SARI **levels** are not comparable either: "
+            "GED's node cost uses no lemmatizer here (Break uses spaCy), and SARI's floor on "
+            "this data is well above 0 because every decomposition shares the "
+            "`@@SEP@@`/template boilerplate. Differences on the same evaluation set are what "
+            "these support (ADR 0026, docs/METRICS.md §2.2). `chain_validity` is a house "
+            "repair, not a published metric at all.",
             "- GED policy: node cap "
             f"{ged_policy['max_nodes_for_optimizer']} (the guard that bounds cost), "
             f"per-item budget {ged_policy['per_item_time_budget_seconds']} s (a backstop "

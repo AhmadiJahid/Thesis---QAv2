@@ -54,6 +54,7 @@ When **not** to write one:
 | [0024](./0024-router-readiness-query-id-keyed-predictions-and-the-router-guided-arm.md) | Router Readiness: Query-Id-Keyed Predictions, a Retrieved-Few-Shot Router, and the Router-Guided Decomposer Arm | Accepted (design agent-authored, pending Jahid) |
 | [0025](./0025-end-to-end-backend-conventions-the-implementers-design.md) | End-to-End Backend Conventions: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
 | [0026](./0026-break-faithful-metrics-the-implementers-conventions.md) | Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions | Accepted (implementer design, pending Jahid) |
+| [0027](./0027-a-number-that-justifies-a-constant-is-a-committed-script.md) | A Number That Justifies a Config Constant Is a Committed Script, Not Prose | Accepted (implementer convention, pending Jahid) |
 
 ---
 
