@@ -122,3 +122,6 @@ Thumbs.db
 !tests/fixtures/**/*.jsonl
 !tests/fixtures/**/*.txt
 !tests/fixtures/**/*.csv
+
+# Jahid's personal working note, kept local by design — not pipeline code or docs.
+Plan\ after\ the\ meeting.md
