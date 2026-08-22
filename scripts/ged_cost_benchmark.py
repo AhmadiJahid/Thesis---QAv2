@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import time
@@ -81,6 +82,30 @@ _REPEATED_STEP_TEXT = "Who leads the organisation?"
 #: Step 1 of the reference-carrying shapes, so that ``#1`` always names a real step.
 _CHAIN_FIRST_STEP = "Who published Quiet Ledger?"
 
+#: The two halves of the discriminating pair (PR #45 review, Important). They share their
+#: vocabulary and their token count and differ in **exactly one thing**: whether the step
+#: carries a reference. Both are deliberate nonsense, sharing no token with either fixture
+#: gold, so a cost difference between them cannot be read as similarity to the gold's labels.
+_NONSENSE_STEP_TEXT = "Zzz quibble frobnicate widget?"
+_NONSENSE_STEP_TEXT_WITH_REFERENCE = "Zzz quibble frobnicate [#1]?"
+
+
+def _first_referencing_gold_step(gold_steps: list[str]) -> str:
+    """The gold's first step that carries a ``[#k]`` reference.
+
+    Used by the gold-derived half of the discriminating pair, which needs a *gold* label
+    that carries an edge. Raises rather than falling back: a gold with no reference at all
+    would silently turn that shape into its own control and the table would compare two
+    things it does not name.
+    """
+    for step in gold_steps:
+        if re.search(r"#\d+", step):
+            return step
+    raise SystemExit(
+        "no gold step carries a '#k' reference, so the gold-derived with-reference shape "
+        "cannot be built from this gold row"
+    )
+
 
 def _shape_repeated_step_text(nodes: int, gold_steps: list[str]) -> list[str]:
     """``nodes`` copies of one sentence, no references.
@@ -129,11 +154,65 @@ def _shape_all_pairs_referencing(nodes: int, gold_steps: list[str]) -> list[str]
     return steps
 
 
+def _shape_nonsense_text_repeated_no_reference(nodes: int, gold_steps: list[str]) -> list[str]:
+    """``nodes`` copies of :data:`_NONSENSE_STEP_TEXT`. Tied labels, no edges, no gold overlap.
+
+    One cell of the 2x2 that separates "labels tie with each other" from "labels tie with
+    the *gold's* labels" and from "the graph has edges at all". Graph: ``nodes`` nodes,
+    0 edges.
+    """
+    return [_NONSENSE_STEP_TEXT] * nodes
+
+
+def _shape_nonsense_text_repeated_with_reference(
+    nodes: int, gold_steps: list[str]
+) -> list[str]:
+    """The same nonsense sentence, with a reference. Tied labels, edges, no gold overlap.
+
+    The only difference from :func:`_shape_nonsense_text_repeated_no_reference` is the
+    ``[#1]`` in place of the last word, so a cost difference between the two rows is
+    attributable to the reference and to nothing else. Every step points at step 1, so the
+    graph is a star. Graph: ``nodes`` nodes, ``nodes`` edges (step 1's own ``#1`` is a
+    self-loop, which networkx counts as an edge).
+    """
+    return [_NONSENSE_STEP_TEXT_WITH_REFERENCE] * nodes
+
+
+def _shape_gold_step_text_repeated_no_reference(
+    nodes: int, gold_steps: list[str]
+) -> list[str]:
+    """``nodes`` copies of the gold's **first** step. Tied labels, no edges, gold overlap.
+
+    Step 1 of a MuSiQue gold decomposition never references anything, so this is the
+    gold-derived control: maximal label ties, maximal similarity to a gold label, no edges.
+    """
+    return [gold_steps[0]] * nodes
+
+
+def _shape_gold_step_text_repeated_with_reference(
+    nodes: int, gold_steps: list[str]
+) -> list[str]:
+    """``nodes`` copies of the gold's first *referencing* step. Ties, edges, gold overlap.
+
+    The fourth cell of the 2x2: it differs from
+    :func:`_shape_nonsense_text_repeated_with_reference` only in that its label is one of
+    the gold's own, so the two rows together say whether gold-label similarity costs
+    anything once ties and references are held fixed.
+    """
+    return [_first_referencing_gold_step(gold_steps)] * nodes
+
+
 SHAPES: dict[str, Callable[[int, list[str]], list[str]]] = {
     "repeated_step_text": _shape_repeated_step_text,
     "gold_step_texts_repeated": _shape_gold_step_texts_repeated,
     "chain_shaped": _shape_chain_shaped,
     "all_pairs_referencing": _shape_all_pairs_referencing,
+    # The discriminating 2x2 added after the PR #45 review: {nonsense, gold-derived} label x
+    # {no reference, reference}, with label ties held at maximum in all four.
+    "nonsense_text_repeated_no_reference": _shape_nonsense_text_repeated_no_reference,
+    "nonsense_text_repeated_with_reference": _shape_nonsense_text_repeated_with_reference,
+    "gold_step_text_repeated_no_reference": _shape_gold_step_text_repeated_no_reference,
+    "gold_step_text_repeated_with_reference": _shape_gold_step_text_repeated_with_reference,
 }
 
 

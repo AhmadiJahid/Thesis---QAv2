@@ -7,16 +7,22 @@
     { "hop_depth": 4, "gold_id": "4hop1__d003_c" }
   ],
   "timing_budget_seconds": 300.0,
+  "_discriminating_pair_note": "The last four shapes are a 2x2 added after the PR #45 review, which falsified the ADR's earlier reading of the table: {nonsense label, gold-derived label} x {no reference, one reference}, with label ties held at maximum in all four. The nonsense pair shares its vocabulary and token count and differs only in carrying a reference, and shares no token with either gold, so the four rows together separate three things the earlier shape set confounded - labels tying with each other, labels tying with the GOLD's labels, and the graph carrying edges at all. Read them together with chain_shaped and all_pairs_referencing, which carry edges but distinguishable labels.",
   "cost_table_cells": [
     { "shape": "repeated_step_text", "node_counts": [8, 12, 14, 16, 20, 30] },
     { "shape": "gold_step_texts_repeated", "node_counts": [8, 12, 16, 20, 30] },
     { "shape": "chain_shaped", "node_counts": [12, 39] },
-    { "shape": "all_pairs_referencing", "node_counts": [20, 30] }
+    { "shape": "all_pairs_referencing", "node_counts": [20, 30] },
+    { "shape": "nonsense_text_repeated_no_reference", "node_counts": [8, 16, 30] },
+    { "shape": "nonsense_text_repeated_with_reference", "node_counts": [8, 16, 30] },
+    { "shape": "gold_step_text_repeated_no_reference", "node_counts": [8, 16, 30] },
+    { "shape": "gold_step_text_repeated_with_reference", "node_counts": [8, 16, 30] }
   ],
   "bound_vs_optimizer_cells": [
     { "shape": "repeated_step_text", "nodes": 17 },
     { "shape": "gold_step_texts_repeated", "nodes": 17 },
     { "shape": "chain_shaped", "nodes": 17 },
-    { "shape": "chain_shaped", "nodes": 39 }
+    { "shape": "chain_shaped", "nodes": 39 },
+    { "shape": "nonsense_text_repeated_with_reference", "nodes": 17 }
   ]
 }

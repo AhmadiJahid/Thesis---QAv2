@@ -107,14 +107,71 @@ class TestShapesAreDefinedNotDescribed(unittest.TestCase):
     def test_the_bound_is_never_below_the_optimizer_value(self) -> None:
         """The reported fallback is an UPPER bound, which is the whole claim ADR 0026 makes.
 
-        Checked on a small cell so the optimizer terminates quickly; a bound that came in
-        *under* the optimizer's value would mean the fallback is not a valid edit path.
+        Checked across **every** shape rather than one cell (PR #45 review, the weaker note
+        under nit 2), at sizes small enough that the optimizer terminates in milliseconds. A
+        bound that came in *under* the optimizer's value would mean the fallback is not a
+        valid edit path, and the ADR's "upper bound" wording would be wrong.
         """
         gold_graph = BENCH._graph_of(self.GOLD_STEPS)
-        pred_graph = self.graph("gold_step_texts_repeated", 6)
-        measured = BENCH._time_optimizer(pred_graph, gold_graph, 60.0)
-        bound = BENCH._bound(pred_graph, gold_graph)
-        self.assertGreaterEqual(bound + 1e-9, measured["ged"])
+        for shape in sorted(BENCH.SHAPES):
+            for nodes in (3, 6, 9):
+                with self.subTest(shape=shape, nodes=nodes):
+                    pred_graph = self.graph(shape, nodes)
+                    measured = BENCH._time_optimizer(pred_graph, gold_graph, 60.0)
+                    bound = BENCH._bound(pred_graph, gold_graph)
+                    self.assertGreaterEqual(bound + 1e-9, measured["ged"])
+
+    def test_the_discriminating_pair_differs_only_in_the_reference(self) -> None:
+        """PR #45 review, Important: the 2x2 that separates ties, gold overlap and edges.
+
+        The nonsense pair must share vocabulary and token count and differ in exactly one
+        token — the reference — or a cost difference between their rows would be
+        attributable to something else. The gold-derived pair must use gold labels: one
+        without a reference (step 1 of a MuSiQue gold never has one) and one with.
+        """
+        no_ref = BENCH.SHAPES["nonsense_text_repeated_no_reference"](16, self.GOLD_STEPS)
+        with_ref = BENCH.SHAPES["nonsense_text_repeated_with_reference"](16, self.GOLD_STEPS)
+        self.assertEqual(no_ref, [BENCH._NONSENSE_STEP_TEXT] * 16)
+        self.assertEqual(with_ref, [BENCH._NONSENSE_STEP_TEXT_WITH_REFERENCE] * 16)
+        self.assertEqual(len(no_ref[0].split()), len(with_ref[0].split()))
+        self.assertEqual(no_ref[0].split()[:-1], with_ref[0].split()[:-1])
+        # No WORD of either nonsense label appears in the gold, so a cost difference
+        # against the gold-derived pair cannot be read as similarity to a gold label. The
+        # reference token itself is necessarily shared — carrying one is the toggled factor.
+        def words(text: str) -> set[str]:
+            return {t.lower() for t in text.split() if "#" not in t}
+
+        gold_words = set().union(*(words(step) for step in self.GOLD_STEPS))
+        for label in (no_ref[0], with_ref[0]):
+            self.assertEqual(gold_words & words(label), set())
+
+        gold_no_ref = BENCH.SHAPES["gold_step_text_repeated_no_reference"](5, self.GOLD_STEPS)
+        gold_with_ref = BENCH.SHAPES["gold_step_text_repeated_with_reference"](
+            5, self.GOLD_STEPS
+        )
+        self.assertEqual(gold_no_ref, [self.GOLD_STEPS[0]] * 5)
+        self.assertEqual(gold_with_ref, [self.GOLD_STEPS[1]] * 5)
+        self.assertNotIn("#", gold_no_ref[0])
+        self.assertIn("#1", gold_with_ref[0])
+
+        # Edges are the toggled factor: 0 without a reference, one per step with one (step
+        # 1's own '#1' is a self-loop, which networkx counts).
+        for shape, edges in (
+            ("nonsense_text_repeated_no_reference", 0),
+            ("gold_step_text_repeated_no_reference", 0),
+            ("nonsense_text_repeated_with_reference", 16),
+            ("gold_step_text_repeated_with_reference", 16),
+        ):
+            with self.subTest(shape=shape):
+                g = self.graph(shape, 16)
+                self.assertEqual((g.number_of_nodes(), g.number_of_edges()), (16, edges))
+
+    def test_a_gold_with_no_reference_is_refused_not_silently_reshaped(self) -> None:
+        """The gold-derived with-reference shape has no fallback."""
+        with self.assertRaises(SystemExit):
+            BENCH.SHAPES["gold_step_text_repeated_with_reference"](
+                4, ["One step, no reference at all?"]
+            )
 
 
 class TestBenchmarkCli(unittest.TestCase):
