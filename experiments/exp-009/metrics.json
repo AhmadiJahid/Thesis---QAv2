@@ -1,0 +1,75 @@
+{
+  "_note": "Full per-arm and comparison numbers copied verbatim from runs/exp-009/{mixed,oracle}/**/eval_*_metrics.json and runs/exp-009/compare_mixed_vs_oracle/compare_mixed_vs_oracle_metrics.json. composite_score is recorded but is NOT the headline metric (see composite_score_caveat in config.json) -- lead with step_f1 / ordered_step_accuracy / hop_count_exact_match.",
+
+  "generation": {
+    "mixed": {"total_rows": 600, "rows_with_empty_decomposition": 0, "rows_at_max_new_tokens": 23, "rows_loaded_per_hop": {"2": 200, "3": 200, "4": 200}},
+    "oracle_hop_matched": {"total_rows": 600, "rows_with_empty_decomposition": 0, "rows_at_max_new_tokens": 32, "rows_loaded_per_hop": {"2": 200, "3": 200, "4": 200}}
+  },
+
+  "overall": {
+    "mixed": {
+      "exact_match_rate": 0.06166666666666667,
+      "step_f1_macro": 0.20352240352240353,
+      "ordered_step_accuracy_macro": 0.18041269841269839,
+      "hop_count_exact_match_rate": 0.515,
+      "step_count_mae": 0.77,
+      "mean_signed_step_count_error": 0.3333333333333333,
+      "over_decomposition_rate": 0.285,
+      "under_decomposition_rate": 0.2,
+      "reference_validity_micro": 0.0,
+      "rouge_l_f1_macro": 0.5432,
+      "composite_score": 0.2098661042661043
+    },
+    "oracle_hop_matched": {
+      "exact_match_rate": 0.056666666666666664,
+      "step_f1_macro": 0.1930844525844526,
+      "ordered_step_accuracy_macro": 0.1799001322751323,
+      "hop_count_exact_match_rate": 0.6,
+      "step_count_mae": 0.7033333333333334,
+      "mean_signed_step_count_error": 0.4266666666666667,
+      "over_decomposition_rate": 0.27,
+      "under_decomposition_rate": 0.13,
+      "reference_validity_micro": 0.2777777777777778,
+      "rouge_l_f1_macro": 0.5470,
+      "composite_score": 0.2633149318274318
+    }
+  },
+
+  "per_hop": {
+    "mixed": {
+      "2": {"step_f1_macro": 0.3268333333333333, "ordered_step_accuracy_macro": 0.3183333333333333, "hop_count_exact_match_rate": 0.71, "over_decomposition_rate": 0.28, "under_decomposition_rate": 0.01, "step_count_mae": 0.45, "mean_signed_step_count_error": 0.43},
+      "3": {"step_f1_macro": 0.16765079365079366, "ordered_step_accuracy_macro": 0.1383333333333333, "hop_count_exact_match_rate": 0.525, "over_decomposition_rate": 0.285, "under_decomposition_rate": 0.19, "step_count_mae": 0.7, "mean_signed_step_count_error": 0.32},
+      "4": {"step_f1_macro": 0.11608308358308358, "ordered_step_accuracy_macro": 0.08457142857142858, "hop_count_exact_match_rate": 0.31, "over_decomposition_rate": 0.29, "under_decomposition_rate": 0.4, "step_count_mae": 1.16, "mean_signed_step_count_error": 0.25}
+    },
+    "oracle_hop_matched": {
+      "2": {"step_f1_macro": 0.35511111111111116, "ordered_step_accuracy_macro": 0.34479166666666666, "hop_count_exact_match_rate": 0.845, "over_decomposition_rate": 0.14, "under_decomposition_rate": 0.015, "step_count_mae": 0.46, "mean_signed_step_count_error": 0.43},
+      "3": {"step_f1_macro": 0.15305555555555556, "ordered_step_accuracy_macro": 0.13504761904761906, "hop_count_exact_match_rate": 0.58, "over_decomposition_rate": 0.31, "under_decomposition_rate": 0.11, "step_count_mae": 0.635, "mean_signed_step_count_error": 0.415},
+      "4": {"step_f1_macro": 0.07108669108669109, "ordered_step_accuracy_macro": 0.05986111111111111, "hop_count_exact_match_rate": 0.375, "over_decomposition_rate": 0.36, "under_decomposition_rate": 0.265, "step_count_mae": 1.015, "mean_signed_step_count_error": 0.435}
+    }
+  },
+
+  "compare_mixed_vs_oracle_hop_matched": {
+    "n_aligned": 600,
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 42,
+    "bootstrap_95pct_CI_of_a_minus_b": {
+      "rouge_l_f1": {"a": 0.5432, "b": 0.5470, "diff": -0.0038, "ci": [-0.0159, 0.0079], "significant": false},
+      "step_f1": {"a": 0.2035, "b": 0.1931, "diff": 0.0104, "ci": [-0.0064, 0.0273], "significant": false},
+      "ordered_step_accuracy": {"a": 0.1804, "b": 0.1799, "diff": 0.0005, "ci": [-0.0157, 0.0168], "significant": false},
+      "composite_score": {"a": 0.2099, "b": 0.2633, "diff": -0.0534, "ci": [-0.1974, 0.1856], "significant": false, "caveat": "composite is suspect, see config.json composite_score_caveat"}
+    },
+    "mcnemar": {
+      "exact_match": {"a": 0.0617, "b": 0.0567, "diff": 0.0050, "b_discordant": 12, "c_discordant": 9, "p": 0.6636, "significant": false},
+      "hop_count_exact_match": {"a": 0.5150, "b": 0.6000, "diff": -0.0850, "b_discordant": 82, "c_discordant": 133, "p": 0.0006164, "significant": true}
+    },
+    "paired_t_test": {
+      "rouge_l_f1": {"t": -0.6290, "dof": 599, "p": 0.5296, "significant": false},
+      "step_f1": {"t": 1.2115, "dof": 599, "p": 0.2262, "significant": false},
+      "ordered_step_accuracy": {"t": 0.0625, "dof": 599, "p": 0.9502, "significant": false},
+      "exact_match": {"t": 0.6543, "dof": 599, "p": 0.5131, "significant": false},
+      "hop_count_exact_match": {"t": -3.5108, "dof": 599, "p": 0.0004803, "significant": true}
+    }
+  },
+
+  "reading": "a = mixed, b = oracle_hop_matched throughout. On the deployable unguided prompting condition, hop-matched retrieval (oracle) moves hop_count_exact_match significantly (McNemar p=0.0006, paired t p=0.00048; mixed 0.515 vs oracle 0.600, +0.085) but does NOT move step_f1 or ordered_step_accuracy (both CIs straddle zero, both t-tests not significant; point estimates nearly tied, mixed marginally ahead on step_f1 0.2035 vs 0.1931). composite_score's apparent oracle-favouring gap (+0.053 in b's favour) is not trustworthy per the composite_score_caveat -- oracle's reference_validity_micro jumps from 0.0 to 0.278, which per issue #40's analysis is a regex/bracket-vs-bare-# artifact, not a measured decomposition-quality effect. This mirrors exp-004's within-model finding on the guided/unguided axis: an oracle signal helps get the step COUNT right more often without a measured step-QUALITY gain. Router-hop-matched (the third ADR 0022 condition) remains unmeasurable -- today's router writes no query id (ADR 0022 item 5) -- so the oracle-minus-router error-propagation number is NOT estimated here and is not present in this file."
+}

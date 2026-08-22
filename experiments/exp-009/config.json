@@ -1,0 +1,47 @@
+{
+  "_note": "Config snapshot for exp-009 (issue #15 / ADR 0022 GPU follow-up): decomposer generation + eval for the two runnable hop-matched-retrieval conditions (mixed, oracle-hop-matched) over exp-007's CPU retrieval artifacts, on the ADR 0007 pinned 600. Router-hop-matched is out of scope this cycle (ADR 0022 item 5/Consequences: today's router writes no query id) -- not attempted, not stubbed, not estimated.",
+
+  "commit_at_generation": "ec2f844ac358aeee41c8f546554f26405984d0b5",
+  "commit_at_launch": "133c45f03a39546524f8edb44dea64021446b517",
+  "note_on_commit_delta": "main advanced from 133c45f to ec2f844 while the GPU run was in flight (docs-only commit ec2f844, an error-analysis note over exp-004/005/008 outputs, 'No model run, no pipeline code touched' per its own message) -- verified by diff to touch no file under components/, scripts/, src/, or configs/. The generation itself ran from the process image loaded at 133c45f; ec2f844 is the git.commit value the runner's own trail recorded because it reads HEAD at write time, not the commit its weights/code came from. No code path relevant to this run changed between the two commits.",
+  "seed": 42,
+  "model": "mistral_7b_instruct",
+  "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+  "config": "decomposer_musique.json",
+  "condition": "unguided",
+  "condition_note": "The deployable, unguided prompting condition -- the ADR 0022 hop-matched-retrieval manipulation is on the few-shot examples, orthogonal to the guided/unguided hop-count axis exercised by exp-004/exp-005. Held fixed at 'unguided' for both arms so the two runs differ ONLY in retrieval source.",
+
+  "conditions": {
+    "mixed": {
+      "retrieval_input": "runs/exp-007/mixed/mixed_rerank_top5.jsonl",
+      "retrieval_input_sha256": "68a07a74c87baa5e3a8880d4e61710e5da01368c80bbfc17f0fcff22bac8aea4",
+      "output_root": "runs/exp-009/mixed",
+      "run_id": "20260822_103146"
+    },
+    "oracle_hop_matched": {
+      "retrieval_input": "runs/exp-007/oracle/oracle_rerank_top5.jsonl",
+      "retrieval_input_sha256": "56a7d392544e2353ca8f3091d0ef044e1cff963c3509aaaa7df6709c2eb882de",
+      "output_root": "runs/exp-009/oracle",
+      "run_id": "20260822_105045"
+    }
+  },
+  "retrieval_mode": "typed",
+  "retrieval_k": 5,
+  "retrieval_wiring_note": "Both retrieval artifacts were built via --retrieval-input, which overrides retrieval.input/input_key with no other code path touched (PR #39, d81dd5b; frozen launch-path files -- run_decomposer.py included -- were untouched by that PR). retrieval.mode 'typed' and retrieval.k 5 left at configs/decomposer_musique.json's committed defaults, matching the masking mode the exp-007 artifacts were built at (ADR 0006 item 4 default).",
+
+  "commands_run": [
+    ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --retrieval-input runs/exp-007/mixed/mixed_rerank_top5.jsonl --output-root runs/exp-009/mixed",
+    ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --retrieval-input runs/exp-007/oracle/oracle_rerank_top5.jsonl --output-root runs/exp-009/oracle",
+    ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions runs/exp-009/mixed/20260822_103146/results.json --run-dir runs/exp-009/mixed/20260822_103146 --seed 42 --out-prefix eval_mixed",
+    ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions runs/exp-009/oracle/20260822_105045/results.json --run-dir runs/exp-009/oracle/20260822_105045 --seed 42 --out-prefix eval_oracle_hop_matched",
+    ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-009/mixed/20260822_103146/eval_mixed_per_item.json runs/exp-009/oracle/20260822_105045/eval_oracle_hop_matched_per_item.json --run-dir runs/exp-009/compare_mixed_vs_oracle --out-prefix compare_mixed_vs_oracle"
+  ],
+
+  "launcher_script": "runs/exp-009/run_exp009.sh",
+
+  "preflight_dry_run": {
+    "both_conditions": "600/600 pinned ids loaded, 200/200/200 per hop, 0 ids_missing, 0 ids_unexpected, pinned=true, id_identity_checked=true, retrieval input sha256 matched the exp-007 artifact exactly. Run before real launch, dry-run output dirs deleted afterward."
+  },
+
+  "composite_score_caveat": "docs/analysis/2026-08-22-finetuned-vs-prompting-error-analysis.md (issue #40), landed at ec2f844 while this run was executing, found the composite's 0.2 reference_validity term is decided by a regex/data-syntax mismatch (_REF_RX matches bracketed [#k] only; this eval set's gold decompositions use bare #k exclusively). composite_score is recorded per the log schema but is NOT the headline metric for this comparison -- step_f1 / ordered_step_accuracy / hop_count_exact_match are."
+}
