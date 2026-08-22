@@ -164,10 +164,18 @@ METRIC_DEFINITIONS: dict[str, Any] = {
     "ged_fallback": (
         "per item: null when the value is the optimizer's own last approximation; "
         "'node_cap' when the graph exceeded break_metrics.ged.max_nodes_for_optimizer and "
-        "the search-free positional upper bound was reported instead; 'time_budget' when "
-        "the wall-clock budget stopped the optimizer early (the last approximation is kept, "
-        "which is machine-dependent); 'time_budget_no_yield' when it expired before any "
-        "approximation existed. Counted in ged_fallback_counts"
+        "the search-free positional upper bound was reported instead (deterministic); "
+        "'time_budget' when the budget stopped the optimizer early, keeping its last "
+        "approximation (MACHINE-DEPENDENT, and the elapsed seconds are in "
+        "ged_fallback_seconds); 'no_optimizer_result' when networkx yielded no "
+        "approximation at all for these graphs, which is NOT a timeout — the bound is "
+        "reported instead. Counted in ged_fallback_counts"
+    ),
+    "ged_fallback_seconds": (
+        "per item: the wall clock at the point the time budget stopped the optimizer, and "
+        "null on every other path. The budget is checked between the optimizer's successive "
+        "approximations, so it cannot interrupt one and this can exceed the budget; the "
+        "number is recorded so by how much is visible rather than assumed"
     ),
     "normalized_exact_match_not_ported": (
         "Break's fourth leaderboard metric (norm_EM) is deliberately absent: its normalizer "
@@ -818,8 +826,12 @@ def _normalized_ged(
     gold_graph: nx.DiGraph,
     max_nodes_for_optimizer: int,
     time_budget_seconds: float,
-) -> tuple[float, str | None]:
-    """Break's ``normalized_graph_edit_distance``. Returns ``(ged, fallback_reason)``.
+) -> tuple[float, str | None, float | None]:
+    """Break's ``normalized_graph_edit_distance``.
+
+    Returns ``(ged, fallback_reason, fallback_seconds)``, the last being the wall clock at
+    the point the time budget stopped the optimizer and ``None`` on every other path — so a
+    machine-dependent number is recorded where it exists and nowhere else.
 
     Official arithmetic: the last value yielded by ``nx.optimize_graph_edit_distance``
     (prediction first, gold second, as the official driver calls it), with the lexical node
@@ -830,14 +842,19 @@ def _normalized_ged(
     and both recorded per item in ``ged_fallback``:
 
     - ``max_nodes_for_optimizer`` — above it the optimizer is not called at all and
-      :func:`_positional_edit_cost` is reported. This is the guard that bounds the cost, and
-      it bounds it *deterministically*: the survey note measured a single 39-step runaway
-      prediction costing ~115 s of optimizer time by itself.
-    - ``per_item_time_budget_seconds`` — a wall-clock backstop, checked between the
-      optimizer's successive approximations. When it fires the last approximation yielded is
-      kept (still a valid upper bound). It is the one machine-dependent path in this metric,
-      which is why every firing is counted in ``ged_fallback_counts`` and named in the run
-      note.
+      :func:`_positional_edit_cost` is reported. **This is the guard that bounds the cost**,
+      and the only one that bounds it at all: it is checked before any search starts, and it
+      is deterministic. The survey note measured a single 39-step runaway prediction costing
+      ~115 s of optimizer time by itself; the cap is set from this implementation's own
+      measurements (recorded in the config note and ADR 0026, with the gold hop depth beside
+      each timing, because cost rises steeply with the gold's size as well as the
+      prediction's).
+    - ``per_item_time_budget_seconds`` — a backstop, **not** a hard timeout: the deadline is
+      only tested between the optimizer's successive approximations, so a single long-running
+      approximation (including the first) cannot be interrupted. When it does fire, the last
+      approximation yielded is kept — still a valid upper bound. It is the one
+      machine-dependent path in this metric, so ``ged_fallback_counts['time_budget']`` is
+      machine-dependent too, and every firing carries its elapsed seconds.
     """
     total_a = pred_graph.number_of_nodes() + pred_graph.number_of_edges()
     total_b = gold_graph.number_of_nodes() + gold_graph.number_of_edges()
@@ -845,29 +862,111 @@ def _normalized_ged(
     if normalization == 0:
         # Two empty plans: nothing to edit, so the distance is 0 (the official formula is
         # 0/0 here, which it never reaches because Break's inputs always have a step).
-        return (0.0, None)
+        return (0.0, None, None)
     if pred_graph.number_of_nodes() == 0 or gold_graph.number_of_nodes() == 0:
         # One side is empty, so the only edit path deletes/inserts everything: the cost is
         # the other side's nodes + edges, which is the normalization factor. Computed rather
         # than searched because networkx's optimizer has nothing to align.
-        return (1.0, None)
+        return (1.0, None, None)
     if max(pred_graph.number_of_nodes(), gold_graph.number_of_nodes()) > max_nodes_for_optimizer:
-        return (_positional_edit_cost(pred_graph, gold_graph) / normalization, "node_cap")
+        return (_positional_edit_cost(pred_graph, gold_graph) / normalization, "node_cap", None)
 
-    deadline = time.monotonic() + time_budget_seconds
+    started = time.monotonic()
+    deadline = started + time_budget_seconds
     distance = None
     fallback = None
+    elapsed = None
     for value in nx.optimize_graph_edit_distance(
         pred_graph, gold_graph, node_subst_cost=_node_subst_cost
     ):
         distance = value
         if time.monotonic() > deadline:
             fallback = "time_budget"
+            elapsed = time.monotonic() - started
             break
     if distance is None:
-        # The budget expired before the optimizer yielded anything at all.
-        return (_positional_edit_cost(pred_graph, gold_graph) / normalization, "time_budget_no_yield")
-    return (float(distance) / normalization, fallback)
+        # networkx yielded NO approximation at all. This is not a timeout — the loop above
+        # cannot exit early without a value — so it is not named like one: it means the
+        # optimizer produced nothing for these graphs, and the deterministic bound is
+        # reported so the item still has a value and still has a pair.
+        return (
+            _positional_edit_cost(pred_graph, gold_graph) / normalization,
+            "no_optimizer_result",
+            None,
+        )
+    return (float(distance) / normalization, fallback, elapsed)
+
+
+#: Floor for ``break_metrics.ged.max_nodes_for_optimizer``. MuSiQue gold is at most 4 steps
+#: and the ``unguided_capped`` arm's step-line budget is 8, so a cap below 8 would send
+#: ordinary predictions to the fallback and quietly change what ``ged`` measures. Refusing it
+#: at load beats discovering it in a metrics JSON (same contract as ``gold_validation``).
+_GED_MIN_NODE_CAP = 8
+
+
+def _ged_policy(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Read GED's two cost guards from config, validate them loudly, and record them.
+
+    The returned object travels into the metrics JSON and the config snapshot, so a run
+    states the policy its numbers were produced under rather than leaving it to be inferred
+    from a default.
+    """
+    max_nodes = require(cfg, "break_metrics.ged.max_nodes_for_optimizer")
+    budget = require(cfg, "break_metrics.ged.per_item_time_budget_seconds")
+
+    if (
+        isinstance(max_nodes, bool)
+        or not isinstance(max_nodes, int)
+        or max_nodes < _GED_MIN_NODE_CAP
+    ):
+        raise SystemExit(
+            f"break_metrics.ged.max_nodes_for_optimizer must be an integer >= "
+            f"{_GED_MIN_NODE_CAP}, got {max_nodes!r}. Below that floor ordinary predictions "
+            f"(MuSiQue gold is at most 4 steps; the capped decomposer arm emits at most 8) "
+            f"would be scored with the search-free upper bound instead of the optimizer, "
+            f"which changes what 'ged' measures without saying so."
+        )
+    if (
+        isinstance(budget, bool)
+        or not isinstance(budget, (int, float))
+        or not math.isfinite(float(budget))
+        or float(budget) <= 0.0
+    ):
+        raise SystemExit(
+            f"break_metrics.ged.per_item_time_budget_seconds must be a finite positive "
+            f"number, got {budget!r}. A non-positive budget would stop the optimizer after "
+            f"its first approximation on every item, so every 'ged' value would be that "
+            f"approximation rather than the metric."
+        )
+
+    return {
+        "max_nodes_for_optimizer": int(max_nodes),
+        "per_item_time_budget_seconds": float(budget),
+        "cost_bound": (
+            "max_nodes_for_optimizer is the guard that bounds cost: it is checked before "
+            "any search starts and is deterministic. per_item_time_budget_seconds is a "
+            "backstop only - the deadline is tested between the optimizer's successive "
+            "approximations, so a single long-running approximation (including the first) "
+            "cannot be interrupted"
+        ),
+        "on_exhaustion": (
+            "the item is reported with a documented upper bound and flagged in "
+            "ged_fallback, never dropped (dropping would break the paired battery; "
+            "Break's own evaluator drops such items) — ADR 0026"
+        ),
+        "node_substitution_cost": (
+            "1 - the edit-distance match ratio over lowercased whitespace tokens; Break "
+            "lemmatizes with spaCy en_core_web_sm, so absolute values are not comparable "
+            "to published Break GED"
+        ),
+        "direction": "lower is better (it is a distance)",
+        "machine_dependence": (
+            "ged_fallback_counts['time_budget'] is machine-dependent, and so are the values "
+            "of the items it counts (the last approximation before the deadline); every "
+            "other path, including 'node_cap' and 'no_optimizer_result', is deterministic. "
+            "An empty ged_fallback_counts means no machine-dependent value in the run"
+        ),
+    }
 
 
 def _safe_div(a: float, b: float) -> float:
@@ -1123,6 +1222,30 @@ _REQUIRED_PER_ITEM_FIELDS = (
 )
 
 
+#: The v2 per-item fields the loader type-checks: every required field except ``item_id``,
+#: which is the alignment key and a string. It is deliberately **not** the v1 list — every
+#: compared column is read through ``float()`` downstream, so leaving the issue #40 columns
+#: out of this gate would let a ``null`` surface as a raw ``TypeError`` inside the statistics
+#: and a ``NaN`` travel through the whole battery into the run note (PR #44 review, I1).
+_NUMERIC_PER_ITEM_FIELDS = tuple(f for f in _REQUIRED_PER_ITEM_FIELDS if f != "item_id")
+
+
+def _unusable_numeric_fields(obj: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
+    """``field=value`` for every one of ``fields`` that is not a finite number.
+
+    One definition for both loaders, so the v2 and v1 paths cannot drift on what "usable"
+    means. ``bool`` is rejected explicitly: ``True`` is an ``int`` in Python and a metric
+    column that says ``true`` is a broken file, not a 1.0.
+    """
+    return [
+        f"{f}={obj[f]!r}"
+        for f in fields
+        if isinstance(obj[f], bool)
+        or not isinstance(obj[f], (int, float))
+        or not math.isfinite(float(obj[f]))
+    ]
+
+
 def _statistics_available(
     names: tuple[str, ...],
     rows_a: list[dict[str, Any]],
@@ -1204,16 +1327,12 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
                 f"'<prefix>_per_item.json' files written by this script; re-run the "
                 f"evaluation to regenerate them."
             )
-        # Same contract as the v1 loader: every compared field is read through float()
-        # downstream, so a null/string/NaN here gets the file, row and field named now
-        # rather than a TypeError three functions away from the cause.
-        unusable = [
-            f"{f}={obj[f]!r}"
-            for f in _REQUIRED_V1_PER_ITEM_FIELDS
-            if isinstance(obj[f], bool)
-            or not isinstance(obj[f], (int, float))
-            or not math.isfinite(float(obj[f]))
-        ]
+        # Every compared field is read through float() downstream, so a null/string/NaN
+        # here gets the file, row and field named now rather than a TypeError three
+        # functions away from the cause. The gate runs over the full v2 set — including the
+        # issue #40 columns, which an earlier revision of this loader skipped (PR #44
+        # review, I1): a null there died as a raw TypeError and a NaN reached the run note.
+        unusable = _unusable_numeric_fields(obj, _NUMERIC_PER_ITEM_FIELDS)
         if unusable:
             raise SystemExit(
                 f"{path}: row {i} has non-numeric or non-finite compared field(s): "
@@ -1379,13 +1498,7 @@ def _load_v1_per_item(
         # Every compared field is read through float() downstream. A JSON null or a string
         # there is a broken input, and saying so with the file, row and field beats a
         # TypeError raised three functions away from the cause.
-        unusable = [
-            f"{f}={obj[f]!r}"
-            for f in _REQUIRED_V1_PER_ITEM_FIELDS
-            if isinstance(obj[f], bool)
-            or not isinstance(obj[f], (int, float))
-            or not math.isfinite(float(obj[f]))
-        ]
+        unusable = _unusable_numeric_fields(obj, _REQUIRED_V1_PER_ITEM_FIELDS)
         if unusable:
             raise SystemExit(
                 f"{path}: row {i} has non-numeric or non-finite compared field(s): "
@@ -1809,7 +1922,7 @@ def _paired_t_test_row(
     values_b: np.ndarray,
     alpha: float,
     underpowered: bool,
-    name: str = "",
+    name: str,
 ) -> dict[str, Any]:
     """One two-sided paired t-test row over the per-item differences ``a - b``.
 
@@ -1820,6 +1933,9 @@ def _paired_t_test_row(
     lenient one silently turns them into a float no consumer can compare. A row with an
     undefined t therefore carries nulls, makes no significance claim, and says why in
     ``degenerate``.
+
+    ``name`` is **required**: it is what decides the row's ``direction`` and ``favours``, and
+    a default would silently label a distance as higher-is-better (PR #44 review, nit 7).
     """
     differences = values_a - values_b
     n = int(differences.size)
@@ -2295,25 +2411,11 @@ def main() -> None:
 
     limit = args.limit if args.limit is not None else require(cfg, "limit")
     out_prefix = args.out_prefix or require(cfg, "out_prefix")
-    # GED's two cost guards. Read here (scoring only): --compare reads per-item values that
-    # were already scored, so it needs no GED policy of its own.
-    ged_max_nodes = int(require(cfg, "break_metrics.ged.max_nodes_for_optimizer"))
-    ged_time_budget = float(require(cfg, "break_metrics.ged.per_item_time_budget_seconds"))
-    ged_policy = {
-        "max_nodes_for_optimizer": ged_max_nodes,
-        "per_item_time_budget_seconds": ged_time_budget,
-        "on_exhaustion": (
-            "the item is reported with a documented upper bound and flagged in "
-            "ged_fallback, never dropped (dropping would break the paired battery; "
-            "Break's own evaluator drops such items) — ADR 0026"
-        ),
-        "node_substitution_cost": (
-            "1 - the edit-distance match ratio over lowercased whitespace tokens; Break "
-            "lemmatizes with spaCy en_core_web_sm, so absolute values are not comparable "
-            "to published Break GED"
-        ),
-        "direction": "lower is better (it is a distance)",
-    }
+    # GED's two cost guards, validated at load. Read here (scoring only): --compare reads
+    # per-item values that were already scored, so it needs no GED policy of its own.
+    ged_policy = _ged_policy(cfg)
+    ged_max_nodes = ged_policy["max_nodes_for_optimizer"]
+    ged_time_budget = ged_policy["per_item_time_budget_seconds"]
 
     gold_path = (
         args.gold
@@ -2358,7 +2460,7 @@ def main() -> None:
         gold_break = _break_steps(row.gold_steps)
         pred_break_string = _break_string(pred_break)
         gold_break_string = _break_string(gold_break)
-        ged, ged_fallback = _normalized_ged(
+        ged, ged_fallback, ged_fallback_seconds = _normalized_ged(
             _decomposition_graph(pred_break),
             _decomposition_graph(gold_break),
             max_nodes_for_optimizer=ged_max_nodes,
@@ -2394,6 +2496,11 @@ def main() -> None:
             "sari": _sari(row.question, pred_break_string, gold_break_string),
             "ged": ged,
             "ged_fallback": ged_fallback,
+            # Null except where the time budget stopped the optimizer, which is the one
+            # machine-dependent path: the elapsed seconds are recorded so a reader can see
+            # how far past the budget that item ran (the deadline is only tested between
+            # approximations, so it can overshoot).
+            "ged_fallback_seconds": ged_fallback_seconds,
             "step_count_signed_error": len(row.pred_steps) - len(row.gold_steps),
             "step_count_abs_error": abs(len(row.pred_steps) - len(row.gold_steps)),
             "predicted_hop_count": pred_hops,
@@ -2485,13 +2592,31 @@ def main() -> None:
             f"- Break EM: {metrics['break_exact_match_rate']:.4f} / SARI: "
             f"{metrics['sari_macro']:.4f} / GED: {metrics['ged_macro']:.4f} (lower is "
             f"better) / chain validity: {metrics['chain_validity_macro']:.4f}",
+            # This note is what gets quoted into experiments/log.md, so the caveat travels
+            # with the numbers rather than living only in docs (PR #44 review, I3).
+            "- CAVEAT on the three numbers above: the GED and SARI **levels** are not "
+            "comparable to published Break leaderboard numbers — GED's node cost uses no "
+            "lemmatizer here (Break uses spaCy), and SARI's floor on this data is well "
+            "above 0 because every decomposition shares the `@@SEP@@`/template "
+            "boilerplate. Differences on the same evaluation set are what these support "
+            "(ADR 0026, docs/METRICS.md §2.2). `chain_validity` is a house repair, not a "
+            "published metric.",
             "- GED policy: node cap "
-            f"{ged_policy['max_nodes_for_optimizer']}, per-item budget "
-            f"{ged_policy['per_item_time_budget_seconds']} s; fallbacks used: "
+            f"{ged_policy['max_nodes_for_optimizer']} (the guard that bounds cost), "
+            f"per-item budget {ged_policy['per_item_time_budget_seconds']} s (a backstop "
+            f"checked between the optimizer's approximations, so it cannot interrupt one); "
+            f"fallbacks used: "
             + (
                 ", ".join(f"{reason} x{count}" for reason, count in sorted(fallbacks.items()))
+                + (
+                    " — 'time_budget' items are MACHINE-DEPENDENT values (elapsed seconds "
+                    "per item in the per-item file)"
+                    if "time_budget" in fallbacks
+                    else ""
+                )
                 if fallbacks
-                else "none (every value is the optimizer's own)"
+                else "none (every value is the optimizer's own, so nothing here is "
+                "machine-dependent)"
             ),
             f"- Per-item: `{per_item_path}`",
         ],

@@ -109,7 +109,7 @@ Per item, the same quantities are written to `<prefix>_per_item.json`, plus
 `step_count_signed_error` (`len(pred) − len(gold)`), `pred_steps`, `gold_steps` and
 `item_id`, plus the §2.1 / §2.2 columns: `chain_validity`,
 `chain_pred_reference_count`, `chain_gold_reference_count`, `break_exact_match`, `sari`,
-`ged` and `ged_fallback`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
+`ged`, `ged_fallback` and `ged_fallback_seconds`. That file is a JSON **object**, not a bare list: `schema`, `created_utc`,
 `predictions_path`, `gold_path`, `composite_score_weights`,
 `composite_step_count_error_scale`, then `items` (the per-item rows). The weights are
 stamped there because `--compare` recomputes the composite (§5) and needs to know what the
@@ -172,7 +172,7 @@ whitespace per step and rewrites `#k` → `@@k@@`; `_break_string` joins).
 | `break_exact_match_rate` | official `get_exact_match`: `pred.lower() == gold.lower()` on the joined string, **no punctuation stripping** (`_break_exact_match`). Strictly harder than `exact_match_rate`, which normalizes each step — on the fixture row that differs from its gold only by punctuation, `exact_match` is 1.0 and this is 0.0, and both are correct |
 | `sari_macro` | official SARI (`_sari`): `(keep-F1 + add-F1 + delete-precision) / 3`, averaged over n-grams n = 1…4, with the **question** as the source and the joined decompositions as prediction and single target. `_get_fbeta_score`'s 0/0 = 1 convention and `BETA_FOR_SARI_DELETION_F_MEASURE = 0` are reproduced |
 | `ged_macro` | official `normalized_graph_edit_distance` (`_normalized_ged`): the last value `networkx.optimize_graph_edit_distance` yields for (prediction, gold), with the lexical node substitution cost and unit edge/node insert-delete costs, divided by `max(nodes + edges)` of the two graphs. **LOWER IS BETTER** and it can exceed 1.0 |
-| `ged_fallback_counts` | how many items did not get the optimizer's own value, by reason (`node_cap`, `time_budget`, `time_budget_no_yield`). `{}` means every value is the optimizer's |
+| `ged_fallback_counts` | how many items did not get the optimizer's own value, by reason (`node_cap`, `time_budget`, `no_optimizer_result`). `{}` means every value is the optimizer's, and therefore that nothing in the run is machine-dependent |
 | `ged_policy` | the two guards in force for the run, plus the direction and the node-cost convention, copied into the metrics JSON and the config snapshot |
 
 **The graph** (`_decomposition_graph`, official `Decomposition.to_graph`): node `i` is the
@@ -209,13 +209,27 @@ available here — a dropped item has no pair, and the whole §5 battery is pair
 over budget is reported with a documented **upper bound** and flagged in `ged_fallback`.
 Two guards, both in `configs/musique_eval.json` under `break_metrics.ged`:
 
-- `max_nodes_for_optimizer` (30): above it the optimizer is not called and the value is the
+- `max_nodes_for_optimizer` (16): above it the optimizer is not called and the value is the
   cost of one concrete edit path (pair nodes in sorted id order, substitute each pair,
   delete/insert the surplus, keep the edges whose endpoints are both paired, delete/insert
-  the rest), normalized the same way. Deterministic — the same number on every machine.
-- `per_item_time_budget_seconds` (20.0): a wall-clock backstop under the cap, checked between
-  the optimizer's successive approximations, keeping the last one. This is the **one
-  machine-dependent path** in the report, which is why each firing is counted.
+  the rest), normalized the same way. Deterministic — the same number on every machine, and
+  **the only guard that actually bounds the cost**, because it is checked before any search
+  starts. The value comes from measurement, with the *gold* hop depth stated beside each
+  timing (the gold's size is part of the cost, and so is how similar the predicted steps are
+  to each other — not the edge count): the worst case measured at the cap is ~1.8 s against a
+  4-hop gold, against ~18 s at 30 nodes. The table is in ADR 0026.
+- `per_item_time_budget_seconds` (20.0): a **backstop, not a timeout**. The deadline is only
+  tested *between* the optimizer's successive approximations, so a single long-running
+  approximation — including the first — cannot be interrupted. When it does fire, the last
+  approximation is kept, and that value (and therefore
+  `ged_fallback_counts["time_budget"]`) is **machine-dependent**; the elapsed seconds land in
+  the per-item `ged_fallback_seconds`, since the budget can overshoot. An empty
+  `ged_fallback_counts` means nothing in the run is machine-dependent.
+- A third reason, `no_optimizer_result`, is **not** a timeout: it means networkx yielded no
+  approximation at all for those graphs, and the deterministic bound is reported.
+- Both knobs are validated at load (`_ged_policy`): the cap must be an integer ≥ 8 (below the
+  capped arm's 8-step budget it would silently change what `ged` measures on ordinary
+  predictions) and the budget a finite positive number, or the run aborts naming the key.
 
 **Two sharp edges to know before quoting a number.** (a) *SARI's floor is not 0 on this
 data*: every decomposition shares the `@@SEP@@` and template boilerplate, which inflates the

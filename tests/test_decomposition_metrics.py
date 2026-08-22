@@ -20,6 +20,7 @@ Run::
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import json
@@ -567,28 +568,30 @@ class TestBreakMetrics(EvaluatorTestBase):
         )
 
     def test_a_runaway_prediction_uses_the_deterministic_fallback(self) -> None:
-        """31 identical junk steps against the 2-step gold: over the node cap, not dropped.
+        """17 identical junk steps against the 2-step gold: over the node cap, not dropped.
 
-        The config cap is 30 nodes, so the optimizer is never called and the reported value
+        The config cap is 16 nodes, so the optimizer is never called and the reported value
         is the search-free positional bound. Hand computation (1 evaluated row):
-          graphs      pred 31 nodes, 0 edges = 31; gold 2 nodes, 1 edge = 3;
-                      normalization = max(31, 3) = 31
+          graphs      pred 17 nodes, 0 edges = 17; gold 2 nodes, 1 edge = 3;
+                      normalization = max(17, 3) = 17
           bound       pair nodes in sorted id order: (1,1) and (2,2). 'zzz' shares no token
                       with either gold step, so each substitution costs 1 - 0 = 1 -> 2.
-                      Delete the 29 surplus nodes -> 29. No pred edge survives and the gold
-                      edge must be inserted -> 1. Total 32 -> 32/31 = 1.032258...
+                      Delete the 15 surplus nodes -> 15. No pred edge survives and the gold
+                      edge must be inserted -> 1. Total 18 -> 18/17 = 1.058823...
           flag        ged_fallback 'node_cap' on the item and ged_fallback_counts
                       {'node_cap': 1} in the aggregate — the item is reported, never dropped,
-                      because a dropped item has no pair for the paired battery (ADR 0026)
+                      because a dropped item has no pair for the paired battery (ADR 0026).
+                      The cap path is deterministic, so ged_fallback_seconds stays null
         """
         item = "2hop__d001_a"
-        metrics, per_item = self.evaluate("break_node_cap", [prediction(item, ["zzz"] * 31)])
+        metrics, per_item = self.evaluate("break_node_cap", [prediction(item, ["zzz"] * 17)])
 
-        self.assertMetrics(metrics, {"ged_macro": 32 / 31})
+        self.assertMetrics(metrics, {"ged_macro": 18 / 17})
         self.assertEqual(metrics["ged_fallback_counts"], {"node_cap": 1})
         row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
         self.assertEqual(row["ged_fallback"], "node_cap")
-        self.assertEqual(metrics["ged_policy"]["max_nodes_for_optimizer"], 30)
+        self.assertIsNone(row["ged_fallback_seconds"])
+        self.assertEqual(metrics["ged_policy"]["max_nodes_for_optimizer"], 16)
 
     def test_the_node_cap_is_a_knob_and_the_optimizer_is_used_under_it(self) -> None:
         """The same two graphs, scored with the cap below and above their size.
@@ -603,13 +606,15 @@ class TestBreakMetrics(EvaluatorTestBase):
         )
         gold = EVAL._decomposition_graph(EVAL._break_steps(gold_steps(item)))
 
-        capped = EVAL._normalized_ged(pred, gold, 2, 20.0)
-        self.assertEqual(capped[1], "node_cap")
-        self.assertAlmostEqual(capped[0], 0.25, places=PLACES)
+        capped_value, capped_reason, capped_seconds = EVAL._normalized_ged(pred, gold, 2, 20.0)
+        self.assertEqual(capped_reason, "node_cap")
+        self.assertAlmostEqual(capped_value, 0.25, places=PLACES)
+        self.assertIsNone(capped_seconds)
 
-        optimized = EVAL._normalized_ged(pred, gold, 30, 20.0)
-        self.assertIsNone(optimized[1])
-        self.assertAlmostEqual(optimized[0], 0.25, places=PLACES)
+        value, reason, seconds = EVAL._normalized_ged(pred, gold, 16, 20.0)
+        self.assertIsNone(reason)
+        self.assertIsNone(seconds)
+        self.assertAlmostEqual(value, 0.25, places=PLACES)
 
     def test_break_exact_match_is_stricter_than_the_house_exact_match(self) -> None:
         """2hop__d004_p differs from its gold only by punctuation.
@@ -870,10 +875,34 @@ class TestPairedTTest(unittest.TestCase):
 
     ALPHA = 0.05
 
-    def _row(self, a: list[float], b: list[float]) -> dict[str, Any]:
+    def _row(
+        self, a: list[float], b: list[float], name: str = "step_f1"
+    ) -> dict[str, Any]:
         return EVAL._paired_t_test_row(
-            np.array(a, dtype=float), np.array(b, dtype=float), self.ALPHA, underpowered=False
+            np.array(a, dtype=float),
+            np.array(b, dtype=float),
+            self.ALPHA,
+            underpowered=False,
+            name=name,
         )
+
+    def test_the_metric_name_is_required_and_sets_the_direction(self) -> None:
+        """No default name: a distance must not be labelled higher-is-better by omission.
+
+        The same numbers under two metric names give opposite `favours` verdicts, which is
+        precisely why the argument cannot have a default (PR #44 review, nit 7).
+        """
+        with self.assertRaises(TypeError):
+            EVAL._paired_t_test_row(
+                np.array([1.0, 1.0, 0.9]), np.array([0.0, 0.0, 0.0]), self.ALPHA, False
+            )
+        higher = self._row([1.0, 1.0, 0.9], [0.0, 0.0, 0.0], name="step_f1")
+        lower = self._row([1.0, 1.0, 0.9], [0.0, 0.0, 0.0], name="ged")
+        self.assertEqual(higher["direction"], "higher_is_better")
+        self.assertEqual(lower["direction"], "lower_is_better")
+        self.assertTrue(higher["significant"] and lower["significant"])
+        self.assertEqual(higher["favours"], "system_a")
+        self.assertEqual(lower["favours"], "system_b")
 
     def test_two_items_dof_one(self) -> None:
         """differences [1, 0]: mean 0.5, sd sqrt(0.5), se 0.5, t = 1.0, dof = 1.
@@ -1243,6 +1272,69 @@ class TestPairedComparison(EvaluatorTestBase):
         message = proc.stdout + proc.stderr
         self.assertIn("SAME composite-score weights", message)
         self.assertIn("composite_score_weights", message)
+
+    def test_a_null_or_nan_in_a_new_column_is_refused_at_load(self) -> None:
+        """PR #44 review, I1: the v2 loader's finite-number gate covers the new columns.
+
+        Before the fix the gate iterated the v1 field list, which excludes the issue #40
+        columns — so a `"ged": null` died as a raw TypeError inside the statistics and a
+        `"ged": NaN` travelled through the entire battery and blew up formatting the run
+        note. Both must be refused at load, naming the file, the row and the field. `NaN` is
+        written here the way Python's json writer emits it (not valid JSON, which is exactly
+        why nothing may rely on a downstream reader catching it).
+        """
+        per_item = self._per_item_of_fixture()
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        for name, field, value in (
+            ("ged_null", "ged", None),
+            ("ged_nan", "ged", float("nan")),
+            ("sari_string", "sari", "0.9"),
+            ("chain_null", "chain_validity", None),
+            ("break_em_bool", "break_exact_match", True),
+        ):
+            with self.subTest(case=name):
+                tampered = copy.deepcopy(payload)
+                tampered["items"][2][field] = value
+                path = self.tmp / f"compare_{name}_per_item.json"
+                path.write_text(
+                    json.dumps(tampered, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                run_dir = self.tmp / f"compare_{name}"
+                proc = self._run(
+                    ["--compare", str(path), str(per_item), "--run-dir", str(run_dir)],
+                    expect_ok=False,
+                )
+                self.assertNotEqual(proc.returncode, 0)
+                message = proc.stdout + proc.stderr
+                self.assertIn("row 2", message)
+                self.assertIn(field, message)
+                self.assertIn("non-numeric or non-finite", message)
+                self.assertNotIn("TypeError", message)
+                # Nothing was reported: the refusal is before any statistic is computed.
+                self.assertFalse((run_dir / "compare_metrics.json").exists())
+
+    def test_the_v2_numeric_gate_covers_every_compared_column(self) -> None:
+        """The gate's field set is the v2 one, not the v1 one — checked on the constants.
+
+        The regression this pins is a set-difference bug, so it is asserted as a set: every
+        compared statistic (and every column the composite is rebuilt from) must be in the
+        gate, and `item_id` must not be, because it is a string.
+        """
+        gate = set(EVAL._NUMERIC_PER_ITEM_FIELDS)
+        self.assertNotIn("item_id", gate)
+        for name in EVAL._ISSUE_40_STATISTICS:
+            self.assertIn(name, gate)
+        for name in EVAL.MCNEMAR_STATISTICS:
+            self.assertIn(name, gate)
+        for name in EVAL.BOOTSTRAP_STATISTICS:
+            if name != "composite_score":
+                self.assertIn(name, gate)
+        for name in EVAL._COMPOSITE_INPUT_COLUMNS:
+            self.assertIn(name, gate)
+        # The v1 gate is the same set minus the columns v1 could not have written.
+        self.assertEqual(
+            gate - set(EVAL._REQUIRED_V1_PER_ITEM_FIELDS), set(EVAL._ISSUE_40_STATISTICS)
+        )
 
     def test_legacy_bare_list_per_item_file_is_refused(self) -> None:
         """A per-item file with no stamped weights cannot be recomputed against."""
@@ -1959,10 +2051,62 @@ class TestGedConfigKnobs(unittest.TestCase):
         block = config["break_metrics"]
         self.assertIn("_note", block)
         ged = block["ged"]
-        self.assertGreater(ged["max_nodes_for_optimizer"], 4)  # above any MuSiQue gold
+        # At or above the capped decomposer arm's 8-step budget, so ordinary predictions are
+        # scored by the optimizer and not by the fallback.
+        self.assertGreaterEqual(ged["max_nodes_for_optimizer"], 8)
         self.assertGreater(ged["per_item_time_budget_seconds"], 0.0)
         # There is deliberately no on/off switch: the metrics are additive columns.
         self.assertNotIn("enabled", block)
+
+    def test_a_bad_knob_aborts_at_load_naming_the_key(self) -> None:
+        """The code path, not just the committed values (PR #44 review, nit 6).
+
+        `_ged_policy` is what the scoring run reads its guards through, so the refusals are
+        checked there: a cap below the 8-step floor, a non-integer cap, and a non-positive or
+        non-finite budget each abort with the config key in the message. This is the contract
+        `gold_validation` already has — a parameter that would quietly change what the metric
+        measures is refused at load.
+        """
+        def cfg(max_nodes: Any, budget: Any) -> dict[str, Any]:
+            return {
+                "_config_path": "configs/musique_eval.json",
+                "break_metrics": {
+                    "ged": {
+                        "max_nodes_for_optimizer": max_nodes,
+                        "per_item_time_budget_seconds": budget,
+                    }
+                },
+            }
+
+        good = EVAL._ged_policy(cfg(16, 20.0))
+        self.assertEqual(good["max_nodes_for_optimizer"], 16)
+        self.assertEqual(good["per_item_time_budget_seconds"], 20.0)
+        # The floor itself is admissible; one below it is not.
+        self.assertEqual(EVAL._ged_policy(cfg(8, 0.5))["max_nodes_for_optimizer"], 8)
+
+        for max_nodes, budget, expected_key in (
+            (7, 20.0, "max_nodes_for_optimizer"),
+            (0, 20.0, "max_nodes_for_optimizer"),
+            (16.5, 20.0, "max_nodes_for_optimizer"),
+            (True, 20.0, "max_nodes_for_optimizer"),
+            ("16", 20.0, "max_nodes_for_optimizer"),
+            (16, 0, "per_item_time_budget_seconds"),
+            (16, -1.0, "per_item_time_budget_seconds"),
+            (16, None, "per_item_time_budget_seconds"),
+            (16, float("inf"), "per_item_time_budget_seconds"),
+        ):
+            with self.subTest(max_nodes=max_nodes, budget=budget):
+                with self.assertRaises(SystemExit) as caught:
+                    EVAL._ged_policy(cfg(max_nodes, budget))
+                self.assertIn(
+                    f"break_metrics.ged.{expected_key}", str(caught.exception)
+                )
+
+    def test_a_missing_knob_is_a_missing_config_key_not_a_default(self) -> None:
+        """No silent default: an absent knob is `require`'s ConfigError (a SystemExit)."""
+        with self.assertRaises(SystemExit) as caught:
+            EVAL._ged_policy({"_config_path": "x", "break_metrics": {"ged": {}}})
+        self.assertIn("max_nodes_for_optimizer", str(caught.exception))
 
     def test_no_ged_parameter_is_hard_coded_in_the_scoring_path(self) -> None:
         """The scoring path reads both guards through require(), not from a literal."""

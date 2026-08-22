@@ -77,33 +77,63 @@ reports a documented upper bound where Break drops the item.
    cannot be optimized within its budget is **reported with a documented upper bound and
    flagged**, never dropped. Two guards, both in `configs/musique_eval.json` under
    `break_metrics.ged`:
-   - **`max_nodes_for_optimizer` (default 30)** — the guard that bounds cost, and bounds it
-     *deterministically*. Above it the optimizer is not called; the reported value is the cost
-     of one concrete edit path (pair nodes in sorted id order, substitute each pair,
-     delete/insert the surplus, keep the edges whose endpoints are both paired and whose image
-     exists on the other side, delete/insert the rest), normalized the same way. A concrete
-     edit path's cost is a valid **upper bound** on the edit distance, and it is computed in
-     one pass, so it is the same number on every machine. The survey measured a single 39-step
-     runaway prediction costing ~115 s of optimizer time by itself (§3.7); a wall-clock budget
-     alone cannot bound that, because it cannot interrupt the optimizer's *first* yield.
-   - **`per_item_time_budget_seconds` (default 20.0)** — a backstop for graphs under the cap,
-     checked between the optimizer's successive approximations; the last approximation yielded
-     is kept (still a valid upper bound). This is the **one machine-dependent path** in the
-     metric, so every firing is recorded per item in `ged_fallback`, counted in
-     `ged_fallback_counts`, and named in the run note. A run whose `ged_fallback_counts` is
-     empty has no machine-dependent value in it at all.
+   - **`max_nodes_for_optimizer` (default 16)** — the guard that bounds cost, and the **only**
+     one that bounds it: it is checked before any search starts, and it is deterministic.
+     Above it the optimizer is not called; the reported value is the cost of one concrete edit
+     path (pair nodes in sorted id order, substitute each pair, delete/insert the surplus, keep
+     the edges whose endpoints are both paired and whose image exists on the other side,
+     delete/insert the rest), normalized the same way. A concrete edit path's cost is a valid
+     **upper bound** on the edit distance, and it is computed in one pass, so it is the same
+     number on every machine. The survey measured a single 39-step runaway prediction costing
+     ~115 s of optimizer time by itself (§3.7).
+   - **`per_item_time_budget_seconds` (default 20.0)** — a **backstop, not a timeout**. The
+     deadline is only tested *between* the optimizer's successive approximations, so a single
+     long-running approximation — including the first — cannot be interrupted; this is why the
+     node cap and not the budget is what bounds cost. When it does fire the last approximation
+     is kept (still a valid upper bound), and that value is **machine-dependent**: so the
+     firing is recorded per item in `ged_fallback`, its elapsed seconds in
+     `ged_fallback_seconds` (the budget can overshoot, and by how much is then visible),
+     counted in `ged_fallback_counts`, and named in the run note. A run whose
+     `ged_fallback_counts` is empty has no machine-dependent value in it at all.
+   - **A third reason exists and is not a timeout:** `no_optimizer_result`, when networkx
+     yields no approximation whatsoever for a pair of graphs. It was originally named
+     `time_budget_no_yield`, which was wrong — it does not depend on the clock (PR #44 review,
+     nit 5). The deterministic bound is reported for it too.
+   - **Both knobs are validated at load** (`_ged_policy`), in the style of `gold_validation`:
+     `max_nodes_for_optimizer` must be an integer ≥ 8 (below the capped decomposer arm's
+     8-step budget the cap would silently change what `ged` measures on ordinary predictions)
+     and the budget must be a finite positive number. Either failure aborts naming the config
+     key.
 
-   **The cap of 30 comes from measurement, not from taste.** MuSiQue gold is 2–4 steps and the
-   capped decomposer arm emits at most 8, so no plausible decomposition is near it. Measured in
-   this implementation against the fixture gold (synthetic predictions, one CPU core): a
-   chain-shaped prediction cost 0.07 s at 12 steps and 1.27 s at 39; a 20-step prediction whose
-   every step references every earlier one cost 0.01 s; a 30-step prediction with no references
-   cost under 0.01 s. So the shapes that are cheap stay with the optimizer, and the survey's
-   39- and 51-step runaways (the ones that cost ~115 s on real predictions) go to the
-   deterministic bound. On the 39-step chain the bound was 0.9620 against the optimizer's
-   0.9597, i.e. the trade is "a stated upper bound in microseconds, identical on every machine"
-   for a third-decimal difference — on items that are junk by construction. Neither guard fires
-   on well-behaved predictions, and `ged_fallback_counts` says so per run.
+   **The cap of 16 comes from measurement, and the first version of this record measured the
+   wrong axis.** An earlier revision set 30 on timings taken against the *2-hop* fixture gold
+   with *distinct* step texts, where everything is ≤ 0.06 s. The Gate-1 review measured the
+   same implementation against the *4-hop* gold and found ~200× that. Re-measured here (one CPU
+   core, synthetic predictions against the fixture gold, **gold hop depth stated with every
+   number**, because the gold's size is part of the cost):
+
+   | prediction shape (nodes) | vs 2-hop gold | vs 4-hop gold |
+   |---|---|---|
+   | repeated step text, 8 / 12 / 14 / 16 / 20 / 30 | ≤ 0.01 s | 0.14 / 0.63 / 1.10 / **1.81** / 4.05 / 18.44 s |
+   | gold step texts repeated, 8 / 12 / 16 / 20 / 30 | ≤ 0.02 s | 0.04 / 0.24 / 0.98 / 3.05 / 20.05 s |
+   | chain-shaped, 12 / 39 | ≤ 0.01 s | 0.07 / 1.27 s |
+   | every step references every earlier step, 20 / 30 (190 / 435 edges) | ≤ 0.06 s | 0.01 / 0.06 s |
+
+   Two things follow, and they are why an edge bound was **considered and rejected**: the cost
+   is driven by **label ambiguity × node count × gold size**, not by edges — the densest graph
+   measured (435 edges) is among the *fastest*, because near-identical alternatives are what
+   makes the search branch, and a saturated graph has few. So the honest guard is the node cap,
+   set where the measured worst case is comfortably inside the budget: **at 16 nodes the worst
+   case measured is ~1.8 s against a 4-hop gold**, two orders of magnitude inside the 20 s
+   budget, so the machine-dependent path is effectively unreachable under the cap. 16 is still
+   twice the capped arm's 8-step budget and four times the deepest gold, so no plausible
+   decomposition is near it.
+
+   What the cap trades away is small and measured: at 17 nodes the bound **equalled** the
+   optimizer's value on both repeated-label shapes and was 0.0071 above it on the chain shape;
+   on the 39-step chain, 0.9620 against 0.9597. Third-decimal, on items that are junk by
+   construction. Neither guard fires on well-behaved predictions, and `ged_fallback_counts`
+   says so per run.
 
    **Known blind spot, inherited and pinned by a test rather than hidden.** networkx prices a
    *self-loop* edge as substitutable with an ordinary edge, so a **2-step** decomposition
@@ -174,6 +204,17 @@ Ran, in a throwaway worktree at this branch's tip, CPU only:
 - `scripts/musique_decompositions_evaluator.py --compare` over two fixture-derived per-item
   files, and over one file with itself.
 - `scripts/smoke_test.py` (`decomposition_metric_tests` + `musique_eval` stages).
+- The GED cost table above, and the bound-versus-optimizer gap at the cap boundary.
+
+After the Gate-1 review the following were added or corrected, and re-verified the same way:
+the v2 per-item loader's finite-number gate now covers the issue #40 columns (a `null` there
+used to die as a raw `TypeError` and a `NaN` to reach the run note); the cost record was
+re-measured with the gold hop depth stated and the cap moved 30 → 16; the `time_budget`
+wording no longer calls itself a hard timeout and its elapsed seconds are recorded;
+`time_budget_no_yield` became `no_optimizer_result`; both knobs are validated at load; the
+metric name is required for a t-test row; and the run note carries the "levels are not
+comparable to published Break" caveat, because the run note is what gets quoted into
+`experiments/log.md`.
 
 **Not measured here, and therefore not claimed:** any number on the ADR 0007 pinned 600 or on
 any committed run. Re-scoring the nine committed arms with these columns is a separate run and
