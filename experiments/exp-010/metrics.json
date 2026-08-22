@@ -1,0 +1,99 @@
+{
+  "_note": "exp-010 (issue #14 / ADR 0021 GPU follow-up). All 18 decompose+eval cells (3 pool-construction strategies x 2 retriever variants x 3 retrieval modes), pool size 2000, exp-006's shared 750-query dev sample (dev_seed 42, dev_per_hop 250). Headline comparison is the 3 strategies at biencoder_plus_ce + typed (ADR 0006 item 4 default, confirmed distinct from raw at this preflight - see experiments/exp-010/config.json). composite_score is recorded per schema throughout but NOT headlined (issue #40: its 0.2-weight reference_validity term is decided by a regex/bare-vs-bracketed-#k mismatch).",
+
+  "rc_verification": {
+    "decompose_stage": "18/18 cells rc=0 (runs/pool_sweep/orchestrator.log EXIT=0, elapsed 1515-1792s each, ~25-30 min/cell)",
+    "eval_stage": "18/18 cells rc=0 (EXIT=0, elapsed 5.2-8.8s each)",
+    "overall_rc": 0,
+    "wall_clock_utc": "2026-08-22T11:23:00Z start (lock acquired) -> 2026-08-22T19:33:08Z end (run.log), ~8h10m",
+    "rows_evaluated_per_cell": "750/750 on all 18 cells, missing_gold_count=0 on all 18 (verified independently off each eval_metrics.json, not just the per-stage trail)",
+    "empty_decompositions_headline_cell": "0/750 on all 3 headline-cell runs (imbalanced/balanced/clustered x biencoder_plus_ce x typed); rows_at_max_new_tokens (cap=128, configs/decomposer.json's default, unedited): imbalanced 50/750, balanced 48/750, clustered 73/750 - same cap applied uniformly across all 18 cells, not a confound between strategies"
+  },
+
+  "all_18_cells_summary": "see runs/pool_sweep/summary/all_runs.csv (not committed, gitignored runs/ per CLAUDE.md); every row's step_f1_macro/ordered_step_accuracy_macro/hop_count_exact_match_rate/exact_match_rate/rouge_l_f1_macro/composite_score/over_under_decomposition/step_count_mae listed below for the record",
+  "all_18_cells": [
+    {"run_key": "size2000_imbalanced_trial0__biencoder_only__raw", "balance": "imbalanced", "variant": "biencoder_only", "mode": "raw", "step_f1_macro": 0.1746, "ordered_step_accuracy_macro": 0.1573, "hop_count_exact_match_rate": 0.4667, "exact_match_rate": 0.0453, "rouge_l_f1_macro": 0.5229, "composite_score": 0.3875, "over_decomposition_rate": 0.3787, "under_decomposition_rate": 0.1547, "step_count_mae": 0.8853},
+    {"run_key": "size2000_imbalanced_trial0__biencoder_only__typed", "balance": "imbalanced", "variant": "biencoder_only", "mode": "typed", "step_f1_macro": 0.1889, "ordered_step_accuracy_macro": 0.1712, "hop_count_exact_match_rate": 0.4707, "exact_match_rate": 0.0493, "rouge_l_f1_macro": 0.5328, "composite_score": 0.2691, "over_decomposition_rate": 0.3613, "under_decomposition_rate": 0.1680, "step_count_mae": 0.9840},
+    {"run_key": "size2000_imbalanced_trial0__biencoder_only__uniform", "balance": "imbalanced", "variant": "biencoder_only", "mode": "uniform", "step_f1_macro": 0.1698, "ordered_step_accuracy_macro": 0.1528, "hop_count_exact_match_rate": 0.4640, "exact_match_rate": 0.0320, "rouge_l_f1_macro": 0.5279, "composite_score": 0.1801, "over_decomposition_rate": 0.3653, "under_decomposition_rate": 0.1707, "step_count_mae": 1.0107},
+    {"run_key": "size2000_imbalanced_trial0__biencoder_plus_ce__raw", "balance": "imbalanced", "variant": "biencoder_plus_ce", "mode": "raw", "step_f1_macro": 0.1751, "ordered_step_accuracy_macro": 0.1586, "hop_count_exact_match_rate": 0.4840, "exact_match_rate": 0.0413, "rouge_l_f1_macro": 0.5416, "composite_score": 0.1908, "over_decomposition_rate": 0.3347, "under_decomposition_rate": 0.1813, "step_count_mae": 0.8040},
+    {"run_key": "size2000_imbalanced_trial0__biencoder_plus_ce__typed", "balance": "imbalanced", "variant": "biencoder_plus_ce", "mode": "typed", "HEADLINE_CELL": true, "step_f1_macro": 0.1900, "ordered_step_accuracy_macro": 0.1706, "hop_count_exact_match_rate": 0.5133, "exact_match_rate": 0.0467, "rouge_l_f1_macro": 0.5461, "composite_score": 0.2001, "over_decomposition_rate": 0.3200, "under_decomposition_rate": 0.1667, "step_count_mae": 0.8133},
+    {"run_key": "size2000_imbalanced_trial0__biencoder_plus_ce__uniform", "balance": "imbalanced", "variant": "biencoder_plus_ce", "mode": "uniform", "step_f1_macro": 0.1760, "ordered_step_accuracy_macro": 0.1593, "hop_count_exact_match_rate": 0.4880, "exact_match_rate": 0.0440, "rouge_l_f1_macro": 0.5376, "composite_score": 0.3894, "over_decomposition_rate": 0.3400, "under_decomposition_rate": 0.1720, "step_count_mae": 0.8640},
+    {"run_key": "size2000_balanced_trial0__biencoder_only__raw", "balance": "balanced", "variant": "biencoder_only", "mode": "raw", "step_f1_macro": 0.1666, "ordered_step_accuracy_macro": 0.1504, "hop_count_exact_match_rate": 0.4493, "exact_match_rate": 0.0373, "rouge_l_f1_macro": 0.5217, "composite_score": 0.1789, "over_decomposition_rate": 0.4373, "under_decomposition_rate": 0.1133, "step_count_mae": 0.9867},
+    {"run_key": "size2000_balanced_trial0__biencoder_only__typed", "balance": "balanced", "variant": "biencoder_only", "mode": "typed", "step_f1_macro": 0.1639, "ordered_step_accuracy_macro": 0.1415, "hop_count_exact_match_rate": 0.4293, "exact_match_rate": 0.0280, "rouge_l_f1_macro": 0.5189, "composite_score": 0.1738, "over_decomposition_rate": 0.4613, "under_decomposition_rate": 0.1093, "step_count_mae": 1.0267},
+    {"run_key": "size2000_balanced_trial0__biencoder_only__uniform", "balance": "balanced", "variant": "biencoder_only", "mode": "uniform", "step_f1_macro": 0.1577, "ordered_step_accuracy_macro": 0.1366, "hop_count_exact_match_rate": 0.4160, "exact_match_rate": 0.0293, "rouge_l_f1_macro": 0.5184, "composite_score": 0.3664, "over_decomposition_rate": 0.4827, "under_decomposition_rate": 0.1013, "step_count_mae": 1.1293},
+    {"run_key": "size2000_balanced_trial0__biencoder_plus_ce__raw", "balance": "balanced", "variant": "biencoder_plus_ce", "mode": "raw", "step_f1_macro": 0.1837, "ordered_step_accuracy_macro": 0.1613, "hop_count_exact_match_rate": 0.4480, "exact_match_rate": 0.0387, "rouge_l_f1_macro": 0.5333, "composite_score": 0.1894, "over_decomposition_rate": 0.4427, "under_decomposition_rate": 0.1093, "step_count_mae": 0.9747},
+    {"run_key": "size2000_balanced_trial0__biencoder_plus_ce__typed", "balance": "balanced", "variant": "biencoder_plus_ce", "mode": "typed", "HEADLINE_CELL": true, "step_f1_macro": 0.1926, "ordered_step_accuracy_macro": 0.1710, "hop_count_exact_match_rate": 0.4667, "exact_match_rate": 0.0453, "rouge_l_f1_macro": 0.5393, "composite_score": 0.1974, "over_decomposition_rate": 0.4107, "under_decomposition_rate": 0.1227, "step_count_mae": 0.9280},
+    {"run_key": "size2000_balanced_trial0__biencoder_plus_ce__uniform", "balance": "balanced", "variant": "biencoder_plus_ce", "mode": "uniform", "step_f1_macro": 0.1600, "ordered_step_accuracy_macro": 0.1402, "hop_count_exact_match_rate": 0.4640, "exact_match_rate": 0.0360, "rouge_l_f1_macro": 0.5246, "composite_score": 0.3760, "over_decomposition_rate": 0.4120, "under_decomposition_rate": 0.1240, "step_count_mae": 0.9013},
+    {"run_key": "size2000_clustered_trial0__biencoder_only__raw", "balance": "clustered", "variant": "biencoder_only", "mode": "raw", "step_f1_macro": 0.1788, "ordered_step_accuracy_macro": 0.1608, "hop_count_exact_match_rate": 0.4747, "exact_match_rate": 0.0427, "rouge_l_f1_macro": 0.5323, "composite_score": 0.3893, "over_decomposition_rate": 0.3920, "under_decomposition_rate": 0.1333, "step_count_mae": 0.9160},
+    {"run_key": "size2000_clustered_trial0__biencoder_only__typed", "balance": "clustered", "variant": "biencoder_only", "mode": "typed", "step_f1_macro": 0.1885, "ordered_step_accuracy_macro": 0.1710, "hop_count_exact_match_rate": 0.4880, "exact_match_rate": 0.0573, "rouge_l_f1_macro": 0.5306, "composite_score": 0.1964, "over_decomposition_rate": 0.3720, "under_decomposition_rate": 0.1400, "step_count_mae": 0.9080},
+    {"run_key": "size2000_clustered_trial0__biencoder_only__uniform", "balance": "clustered", "variant": "biencoder_only", "mode": "uniform", "step_f1_macro": 0.1679, "ordered_step_accuracy_macro": 0.1529, "hop_count_exact_match_rate": 0.4680, "exact_match_rate": 0.0333, "rouge_l_f1_macro": 0.5176, "composite_score": 0.1803, "over_decomposition_rate": 0.4000, "under_decomposition_rate": 0.1320, "step_count_mae": 0.9827},
+    {"run_key": "size2000_clustered_trial0__biencoder_plus_ce__raw", "balance": "clustered", "variant": "biencoder_plus_ce", "mode": "raw", "step_f1_macro": 0.1852, "ordered_step_accuracy_macro": 0.1697, "hop_count_exact_match_rate": 0.5040, "exact_match_rate": 0.0560, "rouge_l_f1_macro": 0.5393, "composite_score": 0.3961, "over_decomposition_rate": 0.3533, "under_decomposition_rate": 0.1427, "step_count_mae": 0.8680},
+    {"run_key": "size2000_clustered_trial0__biencoder_plus_ce__typed", "balance": "clustered", "variant": "biencoder_plus_ce", "mode": "typed", "HEADLINE_CELL": true, "step_f1_macro": 0.1939, "ordered_step_accuracy_macro": 0.1775, "hop_count_exact_match_rate": 0.5133, "exact_match_rate": 0.0507, "rouge_l_f1_macro": 0.5487, "composite_score": 0.2038, "over_decomposition_rate": 0.3400, "under_decomposition_rate": 0.1467, "step_count_mae": 0.8093},
+    {"run_key": "size2000_clustered_trial0__biencoder_plus_ce__uniform", "balance": "clustered", "variant": "biencoder_plus_ce", "mode": "uniform", "step_f1_macro": 0.1648, "ordered_step_accuracy_macro": 0.1469, "hop_count_exact_match_rate": 0.4773, "exact_match_rate": 0.0373, "rouge_l_f1_macro": 0.5294, "composite_score": 0.3811, "over_decomposition_rate": 0.3480, "under_decomposition_rate": 0.1747, "step_count_mae": 0.8680}
+  ],
+
+  "headline_cell_per_hop": {
+    "definition": "variant=biencoder_plus_ce, mode=typed, gold hop in {2,3,4}, n=250/hop",
+    "imbalanced": {
+      "overall": {"step_f1": 0.1900, "ordered_step_accuracy": 0.1706, "hop_count_EM": 0.5133, "composite": 0.2001, "exact_match": 0.0467, "rouge_l_f1": 0.5461, "over_decomp": 0.3200, "under_decomp": 0.1667, "step_count_mae": 0.8133, "mean_signed_step_count_error": 0.4427},
+      "hop2": {"step_f1": 0.3022, "ordered_step_accuracy": 0.2903, "hop_count_EM": 0.7560, "over": 0.244, "under": 0.000, "step_count_mae": 0.408},
+      "hop3": {"step_f1": 0.1506, "ordered_step_accuracy": 0.1269, "hop_count_EM": 0.4720, "over": 0.340, "under": 0.188, "step_count_mae": 0.860},
+      "hop4": {"step_f1": 0.1173, "ordered_step_accuracy": 0.0946, "hop_count_EM": 0.3120, "over": 0.376, "under": 0.312, "step_count_mae": 1.172}
+    },
+    "balanced": {
+      "overall": {"step_f1": 0.1926, "ordered_step_accuracy": 0.1710, "hop_count_EM": 0.4667, "composite": 0.1974, "exact_match": 0.0453, "rouge_l_f1": 0.5393, "over_decomp": 0.4107, "under_decomp": 0.1227, "step_count_mae": 0.9280, "mean_signed_step_count_error": 0.6693},
+      "hop2": {"step_f1": 0.2819, "ordered_step_accuracy": 0.2675, "hop_count_EM": 0.5840, "over": 0.408, "under": 0.008, "step_count_mae": 0.716},
+      "hop3": {"step_f1": 0.1741, "ordered_step_accuracy": 0.1521, "hop_count_EM": 0.5040, "over": 0.376, "under": 0.120, "step_count_mae": 0.804},
+      "hop4": {"step_f1": 0.1216, "ordered_step_accuracy": 0.0934, "hop_count_EM": 0.3120, "over": 0.448, "under": 0.240, "step_count_mae": 1.264}
+    },
+    "clustered": {
+      "overall": {"step_f1": 0.1939, "ordered_step_accuracy": 0.1775, "hop_count_EM": 0.5133, "composite": 0.2038, "exact_match": 0.0507, "rouge_l_f1": 0.5487, "over_decomp": 0.3400, "under_decomp": 0.1467, "step_count_mae": 0.8093, "mean_signed_step_count_error": 0.4947},
+      "hop2": {"step_f1": 0.3198, "ordered_step_accuracy": 0.3101, "hop_count_EM": 0.7160, "over": 0.276, "under": 0.008, "step_count_mae": 0.380},
+      "hop3": {"step_f1": 0.1518, "ordered_step_accuracy": 0.1293, "hop_count_EM": 0.5520, "over": 0.312, "under": 0.136, "step_count_mae": 0.748},
+      "hop4": {"step_f1": 0.1101, "ordered_step_accuracy": 0.0930, "hop_count_EM": 0.2720, "over": 0.432, "under": 0.296, "step_count_mae": 1.300}
+    }
+  },
+
+  "headline_pairwise_compare": {
+    "method": "scripts/musique_decompositions_evaluator.py --compare, bootstrap 95% CI (paired resampling) + McNemar (binary metrics) + paired t-test, seed 42, n=750 aligned items per pair",
+    "imbalanced_vs_balanced": {
+      "step_f1": {"a": 0.1900, "b": 0.1926, "diff_a_minus_b": -0.0025, "ci": [-0.0180, 0.0132], "significant": false, "t_p": 0.7504},
+      "ordered_step_accuracy": {"a": 0.1706, "b": 0.1710, "diff_a_minus_b": -0.0004, "ci": [-0.0159, 0.0150], "significant": false, "t_p": 0.9623},
+      "hop_count_exact_match": {"a_rate": 0.5133, "b_rate": 0.4667, "diff": 0.0467, "mcnemar_p": 0.04382, "significant": true, "favours": "imbalanced", "t_p": 0.03807},
+      "composite_score": {"a": 0.2001, "b": 0.1974, "diff_a_minus_b": 0.0027, "ci": [-0.2027, 0.0153], "significant": false, "note": "suspect metric, issue #40 - not headlined"},
+      "rouge_l_f1": {"a": 0.5461, "b": 0.5393, "diff_a_minus_b": 0.0068, "ci": [-0.0039, 0.0179], "significant": false, "t_p": 0.2204},
+      "exact_match": {"a_rate": 0.0467, "b_rate": 0.0453, "diff": 0.0013, "mcnemar_p": 1.0, "significant": false, "t_p": 0.8576}
+    },
+    "imbalanced_vs_clustered": {
+      "step_f1": {"a": 0.1900, "b": 0.1939, "diff_a_minus_b": -0.0039, "ci": [-0.0201, 0.0122], "significant": false, "t_p": 0.6319},
+      "ordered_step_accuracy": {"a": 0.1706, "b": 0.1775, "diff_a_minus_b": -0.0069, "ci": [-0.0227, 0.0091], "significant": false, "t_p": 0.3907},
+      "hop_count_exact_match": {"a_rate": 0.5133, "b_rate": 0.5133, "diff": 0.0, "mcnemar_p": 1.0, "significant": false, "favours": null, "t_p": 1.0},
+      "composite_score": {"a": 0.2001, "b": 0.2038, "diff_a_minus_b": -0.0038, "ci": [-0.2132, 0.0078], "significant": false, "note": "suspect metric, issue #40 - not headlined"},
+      "rouge_l_f1": {"a": 0.5461, "b": 0.5487, "diff_a_minus_b": -0.0026, "ci": [-0.0136, 0.0084], "significant": false, "t_p": 0.6533},
+      "exact_match": {"a_rate": 0.0467, "b_rate": 0.0507, "diff": -0.0040, "mcnemar_p": 0.7201, "significant": false, "t_p": 0.5903}
+    },
+    "balanced_vs_clustered": {
+      "step_f1": {"a": 0.1926, "b": 0.1939, "diff_a_minus_b": -0.0014, "ci": [-0.0181, 0.0155], "significant": false, "t_p": 0.8759},
+      "ordered_step_accuracy": {"a": 0.1710, "b": 0.1775, "diff_a_minus_b": -0.0065, "ci": [-0.0231, 0.0102], "significant": false, "t_p": 0.4498},
+      "hop_count_exact_match": {"a_rate": 0.4667, "b_rate": 0.5133, "diff": -0.0467, "mcnemar_p": 0.03797, "significant": true, "favours": "clustered", "t_p": 0.03275},
+      "composite_score": {"a": 0.1974, "b": 0.2038, "diff_a_minus_b": -0.0065, "ci": [-0.2162, 0.1967], "significant": false, "note": "suspect metric, issue #40 - not headlined"},
+      "rouge_l_f1": {"a": 0.5393, "b": 0.5487, "diff_a_minus_b": -0.0094, "ci": [-0.0212, 0.0023], "significant": false, "t_p": 0.1165},
+      "exact_match": {"a_rate": 0.0453, "b_rate": 0.0507, "diff": -0.0053, "mcnemar_p": 0.6177, "significant": false, "t_p": 0.5053}
+    },
+    "raw_outputs": "runs/exp-010/compare/{imbalanced_vs_balanced,imbalanced_vs_clustered,balanced_vs_clustered}/compare_metrics.json"
+  },
+
+  "reading": "At the headline cell (biencoder_plus_ce + typed), none of step_f1, ordered_step_accuracy, rouge_l_f1, exact_match or composite_score differ significantly between any pair of the 3 pool-construction strategies (all bootstrap CIs cross 0, all paired t-tests p>0.1 except one borderline 0.038-0.044 pair on hop_count). The one significant axis is hop_count_exact_match_rate: imbalanced (0.5133) and clustered (0.5133, exactly tied) both significantly beat balanced (0.4667) by McNemar (p=0.044, p=0.038) and paired t-test (p=0.038, p=0.033); imbalanced vs clustered are statistically indistinguishable (identical rate, p=1.0). Per-hop, the gap is concentrated at hop=2 (imbalanced 0.756 / clustered 0.716 vs balanced 0.584) and persists at hop=3 in clustered's favour (0.552 vs imbalanced 0.472 vs balanced 0.504); all three strategies converge to similarly low hop=4 accuracy (0.27-0.31, the smallest pool bucket in every strategy). Reading: pool-construction strategy moves whether the model states the right STEP COUNT, not whether the steps it emits are the right ones (step_f1/ordered_step_accuracy unmoved) - the same shape exp-005 and exp-009 found on unrelated axes (oracle hop guidance, hop-matched retrieval). No claim is made that clustering beats imbalanced: they are indistinguishable here, and both beat balanced only on this one axis.",
+
+  "pool_composition_recap_from_exp_006": {
+    "imbalanced": {"pool_rows": 2000, "hop_split_2_3_4": [1461, 413, 126]},
+    "balanced": {"pool_rows": 2000, "hop_split_2_3_4": [667, 667, 666]},
+    "clustered": {"pool_rows": 2000, "hop_split_2_3_4": [1396, 495, 109], "kmeans_n_iter": 11, "kmeans_inertia": 1803.46}
+  },
+
+  "git": {
+    "launch_commit": "6831ee5d85195f11d2320c51e4281236124f32a8",
+    "completion_head_observed": "a99b573352c455157edd686e50ece483298364b93",
+    "per_cell_commit_provenance": "see experiments/exp-010/config.json commit_provenance_per_cell - verified none of the intervening commits (ae29d38, f920fb8 docs-only; fe4b32f/a940376 add a no-op hop_source default; a99b573 adds additive-only eval metrics) change any value this row reports"
+  }
+}

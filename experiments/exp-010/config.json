@@ -1,0 +1,71 @@
+{
+  "_note": "Config snapshot for exp-010 (issue #14 / ADR 0021): the deferred GPU half of the pool-construction sweep. Consumes exp-006's committed CPU precompute (pool construction + bi-encoder similarity + CE rerank, size 2000, all 3 strategies) unedited and runs the 18 decompose+eval cells (3 strategies x 2 retriever variants x 3 retrieval modes) via scripts/pool_sweep_orchestrator.py, unedited committed config throughout.",
+
+  "launch_git_commit": "6831ee5d85195f11d2320c51e4281236124f32a8",
+  "launch_note": "Pinned at launch (this is what the pre-launch log entry, dddf30c, records). This is a shared checkout: three PRs (fe4b32f, a940376, a99b573) self-merged to main during this run's ~8h10m wall clock, plus two docs-only commits (ae29d38, f920fb8). Each of the 36 subprocess invocations (18 decompose + 18 eval) is spawned fresh by the orchestrator and reads the CURRENT file on disk at invocation time, so different cells of this one sweep ran under different HEAD commits - see commit_provenance_per_cell below and the verification that none of the intervening commits are behaviorally relevant to this run's decompose or eval-metric-value code paths.",
+
+  "commit_provenance_per_cell": {
+    "note": "git.commit recorded in each decompose cell's own run config.json (components/decomposer/run_decomposer.py's run-artifacts trail), read directly off runs/pool_sweep/decomposer/<run_key>/<timestamp>/config.json.",
+    "imbalanced (all 6 variant x mode cells)": "ae29d38 (docs-only commit)",
+    "balanced__biencoder_only__raw / __typed / __uniform": "ae29d38 / f920fb8 / f920fb8 (both docs-only)",
+    "balanced__biencoder_plus_ce__* (all 3)": "a940376 (feature PR #42, see verification below)",
+    "clustered (all 6 variant x mode cells)": "a99b573 (feature PR #44, metrics-only, see verification below)",
+    "eval_stage_all_18_cells": "a99b573 - the eval stage ran as one contiguous burst (19:31:19-19:33:08 UTC) strictly after a99b573 landed (2026-08-22T17:00:03Z), so every eval_metrics.json / eval_per_item.json in this run carries a99b573's additive metric columns (chain_validity_macro, break_exact_match_rate, sari_macro, ged_macro, ged_fallback_counts)."
+  },
+
+  "verification_that_intervening_commits_do_not_affect_this_runs_numbers": {
+    "method": "git diff between the launch pin (6831ee5) and the final HEAD observed (a99b573) restricted to every file this sweep's decompose+eval path reads.",
+    "configs/pool_sweep.json, configs/similarity.json, configs/musique_prep.json, components/decomposer/models/mistral_7b_instruct/config.json, components/decomposer/prompt_unguided.md": "byte-identical across the whole range (git diff empty) - not touched by any of the 5 intervening commits.",
+    "configs/decomposer.json": "gained one no-op block in fe4b32f (PR #43): 'hop_source': 'gold' + a 'hop_predictions' interface stub. 'gold' is exactly the pre-existing implicit behaviour (a guided run's hop count comes from the query's own depth); this sweep's cells are all the unguided/no-conditions-block arm (guided:false, no 'conditions' key in decomposer.json), so hop_source is resolved and recorded as metadata but never reaches a prompt. Confirmed structurally in components/decomposer/run_decomposer.py's resolve_hop_source(): guided=false is disjoint from every branch that changes behaviour (all of them require guided=true).",
+    "components/decomposer/run_decomposer.py": "the only diff across the whole range (fe4b32f/a940376, 292 lines) is resolve_hop_source/join_predicted_hops and the --hop-predictions CLI flag - all new code paths gated on guided=true or an explicit 'hop_source' condition key, neither of which this sweep's config sets. No change to prompt rendering, generation call, decoding, or the pinned-eval-set / hops loading logic this sweep's retrieval-input branch actually uses.",
+    "scripts/musique_decompositions_evaluator.py + configs/musique_eval.json": "a99b573 (PR #44) adds four new per-item/aggregate columns (chain_validity, break_exact_match, sari, ged) plus one new config block ('break_metrics'). composite_score_weights and composite_step_count_error_scale are byte-identical in the config diff; the script's own docstring and _statistics_available() treat the four new metrics as strictly additive (never enter composite_score, no existing metric changes value). PER_ITEM_SCHEMA is unchanged ('musique_decomposition_per_item/1'), so old- and new-code per-item files remain mutually comparable.",
+    "conclusion": "predictions (results.json) are behaviourally identical regardless of which of the 4 decompose-stage commits produced them; eval_metrics.json / eval_per_item.json for all 18 cells carry 4 extra additive columns beyond what a strict 6831ee5-pinned eval would have written, and every metric this row headlines (step_f1, ordered_step_accuracy, hop_count_exact_match_rate, composite_score, rouge_l_f1, exact_match_rate) is computed by unchanged code under unchanged weights. Per the coordinator's instruction, this run's numbers are NOT a re-score under the new metrics (the new columns are recorded per schema in eval_metrics.json but not used anywhere in this row's comparison) - the nine-arm re-score under the new metrics is a separate, later assignment."
+  },
+
+  "orchestrator_invocation": {
+    "commands": [
+      "scripts/pool_sweep_orchestrator.py --stage decompose --only size2000_imbalanced,size2000_balanced,size2000_clustered",
+      "scripts/pool_sweep_orchestrator.py --stage eval --only size2000_imbalanced,size2000_balanced,size2000_clustered"
+    ],
+    "config": "configs/pool_sweep.json, unedited (decomposer_model_folder mistral_7b_instruct, decomposer_quantization 4bit, retrieval_k 5, similarity_top_k 20, rerank_k 5, embed_model e5-small)",
+    "dry_run_preflight": "both stages dry-run before launch: confirmed dev sample (750 queries) and all CPU precompute from exp-006 skip via skip-if-exists (no similarity/pool/rerank subprocess is even printed for --stage decompose or --stage eval), and exactly 18 decomposer commands / 18 evaluator commands are printed per stage - CPU/GPU precompute was never re-touched.",
+    "grid": "(balance in {imbalanced, balanced, clustered}) x (variant in {biencoder_only, biencoder_plus_ce}) x (mode in {raw, typed, uniform}), pool size 2000, trial 0 (pool_seed 42), all against exp-006's shared dev sample (dev_seed 42, dev_per_hop 250, 750 queries)."
+  },
+
+  "preflight_check_typed_uniform_distinctness": {
+    "question": "The dev sample carries no question_masked_typed/question_masked_uniform fields (exp-006's own flag). Does that make the typed/uniform retrieval modes a silent fallback to raw, i.e. are 12 of 18 cells duplicate compute?",
+    "evidence": "check_question_similarity.py's own docstring: it NER-masks queries on the fly when the query file lacks the masked fields. Verified directly on exp-006's committed runs/pool_sweep/similarity/size2000_<balance>_trial0/top20.jsonl (all 3 balances): typed_top_k and uniform_top_k candidate-id lists differ from raw_top_k on 750/750 rows in every balance (0 rows identical across all three modes).",
+    "conclusion": "typed and uniform are genuinely distinct retrieval conditions here; no cells were cut. Issue #14's own comment independently records the same finding."
+  },
+
+  "headline_cell_definition": {
+    "variant": "biencoder_plus_ce",
+    "mode": "typed",
+    "rationale": "ADR 0006 item 4's stated few-shot method default (bi-encoder top-20, cross-encoder rerank to top-5, typed entity masking); applicable here because the pre-launch check above confirms typed is genuinely distinct from raw for this dev sample. The masking default itself remains supervisor-open per ADR 0018 - this is the sweep's stated default, not a resolution of that question."
+  },
+
+  "compare_invocation": {
+    "script": "scripts/musique_decompositions_evaluator.py --compare <a>_per_item.json <b>_per_item.json --config musique_eval.json --seed 42",
+    "pairs": [
+      "size2000_imbalanced_trial0__biencoder_plus_ce__typed vs size2000_balanced_trial0__biencoder_plus_ce__typed",
+      "size2000_imbalanced_trial0__biencoder_plus_ce__typed vs size2000_clustered_trial0__biencoder_plus_ce__typed",
+      "size2000_balanced_trial0__biencoder_plus_ce__typed vs size2000_clustered_trial0__biencoder_plus_ce__typed"
+    ],
+    "n_aligned_per_pair": 750,
+    "outputs": "runs/exp-010/compare/{imbalanced_vs_balanced,imbalanced_vs_clustered,balanced_vs_clustered}/compare_metrics.json"
+  },
+
+  "pool_composition_recap_from_exp_006": {
+    "note": "Recorded by exp-006 (Refs #14), not remeasured here; included for context on what each strategy's pool looked like going into this run's decomposer arms.",
+    "imbalanced": {"pool_rows": 2000, "hop_split_2_3_4": [1461, 413, 126]},
+    "balanced": {"pool_rows": 2000, "hop_split_2_3_4": [667, 667, 666]},
+    "clustered": {
+      "pool_rows": 2000, "hop_split_2_3_4": [1396, 495, 109],
+      "kmeans": {"n_candidates": 19938, "k": 2000, "n_iter": 11, "inertia": 1803.46, "empty_clusters": 0, "selected_from_topup": 0, "mean_distance_to_centroid_selected": 0.235}
+    }
+  },
+
+  "run_lock": {"holder": "exp-010", "acquired": "2026-08-22T11:23:00Z", "released_after_this_commit": true},
+
+  "git_at_completion": "a99b573 (HEAD when this artifact was written; the run itself spanned 6831ee5 through a99b573, see commit_provenance_per_cell)"
+}
