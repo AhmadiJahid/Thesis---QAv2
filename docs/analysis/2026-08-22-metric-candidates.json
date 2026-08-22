@@ -1,0 +1,1081 @@
+{
+ "note": "Session-local diagnostic harness for docs/analysis/2026-08-22-metric-candidates.md. NONE of the candidate metrics below is a house metric of this repo: they are computed in this note only, from committed-code per-item outputs, as analysis. No experiment-log claim rests on them.",
+ "base_commit": "efb8530f02b418ec7428135619ecfbc6aa91e968",
+ "eval_set": "ADR 0007 pinned 600 MuSiQue dev questions, 200 per gold hop depth",
+ "provenance": {
+  "inputs_pinned_by_content": {
+   "exp004_unguided": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-004/20260821_222907/eval_unguided_per_item.json",
+    "sha256": "e90970f79779f219856185f0f93425bef8a011a3fe24273babcd63e54bfe8b93",
+    "size_bytes": 724987,
+    "mtime_utc": "2026-08-22T10:02:05Z"
+   },
+   "exp004_oracle_guided": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-004/20260821_224805/eval_oracle_guided_per_item.json",
+    "sha256": "ddb5ae8e000ef6efaea3215d6ae3f18df94a1fdde8eecff996c9caeee29af27a",
+    "size_bytes": 720109,
+    "mtime_utc": "2026-08-22T10:02:15Z"
+   },
+   "exp004_unguided_capped": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-004/20260821_231641/eval_unguided_capped_per_item.json",
+    "sha256": "a57a0a54470708a4ce944060f5356ee857677ea1266a830f8eae542b3e43b6a4",
+    "size_bytes": 719632,
+    "mtime_utc": "2026-08-22T10:02:17Z"
+   },
+   "exp005_unguided": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260821_233524/eval_unguided_per_item.json",
+    "sha256": "9a3ece40894878d0fc95f40cad3183d4641f51472f2991f3c26cb4f62bd4a4c7",
+    "size_bytes": 725999,
+    "mtime_utc": "2026-08-22T10:02:19Z"
+   },
+   "exp005_oracle_guided": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_000025/eval_oracle_guided_per_item.json",
+    "sha256": "497a8031edcebc972e2debf2c543a6ec8c9219149ed6785dabf16d3bfdee0701",
+    "size_bytes": 742487,
+    "mtime_utc": "2026-08-22T10:02:22Z"
+   },
+   "exp005_unguided_capped": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-005/20260822_003156/eval_unguided_capped_per_item.json",
+    "sha256": "8584e3c5622c551ca73789d1b26cd3864bcd6dab8832550125f6d2c5e0244557",
+    "size_bytes": 725698,
+    "mtime_utc": "2026-08-22T10:02:24Z"
+   },
+   "exp008_full_train": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-008/20260822_100745/eval_full_train_per_item.json",
+    "sha256": "2340c57f6df89cc88e22ec0a26b712294eacc044b5661e76436087269ab50e7b",
+    "size_bytes": 704572,
+    "mtime_utc": "2026-08-22T10:22:37Z"
+   },
+   "exp009_mixed": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-009/mixed/20260822_103146/eval_mixed_per_item.json",
+    "sha256": "b84f69d1e8bedbacbd2e69fdfe7f7932502f69dbff916b74fdcc49756a6f3b71",
+    "size_bytes": 724960,
+    "mtime_utc": "2026-08-22T11:15:03Z"
+   },
+   "exp009_oracle_hop_matched": {
+    "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-009/oracle/20260822_105045/eval_oracle_hop_matched_per_item.json",
+    "sha256": "af7c0eff64e252ecf26b26b4389a6b5ddff0b71ed7ca7e2f6c2cced7c1de19d3",
+    "size_bytes": 722753,
+    "mtime_utc": "2026-08-22T11:15:10Z"
+   }
+  },
+  "gold_and_question_identical_across_all_nine_inputs": true,
+  "item_ids_identical_across_all_nine_inputs": true,
+  "n_items": 600
+ },
+ "harness_validation": {
+  "claim": "The paired bootstrap/t-test/McNemar used for every candidate below reproduces the committed exp-008 numbers bit-identically on the metrics that exist in both.",
+  "reproduced_bit_identically": {
+   "full_train_vs_unguided.step_f1": {
+    "difference": 0.137239501239501,
+    "ci": [
+     0.115019706219706,
+     0.160082440476191
+    ]
+   },
+   "full_train_vs_unguided.ordered_step_accuracy": {
+    "difference": 0.143309523809524,
+    "ci": [
+     0.12048373015873,
+     0.166559821428571
+    ]
+   },
+   "full_train_vs_unguided.rouge_l_f1": {
+    "difference": 0.121808572549593,
+    "ci": [
+     0.106509791775195,
+     0.136882915563767
+    ]
+   },
+   "mcnemar.exact_match": {
+    "b": 41,
+    "c": 13,
+    "p": 0.00017512673440589488
+   },
+   "mcnemar.hop_count_exact_match": {
+    "b": 178,
+    "c": 57,
+    "p": 1.1150804444624943e-15
+   }
+  },
+  "source_of_published_values": "experiments/exp-008/metrics.json arm_comparison_details/full_train_vs_unguided"
+ },
+ "candidate_definitions": {
+  "sari": {
+   "source": "allenai/break-evaluator evaluation/sari_hook.py (Tensor2Tensor port of Xu et al., TACL 2016); driver scripts/evaluate_predictions.py get_sari_score",
+   "verified": "reimplemented line-by-line from the fetched official file; max_gram_size=4, BETA_FOR_SARI_DELETION_F_MEASURE=0",
+   "inputs": "source = the original question split on ' '; prediction/target = the ' @@SEP@@ '-joined decomposition string split on ' '",
+   "model_free": true,
+   "per_item": true
+  },
+  "structural_match": {
+   "source": "allenai/break-evaluator evaluation/sequence_matcher.py clean_structural + get_match_score, driven by get_structural_match_ratio",
+   "verified": "reimplemented from the fetched official file; the ratio is edit_distance.SequenceMatcher.ratio() = 2*matches/(len(a)+len(b)), reimplemented from belambert/edit-distance edit_distance/edit_distance.py",
+   "note": "clean_structural keeps every token starting with '@@', which on Break's own to_string() output INCLUDES the '@@SEP@@' separators, so the official metric is part chaining-structure and part step-count",
+   "model_free": true,
+   "per_item": true
+  },
+  "ged": {
+   "source": "allenai/break-evaluator evaluation/graph_matcher.py GraphMatchScorer.normalized_graph_edit_distance + evaluation/decomposition.py to_graph",
+   "verified": "graph construction and normalization reimplemented from the fetched official files; nx.optimize_graph_edit_distance, last yielded value, normalized by max(nodes+edges)",
+   "deviation_from_official": "Break's node substitution cost is 1 - SequenceMatchScorer.get_match_score, whose 'base' processing lemmatizes with spaCy en_core_web_sm. spaCy is not installed in this repo's .venv, so this note used lowercased whitespace tokens with no lemmatization. Absolute values are therefore NOT comparable to Break leaderboard GED numbers; within this note all systems are scored the same way.",
+   "budget": "per-item wall-clock budget 20.0 s (Break itself uses @exit_after(180) and DROPS examples that time out); truncations observed: {\"exp004_unguided\": 0, \"exp004_oracle_guided\": 0, \"exp004_unguided_capped\": 0, \"exp005_unguided\": 0, \"exp005_oracle_guided\": 0, \"exp005_unguided_capped\": 0, \"exp008_full_train\": 0, \"exp009_mixed\": 0, \"exp009_oracle_hop_matched\": 0, \"null_empty\": 0, \"null_question_echo\": 0, \"null_one_junk\": 0, \"null_three_junk\": 0, \"null_gold_reversed\": 0, \"oracle_gold\": 0}",
+   "direction": "lower is better (it is a distance); can exceed 1.0",
+   "model_free": true,
+   "per_item": true
+  },
+  "break_em": {
+   "source": "allenai/break-evaluator scripts/evaluate_predictions.py get_exact_match: d.lower() == g.lower() on the ' @@SEP@@ '-joined string",
+   "note": "differs from this repo's exact_match_rate, which strips punctuation except '#' via _normalize_step",
+   "model_free": true,
+   "per_item": true
+  },
+  "chain_validity": {
+   "source": "NOT from the literature: it is PR #38 section 5 option 3(a) made concrete \u2014 per-item bare-#k reference validity with no free credit for silence",
+   "definition": "per item: 1.0 if the gold needs no reference; 0.0 if the gold needs one and the prediction emits none; else valid_pred_refs / pred_refs, valid meaning 1 <= k < own 1-based step index",
+   "model_free": true,
+   "per_item": true
+  }
+ },
+ "per_system_macro": {
+  "exp004_unguided": {
+   "sari": 0.5850214958002863,
+   "structural_match": 0.7418344677068989,
+   "chain_validity": 0.9685833333333332,
+   "ged": 0.47140822545819827,
+   "break_em": 0.05333333333333334,
+   "step_f1": 0.20389277389277388,
+   "ordered_step_accuracy": 0.18041269841269839,
+   "rouge_l_f1": 0.5428578299361506,
+   "exact_match": 0.06166666666666667,
+   "hop_count_exact_match": 0.5083333333333333
+  },
+  "exp004_oracle_guided": {
+   "sari": 0.5890158290869149,
+   "structural_match": 0.7808425259381141,
+   "chain_validity": 0.9711626984126983,
+   "ged": 0.4414326364080897,
+   "break_em": 0.05,
+   "step_f1": 0.20612650312650313,
+   "ordered_step_accuracy": 0.18524404761904759,
+   "rouge_l_f1": 0.5512783287203075,
+   "exact_match": 0.056666666666666664,
+   "hop_count_exact_match": 0.59
+  },
+  "exp004_unguided_capped": {
+   "sari": 0.5849054289130183,
+   "structural_match": 0.7431466628916319,
+   "chain_validity": 0.9685833333333332,
+   "ged": 0.47078973771048843,
+   "break_em": 0.05333333333333334,
+   "step_f1": 0.20396969696969697,
+   "ordered_step_accuracy": 0.18050198412698412,
+   "rouge_l_f1": 0.5435830044903649,
+   "exact_match": 0.06166666666666667,
+   "hop_count_exact_match": 0.5083333333333333
+  },
+  "exp005_unguided": {
+   "sari": 0.5978849941440952,
+   "structural_match": 0.7246339617125221,
+   "chain_validity": 0.8604503968253969,
+   "ged": 0.4910246714300585,
+   "break_em": 0.051666666666666666,
+   "step_f1": 0.21310209235209232,
+   "ordered_step_accuracy": 0.19112698412698412,
+   "rouge_l_f1": 0.5588554282350716,
+   "exact_match": 0.06166666666666667,
+   "hop_count_exact_match": 0.52
+  },
+  "exp005_oracle_guided": {
+   "sari": 0.6033040021246148,
+   "structural_match": 0.7778163236118859,
+   "chain_validity": 0.8696666666666666,
+   "ged": 0.423649021630129,
+   "break_em": 0.06,
+   "step_f1": 0.23683994708994707,
+   "ordered_step_accuracy": 0.22047222222222226,
+   "rouge_l_f1": 0.5710410956364557,
+   "exact_match": 0.07333333333333333,
+   "hop_count_exact_match": 0.8733333333333333
+  },
+  "exp005_unguided_capped": {
+   "sari": 0.5978428116242105,
+   "structural_match": 0.7250524036507009,
+   "chain_validity": 0.8604503968253969,
+   "ged": 0.4909397845247381,
+   "break_em": 0.051666666666666666,
+   "step_f1": 0.21310209235209232,
+   "ordered_step_accuracy": 0.19112698412698412,
+   "rouge_l_f1": 0.5589223641881967,
+   "exact_match": 0.06166666666666667,
+   "hop_count_exact_match": 0.52
+  },
+  "exp008_full_train": {
+   "sari": 0.6822884470647773,
+   "structural_match": 0.882154687904688,
+   "chain_validity": 0.9941666666666666,
+   "ged": 0.30939302184449674,
+   "break_em": 0.10166666666666667,
+   "step_f1": 0.3411322751322751,
+   "ordered_step_accuracy": 0.3237222222222222,
+   "rouge_l_f1": 0.6646664024857436,
+   "exact_match": 0.10833333333333334,
+   "hop_count_exact_match": 0.71
+  },
+  "exp009_mixed": {
+   "sari": 0.5851267341525592,
+   "structural_match": 0.742135749758181,
+   "chain_validity": 0.9685833333333332,
+   "ged": 0.47124932260957325,
+   "break_em": 0.05333333333333334,
+   "step_f1": 0.2035224035224035,
+   "ordered_step_accuracy": 0.18041269841269839,
+   "rouge_l_f1": 0.5432038673396112,
+   "exact_match": 0.06166666666666667,
+   "hop_count_exact_match": 0.515
+  },
+  "exp009_oracle_hop_matched": {
+   "sari": 0.5879490119685962,
+   "structural_match": 0.756459379495185,
+   "chain_validity": 0.968593253968254,
+   "ged": 0.45400674999225754,
+   "break_em": 0.04833333333333333,
+   "step_f1": 0.19308445258445261,
+   "ordered_step_accuracy": 0.17990013227513227,
+   "rouge_l_f1": 0.5470382087982496,
+   "exact_match": 0.056666666666666664,
+   "hop_count_exact_match": 0.6
+  },
+  "null_empty": {
+   "sari": 0.29111006812136275,
+   "structural_match": 0.0,
+   "chain_validity": 0.0,
+   "ged": 1.0,
+   "break_em": 0.0
+  },
+  "null_question_echo": {
+   "sari": 0.46758189294514046,
+   "structural_match": 0.0,
+   "chain_validity": 0.0,
+   "ged": 0.9011381260396268,
+   "break_em": 0.0
+  },
+  "null_one_junk": {
+   "sari": 0.3229059339265636,
+   "structural_match": 0.0,
+   "chain_validity": 0.0,
+   "ged": 0.9460892439325543,
+   "break_em": 0.0
+  },
+  "null_three_junk": {
+   "sari": 0.33608558027455654,
+   "structural_match": 0.5557777777777778,
+   "chain_validity": 0.0,
+   "ged": 1.0275193397274136,
+   "break_em": 0.0
+  },
+  "null_gold_reversed": {
+   "sari": 0.9414409118096284,
+   "structural_match": 0.34458333333333335,
+   "chain_validity": 0.2327777777777778,
+   "ged": 0.2874600151651485,
+   "break_em": 0.0
+  },
+  "oracle_gold": {
+   "sari": 1.0,
+   "structural_match": 1.0,
+   "chain_validity": 1.0,
+   "ged": 0.0,
+   "break_em": 1.0
+  }
+ },
+ "reference_emission": {
+  "exp004_unguided": {
+   "bare_refs_total": 1354,
+   "bare_refs_valid": 1312,
+   "bare_ref_validity_micro": 0.9689807976366323,
+   "items_emitting_no_ref_where_gold_needs_one": 6
+  },
+  "exp004_oracle_guided": {
+   "bare_refs_total": 1326,
+   "bare_refs_valid": 1289,
+   "bare_ref_validity_micro": 0.9720965309200603,
+   "items_emitting_no_ref_where_gold_needs_one": 6
+  },
+  "exp004_unguided_capped": {
+   "bare_refs_total": 1276,
+   "bare_refs_valid": 1234,
+   "bare_ref_validity_micro": 0.9670846394984326,
+   "items_emitting_no_ref_where_gold_needs_one": 6
+  },
+  "exp005_unguided": {
+   "bare_refs_total": 1147,
+   "bare_refs_valid": 1126,
+   "bare_ref_validity_micro": 0.981691368788143,
+   "items_emitting_no_ref_where_gold_needs_one": 76
+  },
+  "exp005_oracle_guided": {
+   "bare_refs_total": 1012,
+   "bare_refs_valid": 998,
+   "bare_ref_validity_micro": 0.9861660079051383,
+   "items_emitting_no_ref_where_gold_needs_one": 73
+  },
+  "exp005_unguided_capped": {
+   "bare_refs_total": 1143,
+   "bare_refs_valid": 1122,
+   "bare_ref_validity_micro": 0.9816272965879265,
+   "items_emitting_no_ref_where_gold_needs_one": 76
+  },
+  "exp008_full_train": {
+   "bare_refs_total": 1028,
+   "bare_refs_valid": 1024,
+   "bare_ref_validity_micro": 0.9961089494163424,
+   "items_emitting_no_ref_where_gold_needs_one": 2
+  },
+  "exp009_mixed": {
+   "bare_refs_total": 1352,
+   "bare_refs_valid": 1310,
+   "bare_ref_validity_micro": 0.9689349112426036,
+   "items_emitting_no_ref_where_gold_needs_one": 6
+  },
+  "exp009_oracle_hop_matched": {
+   "bare_refs_total": 1322,
+   "bare_refs_valid": 1277,
+   "bare_ref_validity_micro": 0.9659606656580938,
+   "items_emitting_no_ref_where_gold_needs_one": 6
+  },
+  "null_empty": {
+   "bare_refs_total": 0,
+   "bare_refs_valid": 0,
+   "bare_ref_validity_micro": 1.0,
+   "items_emitting_no_ref_where_gold_needs_one": 600
+  },
+  "null_question_echo": {
+   "bare_refs_total": 0,
+   "bare_refs_valid": 0,
+   "bare_ref_validity_micro": 1.0,
+   "items_emitting_no_ref_where_gold_needs_one": 600
+  },
+  "null_one_junk": {
+   "bare_refs_total": 0,
+   "bare_refs_valid": 0,
+   "bare_ref_validity_micro": 1.0,
+   "items_emitting_no_ref_where_gold_needs_one": 600
+  },
+  "null_three_junk": {
+   "bare_refs_total": 0,
+   "bare_refs_valid": 0,
+   "bare_ref_validity_micro": 1.0,
+   "items_emitting_no_ref_where_gold_needs_one": 600
+  },
+  "null_gold_reversed": {
+   "bare_refs_total": 1200,
+   "bare_refs_valid": 346,
+   "bare_ref_validity_micro": 0.28833333333333333,
+   "items_emitting_no_ref_where_gold_needs_one": 0
+  },
+  "oracle_gold": {
+   "bare_refs_total": 1200,
+   "bare_refs_valid": 1200,
+   "bare_ref_validity_micro": 1.0,
+   "items_emitting_no_ref_where_gold_needs_one": 0
+  }
+ },
+ "reconciliation_with_prior_note": {
+  "prior_path": "docs/analysis/2026-08-22-finetuned-vs-prompting-error-analysis.json:finding_9_bare_hash_chain_validity",
+  "difference": "That note counts 1352 bare refs for exp-004/unguided and 1274 for unguided_capped; this note counts 1354 and 1276. The gap is exactly the 2 bracketed '[#1]' references of issue #40, on items 3hop1__86965_488922_4093 and 4hop1__161765_53706_795904_580996: this note's #(\\d+) regex counts the digits inside '[#1]' as a bare reference, that note's counter excluded them. exp-008 agrees exactly (1028 refs, 0.9961089494163424).",
+  "verified_bracketed_ref_counts": {
+   "exp004_unguided": 2,
+   "exp004_unguided_capped": 2,
+   "all_other_arms": 0
+  }
+ },
+ "gold_structure": {
+  "gold_graph_shapes_nodes_edges": {
+   "2,1": 200,
+   "3,2": 200,
+   "4,3": 200
+  },
+  "gold_is_always_a_tree_with_n_minus_1_references": true,
+  "gold_strict_linear_chains": 460,
+  "gold_non_chain_dependency_shapes": 140,
+  "by_gold_step_count": {
+   "2": {
+    "linear": 200
+   },
+   "3": {
+    "linear": 146,
+    "non_linear": 54
+   },
+   "4": {
+    "linear": 114,
+    "non_linear": 86
+   }
+  },
+  "why_it_matters": "Order canonicalization of the LF-EM kind has something to do on 140/600 items and nothing to do on the other 460, where the reference chain already fixes a unique step order."
+ },
+ "comparisons": {
+  "exp008_full_train_vs_exp004_unguided": {
+   "label": "exp-008 fine-tuned vs exp-004 unguided (fine-tuning headline)",
+   "results": {
+    "sari": {
+     "system_a": 0.6822884470647773,
+     "system_b": 0.5850214958002863,
+     "difference": 0.09726695126449103,
+     "ci_low": 0.08315040991542247,
+     "ci_high": 0.11140351015142164,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 13.59703390324345,
+     "t_p_value": 6.856604843103564e-37,
+     "t_significant": true,
+     "diff_sd": 0.17522527422493875,
+     "mde_80pct_power": 0.02004136288853374,
+     "n_for_80pct_power": 25.47270974745851
+    },
+    "structural_match": {
+     "system_a": 0.882154687904688,
+     "system_b": 0.7418344677068989,
+     "difference": 0.14032022019778911,
+     "ci_low": 0.12098501909180052,
+     "ci_high": 0.16010168807277808,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 13.808150045669919,
+     "t_p_value": 7.491635231457069e-38,
+     "t_significant": true,
+     "diff_sd": 0.24892033975785596,
+     "mde_80pct_power": 0.028470224295498874,
+     "n_for_80pct_power": 24.69974744296907
+    },
+    "chain_validity": {
+     "system_a": 0.9941666666666666,
+     "system_b": 0.9685833333333332,
+     "difference": 0.025583333333333402,
+     "ci_low": 0.013333333333333308,
+     "ci_high": 0.038678869047619066,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 4.025691869677339,
+     "t_p_value": 6.409893532216571e-05,
+     "t_significant": true,
+     "diff_sd": 0.15566544736874185,
+     "mde_80pct_power": 0.01780421080076638,
+     "n_for_80pct_power": 290.5911922818699
+    },
+    "step_f1": {
+     "system_a": 0.3411322751322751,
+     "system_b": 0.20389277389277388,
+     "difference": 0.13723950123950124,
+     "ci_low": 0.1150197062197062,
+     "ci_high": 0.16008244047619052,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 11.819458721610982,
+     "t_p_value": 4.025722308498992e-29,
+     "t_significant": true,
+     "diff_sd": 0.2844180588203944,
+     "mde_80pct_power": 0.03253027027113988,
+     "n_for_80pct_power": 33.7107435185933
+    },
+    "ordered_step_accuracy": {
+     "system_a": 0.3237222222222222,
+     "system_b": 0.18041269841269839,
+     "difference": 0.1433095238095238,
+     "ci_low": 0.12048373015873018,
+     "ci_high": 0.1665598214285714,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 12.342252471905969,
+     "t_p_value": 2.424334773096123e-31,
+     "t_significant": true,
+     "diff_sd": 0.28441745897972315,
+     "mde_80pct_power": 0.03253020166445845,
+     "n_for_80pct_power": 30.91538474836405
+    },
+    "rouge_l_f1": {
+     "system_a": 0.6646664024857436,
+     "system_b": 0.5428578299361506,
+     "difference": 0.12180857254959299,
+     "ci_low": 0.10650979177519498,
+     "ci_high": 0.13688291556376672,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 15.918190833237365,
+     "t_p_value": 7.728773819770441e-48,
+     "t_significant": true,
+     "diff_sd": 0.18743891951608666,
+     "mde_80pct_power": 0.02143829662742749,
+     "n_for_80pct_power": 18.585578948591507
+    },
+    "ged": {
+     "system_a": 0.30939302184449674,
+     "system_b": 0.47140822545819827,
+     "difference": -0.16201520361370153,
+     "ci_low": -0.18211319977191393,
+     "ci_high": -0.1421312141126038,
+     "significant": true,
+     "n": 600,
+     "t_statistic": -15.876157933826542,
+     "t_p_value": 1.2387967552277109e-47,
+     "t_significant": true,
+     "diff_sd": 0.24996890373654673,
+     "mde_80pct_power": 0.02859015363389905,
+     "n_for_80pct_power": 18.6841216708059
+    },
+    "ged_sim": {
+     "system_a": 0.6906069781555033,
+     "system_b": 0.5285917745418017,
+     "difference": 0.16201520361370159,
+     "ci_low": 0.1421312141126038,
+     "ci_high": 0.18211319977191365,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 15.876157933826546,
+     "t_p_value": 1.23879675522762e-47,
+     "t_significant": true,
+     "diff_sd": 0.24996890373654673,
+     "mde_80pct_power": 0.02859015363389905,
+     "n_for_80pct_power": 18.684121670805894
+    },
+    "break_em": {
+     "correct_only_in_a": 41,
+     "correct_only_in_b": 12,
+     "discordant_pairs": 53,
+     "p_value": 8.171334999262925e-05,
+     "significant": true,
+     "min_attainable_p_value": 2.220446049250313e-16,
+     "rate_a": 0.10166666666666667,
+     "rate_b": 0.05333333333333334
+    },
+    "exact_match": {
+     "correct_only_in_a": 41,
+     "correct_only_in_b": 13,
+     "discordant_pairs": 54,
+     "p_value": 0.00017512673440589488,
+     "significant": true,
+     "min_attainable_p_value": 1.1102230246251565e-16,
+     "rate_a": 0.10833333333333334,
+     "rate_b": 0.06166666666666667
+    },
+    "hop_count_exact_match": {
+     "correct_only_in_a": 178,
+     "correct_only_in_b": 57,
+     "discordant_pairs": 235,
+     "p_value": 1.1150804444624943e-15,
+     "significant": true,
+     "min_attainable_p_value": 3.622271631530685e-71,
+     "rate_a": 0.71,
+     "rate_b": 0.5083333333333333
+    }
+   }
+  },
+  "exp009_oracle_hop_matched_vs_exp009_mixed": {
+   "label": "exp-009 oracle-hop-matched vs mixed (hop-matching null)",
+   "results": {
+    "sari": {
+     "system_a": 0.5879490119685962,
+     "system_b": 0.5851267341525592,
+     "difference": 0.0028222778160369444,
+     "ci_low": -0.007682936124949513,
+     "ci_high": 0.013604120665562726,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.5178556827147694,
+     "t_p_value": 0.6047501670034019,
+     "t_significant": false,
+     "diff_sd": 0.13349550448932473,
+     "mde_80pct_power": 0.015268527107704558,
+     "n_for_80pct_power": 17560.869483885806
+    },
+    "structural_match": {
+     "system_a": 0.756459379495185,
+     "system_b": 0.742135749758181,
+     "difference": 0.014323629737004073,
+     "ci_low": -0.004056508670964317,
+     "ci_high": 0.03278873184734686,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 1.5318605983681648,
+     "t_p_value": 0.1260847820349899,
+     "t_significant": false,
+     "diff_sd": 0.22903901410866737,
+     "mde_80pct_power": 0.02619630083438328,
+     "n_for_80pct_power": 2006.896689577889
+    },
+    "chain_validity": {
+     "system_a": 0.968593253968254,
+     "system_b": 0.9685833333333332,
+     "difference": 9.920634920779214e-06,
+     "ci_low": -0.014285863095238044,
+     "ci_high": 0.014373313492063488,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.0013586912491921305,
+     "t_p_value": 0.998916373922293,
+     "t_significant": false,
+     "diff_sd": 0.17885221160026568,
+     "mde_80pct_power": 0.020456193274358114,
+     "n_for_80pct_power": 2551067507.591652
+    },
+    "step_f1": {
+     "system_a": 0.19308445258445261,
+     "system_b": 0.2035224035224035,
+     "difference": -0.010437950937950885,
+     "ci_low": -0.027349103211603172,
+     "ci_high": 0.006417663355163381,
+     "significant": false,
+     "n": 600,
+     "t_statistic": -1.2114681328152326,
+     "t_p_value": 0.22619374308766965,
+     "t_significant": false,
+     "diff_sd": 0.21104685352944674,
+     "mde_80pct_power": 0.02413845032787449,
+     "n_for_80pct_power": 3208.7768704709074
+    },
+    "ordered_step_accuracy": {
+     "system_a": 0.17990013227513227,
+     "system_b": 0.18041269841269839,
+     "difference": -0.0005125661375661172,
+     "ci_low": -0.016831183862433867,
+     "ci_high": 0.01568153108465611,
+     "significant": false,
+     "n": 600,
+     "t_statistic": -0.0625141464312611,
+     "t_p_value": 0.9501742505796319,
+     "t_significant": false,
+     "diff_sd": 0.20083862103864586,
+     "mde_80pct_power": 0.02297088535927281,
+     "n_for_80pct_power": 1205055.0761581673
+    },
+    "rouge_l_f1": {
+     "system_a": 0.5470382087982496,
+     "system_b": 0.5432038673396112,
+     "difference": 0.0038343414586383684,
+     "ci_low": -0.007882529803464171,
+     "ci_high": 0.015900304697023988,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.628959821504287,
+     "t_p_value": 0.5296151362204834,
+     "t_significant": false,
+     "diff_sd": 0.1493287766903755,
+     "mde_80pct_power": 0.01707945509910176,
+     "n_for_80pct_power": 11904.67932649382
+    },
+    "ged": {
+     "system_a": 0.45400674999225754,
+     "system_b": 0.47124932260957325,
+     "difference": -0.01724257261731571,
+     "ci_low": -0.035074578417720124,
+     "ci_high": 0.00034217916384836897,
+     "significant": false,
+     "n": 600,
+     "t_statistic": -1.9187474029487945,
+     "t_p_value": 0.055491240865894916,
+     "t_significant": false,
+     "diff_sd": 0.22012019247765602,
+     "mde_80pct_power": 0.02517621202792637,
+     "n_for_80pct_power": 1279.1689172432589
+    },
+    "ged_sim": {
+     "system_a": 0.5459932500077425,
+     "system_b": 0.5287506773904267,
+     "difference": 0.017242572617315766,
+     "ci_low": -0.0003421791638483188,
+     "ci_high": 0.03507457841772023,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 1.9187474029487945,
+     "t_p_value": 0.055491240865894916,
+     "t_significant": false,
+     "diff_sd": 0.22012019247765602,
+     "mde_80pct_power": 0.02517621202792637,
+     "n_for_80pct_power": 1279.1689172432502
+    },
+    "break_em": {
+     "correct_only_in_a": 8,
+     "correct_only_in_b": 11,
+     "discordant_pairs": 19,
+     "p_value": 0.6476058959960938,
+     "significant": false,
+     "min_attainable_p_value": 3.814697265625e-06,
+     "rate_a": 0.04833333333333333,
+     "rate_b": 0.05333333333333334
+    },
+    "exact_match": {
+     "correct_only_in_a": 9,
+     "correct_only_in_b": 12,
+     "discordant_pairs": 21,
+     "p_value": 0.6636238098144531,
+     "significant": false,
+     "min_attainable_p_value": 9.5367431640625e-07,
+     "rate_a": 0.056666666666666664,
+     "rate_b": 0.06166666666666667
+    },
+    "hop_count_exact_match": {
+     "correct_only_in_a": 133,
+     "correct_only_in_b": 82,
+     "discordant_pairs": 215,
+     "p_value": 0.0006163886676232679,
+     "significant": true,
+     "min_attainable_p_value": 3.7982270983039195e-65,
+     "rate_a": 0.6,
+     "rate_b": 0.515
+    }
+   }
+  },
+  "exp004_oracle_guided_vs_exp004_unguided": {
+   "label": "exp-004 oracle_guided vs unguided (Mistral guidance)",
+   "results": {
+    "sari": {
+     "system_a": 0.5890158290869149,
+     "system_b": 0.5850214958002863,
+     "difference": 0.003994333286628571,
+     "ci_low": -0.0036208685036187515,
+     "ci_high": 0.011558213553155137,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 1.03092652182952,
+     "t_p_value": 0.3029913507781858,
+     "t_significant": false,
+     "diff_sd": 0.09490568151735017,
+     "mde_80pct_power": 0.010854822238892056,
+     "n_for_80pct_power": 4431.064612420294
+    },
+    "structural_match": {
+     "system_a": 0.7808425259381141,
+     "system_b": 0.7418344677068989,
+     "difference": 0.039008058231215226,
+     "ci_low": 0.024087595087429164,
+     "ci_high": 0.05381319180700472,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 5.172421101854019,
+     "t_p_value": 3.155827584317277e-07,
+     "t_significant": true,
+     "diff_sd": 0.1847294267842993,
+     "mde_80pct_power": 0.02112839882688596,
+     "n_for_80pct_power": 176.02556955481572
+    },
+    "chain_validity": {
+     "system_a": 0.9711626984126983,
+     "system_b": 0.9685833333333332,
+     "difference": 0.00257936507936507,
+     "ci_low": -0.011162797619047555,
+     "ci_high": 0.01700793650793642,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.3551005987453757,
+     "t_p_value": 0.7226392247499567,
+     "t_significant": false,
+     "diff_sd": 0.17792502539057342,
+     "mde_80pct_power": 0.020350146498994918,
+     "n_for_80pct_power": 37347.4280017144
+    },
+    "step_f1": {
+     "system_a": 0.20612650312650313,
+     "system_b": 0.20389277389277388,
+     "difference": 0.002233729233729248,
+     "ci_low": -0.008536423761423726,
+     "ci_high": 0.01287051675176674,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.40523303732883587,
+     "t_p_value": 0.6854509093549038,
+     "t_significant": false,
+     "diff_sd": 0.13502099636892897,
+     "mde_80pct_power": 0.015443004998967055,
+     "n_for_80pct_power": 28678.327393544747
+    },
+    "ordered_step_accuracy": {
+     "system_a": 0.18524404761904759,
+     "system_b": 0.18041269841269839,
+     "difference": 0.0048313492063492,
+     "ci_low": -0.006079414682539704,
+     "ci_high": 0.015496329365079373,
+     "significant": false,
+     "n": 600,
+     "t_statistic": 0.8831766842484043,
+     "t_p_value": 0.3774951247324282,
+     "t_significant": false,
+     "diff_sd": 0.13399742696816347,
+     "mde_80pct_power": 0.01532593441144435,
+     "n_for_80pct_power": 6037.655336732062
+    },
+    "rouge_l_f1": {
+     "system_a": 0.5512783287203075,
+     "system_b": 0.5428578299361506,
+     "difference": 0.008420498784156849,
+     "ci_low": 0.0003998944598866157,
+     "ci_high": 0.016540781342735462,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 2.0343032838673527,
+     "t_p_value": 0.0423610332329656,
+     "t_significant": true,
+     "diff_sd": 0.10139061153998129,
+     "mde_80pct_power": 0.01159653507949208,
+     "n_for_80pct_power": 1137.973392028904
+    },
+    "ged": {
+     "system_a": 0.4414326364080897,
+     "system_b": 0.47140822545819827,
+     "difference": -0.029975589050108553,
+     "ci_low": -0.043585205707390544,
+     "ci_high": -0.016638028349191047,
+     "significant": true,
+     "n": 600,
+     "t_statistic": -4.362453992150686,
+     "t_p_value": 1.5143805322821183e-05,
+     "t_significant": true,
+     "diff_sd": 0.16831099661850224,
+     "mde_80pct_power": 0.019250543486278044,
+     "n_for_80pct_power": 247.45816509266035
+    },
+    "ged_sim": {
+     "system_a": 0.5585673635919102,
+     "system_b": 0.5285917745418017,
+     "difference": 0.029975589050108442,
+     "ci_low": 0.016638028349190932,
+     "ci_high": 0.04358520570739059,
+     "significant": true,
+     "n": 600,
+     "t_statistic": 4.362453992150686,
+     "t_p_value": 1.5143805322821183e-05,
+     "t_significant": true,
+     "diff_sd": 0.16831099661850224,
+     "mde_80pct_power": 0.019250543486278044,
+     "n_for_80pct_power": 247.4581650926622
+    },
+    "break_em": {
+     "correct_only_in_a": 5,
+     "correct_only_in_b": 7,
+     "discordant_pairs": 12,
+     "p_value": 0.7744140625,
+     "significant": false,
+     "min_attainable_p_value": 0.00048828125,
+     "rate_a": 0.05,
+     "rate_b": 0.05333333333333334
+    },
+    "exact_match": {
+     "correct_only_in_a": 5,
+     "correct_only_in_b": 8,
+     "discordant_pairs": 13,
+     "p_value": 0.5810546875,
+     "significant": false,
+     "min_attainable_p_value": 0.000244140625,
+     "rate_a": 0.056666666666666664,
+     "rate_b": 0.06166666666666667
+    },
+    "hop_count_exact_match": {
+     "correct_only_in_a": 111,
+     "correct_only_in_b": 62,
+     "discordant_pairs": 173,
+     "p_value": 0.0002409895368955425,
+     "significant": true,
+     "min_attainable_p_value": 1.6704779438076223e-52,
+     "rate_a": 0.59,
+     "rate_b": 0.5083333333333333
+    }
+   }
+  }
+ },
+ "spearman_per_item_pooled_over_nine_real_arms": {
+  "n": 5400,
+  "matrix": {
+   "sari": {
+    "sari": 1.0,
+    "structural_match": 0.4045881565336898,
+    "chain_validity": 0.18271658339714175,
+    "ged": -0.615203916321093,
+    "step_f1": 0.6125779185267085,
+    "ordered_step_accuracy": 0.5898767040136657,
+    "rouge_l_f1": 0.755513453617079,
+    "exact_match": 0.40406295272264336,
+    "hop_count_exact_match": 0.28844130980516963
+   },
+   "structural_match": {
+    "sari": 0.40458815653368974,
+    "structural_match": 1.0,
+    "chain_validity": 0.24512310832768935,
+    "ged": -0.6930023264876813,
+    "step_f1": 0.47404818973611296,
+    "ordered_step_accuracy": 0.5242961892535521,
+    "rouge_l_f1": 0.5225775930870694,
+    "exact_match": 0.27979467679700615,
+    "hop_count_exact_match": 0.5711559603568912
+   },
+   "chain_validity": {
+    "sari": 0.18271658339714178,
+    "structural_match": 0.24512310832768935,
+    "chain_validity": 1.0,
+    "ged": -0.3091722306018298,
+    "step_f1": 0.18627649745898422,
+    "ordered_step_accuracy": 0.18636694864883965,
+    "rouge_l_f1": 0.21366356626120311,
+    "exact_match": 0.08015758112897953,
+    "hop_count_exact_match": 0.05411002190312633
+   },
+   "ged": {
+    "sari": -0.615203916321093,
+    "structural_match": -0.6930023264876813,
+    "chain_validity": -0.30917223060182986,
+    "ged": 1.0,
+    "step_f1": -0.6686162157593798,
+    "ordered_step_accuracy": -0.6894407610026416,
+    "rouge_l_f1": -0.7844095175453756,
+    "exact_match": -0.4297059074746731,
+    "hop_count_exact_match": -0.6197092251167112
+   },
+   "step_f1": {
+    "sari": 0.6125779185267084,
+    "structural_match": 0.47404818973611307,
+    "chain_validity": 0.18627649745898422,
+    "ged": -0.6686162157593799,
+    "step_f1": 1.0,
+    "ordered_step_accuracy": 0.9472671433279275,
+    "rouge_l_f1": 0.7016939646913186,
+    "exact_match": 0.47525888194395566,
+    "hop_count_exact_match": 0.3393427142749737
+   },
+   "ordered_step_accuracy": {
+    "sari": 0.5898767040136657,
+    "structural_match": 0.5242961892535521,
+    "chain_validity": 0.18636694864883963,
+    "ged": -0.6894407610026416,
+    "step_f1": 0.9472671433279275,
+    "ordered_step_accuracy": 1.0,
+    "rouge_l_f1": 0.701480606403725,
+    "exact_match": 0.4897731805803545,
+    "hop_count_exact_match": 0.381824141871307
+   },
+   "rouge_l_f1": {
+    "sari": 0.7555134536170791,
+    "structural_match": 0.5225775930870693,
+    "chain_validity": 0.2136635662612031,
+    "ged": -0.7844095175453755,
+    "step_f1": 0.7016939646913187,
+    "ordered_step_accuracy": 0.701480606403725,
+    "rouge_l_f1": 1.0,
+    "exact_match": 0.4294270582867361,
+    "hop_count_exact_match": 0.384295296735697
+   },
+   "exact_match": {
+    "sari": 0.4040629527226434,
+    "structural_match": 0.27979467679700615,
+    "chain_validity": 0.08015758112897953,
+    "ged": -0.4297059074746731,
+    "step_f1": 0.4752588819439556,
+    "ordered_step_accuracy": 0.48977318058035446,
+    "rouge_l_f1": 0.42942705828673605,
+    "exact_match": 1.0,
+    "hop_count_exact_match": 0.22166393548712207
+   },
+   "hop_count_exact_match": {
+    "sari": 0.2884413098051696,
+    "structural_match": 0.5711559603568912,
+    "chain_validity": 0.05411002190312634,
+    "ged": -0.6197092251167111,
+    "step_f1": 0.3393427142749737,
+    "ordered_step_accuracy": 0.381824141871307,
+    "rouge_l_f1": 0.38429529673569696,
+    "exact_match": 0.22166393548712207,
+    "hop_count_exact_match": 1.0
+   }
+  }
+ },
+ "cost": {
+  "cheap_pass": "SARI + structural_match + break_em + chain_validity over 15 systems x 600 items: 3.7 s wall clock, 1 CPU core, no model",
+  "ged_pass_per_system_seconds": {
+   "exp004_unguided": 124.5,
+   "exp004_oracle_guided": 1.8,
+   "exp004_unguided_capped": 1.8,
+   "exp005_unguided": 1.7,
+   "exp005_oracle_guided": 2.1,
+   "exp005_unguided_capped": 1.6,
+   "exp008_full_train": 0.7,
+   "exp009_mixed": 124.2,
+   "exp009_oracle_hop_matched": 2.7,
+   "null_empty": 0.0,
+   "null_question_echo": 0.5,
+   "null_one_junk": 0.4,
+   "null_three_junk": 0.6,
+   "null_gold_reversed": 1.1,
+   "oracle_gold": 0.5
+  },
+  "ged_pass_total_seconds_nine_real_arms": 261.1,
+  "ged_tail": "Two arms cost ~124 s each and the rest ~2 s: exp-004/unguided and exp-009/mixed each contain the same 39-step runaway item, whose optimizer takes ~115 s alone. exp-009/oracle_hop_matched contains a 51-step item. Cost is driven by a handful of runaway predictions, not by the eval set size."
+ },
+ "per_gold_hop": {
+  "gold_hop_2": {
+   "n": 200,
+   "exp004_unguided": {
+    "ged": 0.35136887295752045,
+    "sari": 0.6364412801772141,
+    "structural_match": 0.8570281385281386
+   },
+   "exp008_full_train": {
+    "ged": 0.19350295873210005,
+    "sari": 0.7519205299485168,
+    "structural_match": 0.9861904761904762
+   },
+   "exp009_mixed": {
+    "ged": 0.35136887295752045,
+    "sari": 0.6364412801772141,
+    "structural_match": 0.8570281385281386
+   },
+   "exp009_oracle_hop_matched": {
+    "ged": 0.2931529346202499,
+    "sari": 0.6607746260482037,
+    "structural_match": 0.8819726352079295
+   }
+  },
+  "gold_hop_3": {
+   "n": 200,
+   "exp004_unguided": {
+    "ged": 0.48995217134802177,
+    "sari": 0.5631827927043621,
+    "structural_match": 0.7269257017492312
+   },
+   "exp008_full_train": {
+    "ged": 0.3351950776623642,
+    "sari": 0.6510682583696533,
+    "structural_match": 0.840313492063492
+   },
+   "exp009_mixed": {
+    "ged": 0.48937273134845016,
+    "sari": 0.5632148050798992,
+    "structural_match": 0.7287526248261542
+   },
+   "exp009_oracle_hop_matched": {
+    "ged": 0.4814253554162612,
+    "sari": 0.5634056567828316,
+    "structural_match": 0.7319315684315686
+   }
+  },
+  "gold_hop_4": {
+   "n": 200,
+   "exp004_unguided": {
+    "ged": 0.5729036320690526,
+    "sari": 0.5554404145192824,
+    "structural_match": 0.6415495628433271
+   },
+   "exp008_full_train": {
+    "ged": 0.39948102913902594,
+    "sari": 0.6438765528761617,
+    "structural_match": 0.8199600954600954
+   },
+   "exp009_mixed": {
+    "ged": 0.573006363522749,
+    "sari": 0.5557241172005642,
+    "structural_match": 0.6406264859202502
+   },
+   "exp009_oracle_hop_matched": {
+    "ged": 0.5874419599402614,
+    "sari": 0.5396667530747534,
+    "structural_match": 0.6554739348460576
+   }
+  }
+ }
+}
