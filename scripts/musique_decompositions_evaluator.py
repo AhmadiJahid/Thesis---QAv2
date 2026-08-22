@@ -10,6 +10,15 @@ Scoring techniques (all string-level, no model in the loop):
 - Reference validity for [#k] chains
 - ROUGE-L precision/recall/F1 (LCS-based)
 - A composite score whose weights come from the config
+- The official Break leaderboard trio, ported from ``allenai/break-evaluator`` (issue #40):
+  exact match, SARI and normalized graph edit distance (GED, **lower is better**). Break's
+  fourth metric, norm_EM, is deliberately not ported — its normalizer is
+  QDMR-operation-specific
+- Chain validity: the repaired per-item chaining term (bare ``#k``, no free credit for a
+  prediction that emits no reference where the gold chains)
+
+The last two blocks are **additive**: they are new columns beside the existing ones, they do
+not enter ``composite_score``, and no metric that existed before them changes value.
 
 Inputs:
 - predictions: JSON list (e.g. a decomposer run's results.json) of items like
@@ -44,11 +53,13 @@ import json
 import math
 import re
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import networkx as nx
 import numpy as np
 from scipy import stats as scipy_stats
 
@@ -106,6 +117,72 @@ METRIC_DEFINITIONS: dict[str, Any] = {
         "a [#k] reference is valid when 1 <= k < its own step index. macro = mean of "
         "per-row valid rates (a row with no references scores 1.0); micro = total valid "
         "references / total references across all rows"
+    ),
+    "chain_validity": (
+        "the repaired chaining term (issue #40): per item, 1.0 when the GOLD emits no "
+        "reference, 0.0 when the gold chains and the prediction emits no reference at all "
+        "(no free credit for silence, unlike reference_validity), else valid bare '#k' "
+        "references / total bare '#k' references, valid meaning 1 <= k < the step's own "
+        "1-based index. References are matched by '#(\\d+)', which sees the '#k' inside a "
+        "'[#k]' too. A per-item value, so the full paired battery applies to it. It is a "
+        "house repair, not a published metric, and it does NOT enter composite_score"
+    ),
+    "break_exact_match": (
+        "the official Break leaderboard 'EM' (allenai/break-evaluator get_exact_match): "
+        "the ' @@SEP@@ '-joined decomposition compared to gold's, lowercased, with NO "
+        "punctuation stripping. Stricter than this repo's exact_match, which normalizes "
+        "each step with _normalize_step"
+    ),
+    "sari": (
+        "the official Break 'SARI' (evaluation/sari_hook.py, the Tensor2Tensor port of Xu "
+        "et al., TACL 2016): n-gram edit quality of the decomposition against the QUESTION, "
+        "(keep-F1 + add-F1 + delete-precision) / 3 averaged over n = 1..4. Absolute levels "
+        "on this data are not interpretable — every decomposition shares the '@@SEP@@' and "
+        "template boilerplate, which inflates the keep and add terms — but differences on "
+        "the same data are"
+    ),
+    "ged": (
+        "the official Break 'GED' (evaluation/graph_matcher.py "
+        "normalized_graph_edit_distance): graph edit distance between the prediction's and "
+        "the gold's reference graphs (node = step, edge = a '#k' reference pointing from "
+        "the referencing step to the referenced one), node substitution costing "
+        "1 - the edit-distance match ratio of the two step texts, insertions and deletions "
+        "costing 1, normalized by max(nodes + edges) of the two graphs. LOWER IS BETTER — "
+        "it is a distance, the only such metric in this report — and it can exceed 1.0"
+    ),
+    "ged_deviations_from_official_code": (
+        "two, so no value here is mistaken for a leaderboard number: (1) Break's node "
+        "substitution cost lemmatizes with spaCy en_core_web_sm; this implementation uses "
+        "lowercased whitespace tokens, so absolute GED values are NOT comparable to "
+        "published Break GED (within one run every system is scored identically, so "
+        "comparisons are valid); (2) Break wraps the optimizer in @exit_after(180) and its "
+        "aggregator DROPS an item that times out, which would break the paired battery, so "
+        "an item over max_nodes_for_optimizer or over per_item_time_budget_seconds is "
+        "reported with a documented upper bound and flagged in ged_fallback instead of "
+        "being dropped (ADR 0026)"
+    ),
+    "ged_fallback": (
+        "per item: null when the value is the optimizer's own last approximation; "
+        "'node_cap' when the graph exceeded break_metrics.ged.max_nodes_for_optimizer and "
+        "the search-free positional upper bound was reported instead (deterministic); "
+        "'time_budget' when the budget stopped the optimizer early, keeping its last "
+        "approximation (MACHINE-DEPENDENT, and the elapsed seconds are in "
+        "ged_fallback_seconds); 'no_optimizer_result' when networkx yielded no "
+        "approximation at all for these graphs, which is NOT a timeout — the bound is "
+        "reported instead. Counted in ged_fallback_counts"
+    ),
+    "ged_fallback_seconds": (
+        "per item: the wall clock at the point the time budget stopped the optimizer, and "
+        "null on every other path. The budget is checked between the optimizer's successive "
+        "approximations, so it cannot interrupt one and this can exceed the budget; the "
+        "number is recorded so by how much is visible rather than assumed"
+    ),
+    "normalized_exact_match_not_ported": (
+        "Break's fourth leaderboard metric (norm_EM) is deliberately absent: its normalizer "
+        "is ~14 QDMR-operation-specific rewrite rules over spaCy parses plus a 16-way "
+        "operation classifier, and MuSiQue sub-questions are free-form natural language, so "
+        "porting it would mean writing a new canonicalizer whose validity is argued from "
+        "scratch (docs/analysis/2026-08-22-metric-candidates.md §1.3)"
     ),
     "step_count_abs_error_mae": "mean of |len(pred steps) - len(gold steps)|",
     "step_count_mae": (
@@ -165,6 +242,28 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "ids; any id present in one and not the other aborts the run"
     ),
     "difference_direction": "every reported difference is system_a minus system_b",
+    "metric_direction": (
+        "every row carries 'direction': 'higher_is_better' for a score, 'lower_is_better' "
+        "for a distance. Exactly one compared metric is a distance today — 'ged', Break's "
+        "normalized graph edit distance — so a difference of -0.16 there means system_a is "
+        "BETTER, the opposite of what the same number means on every other row. The names "
+        "are also listed in 'lower_is_better_statistics'"
+    ),
+    "favours": (
+        "for a SIGNIFICANT row, which system the difference favours once 'direction' is "
+        "taken into account ('system_a' / 'system_b'); null when the row is not significant "
+        "or the difference is exactly 0. It carries no more information than difference + "
+        "direction + significant — it exists so the direction cannot be dropped on the way "
+        "into a table"
+    ),
+    "statistics_not_available_in_inputs": (
+        "compared metrics that could not be computed because the per-item inputs do not "
+        "carry the column on every row. Empty for v2 artifacts, where the metrics of issue "
+        "#40 (sari, ged, chain_validity, break_exact_match) are required. Non-empty for "
+        "--v1-per-item inputs, which predate those columns: they are omitted and named here "
+        "rather than computed from the stored steps, which would be a re-score of v1 output "
+        "and not a comparison of what v1 measured"
+    ),
     "paired_bootstrap": (
         "percentile bootstrap over items: each of the bootstrap_iterations resamples "
         "draws n item indices with replacement and applies the SAME indices to both "
@@ -208,9 +307,11 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
     "t_test_significance": "significant = p_value < alpha",
     "t_test_statistics_covered": (
         "every compared metric that has a per-item value: the bootstrap statistics except "
-        "composite_score, plus the two McNemar metrics. composite_score has no per-item "
+        "composite_score, plus the McNemar metrics. composite_score has no per-item "
         "value (its reference term is a micro rate and its step-count term a MAE), so no "
-        "paired difference exists to t-test and only its bootstrap CI is reported"
+        "paired difference exists to t-test and only its bootstrap CI is reported. This is "
+        "the asymmetry issue #40 turns on: the additive per-item metrics (sari, ged, "
+        "chain_validity, break_exact_match) take all three tests, the composite one"
     ),
     "t_test_degenerate_rows": (
         "a row carries t_statistic = null, p_value = null, significant = false and a "
@@ -233,9 +334,10 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "as the rest"
     ),
     "multiple_comparisons": (
-        "the headline protocol is six tests per comparison (four bootstrap intervals + two "
-        "McNemar p-values, ADR 0009); the paired t-tests are reported alongside them. The "
-        "exact counts are in 'tests_reported'. None of the p-values or intervals is "
+        "the headline protocol is the bootstrap intervals plus the McNemar p-values (ADR "
+        "0009); the paired t-tests are reported alongside them. The count grew with issue "
+        "#40's additive metrics, so read the exact counts off 'tests_reported' rather than "
+        "off any prose. None of the p-values or intervals is "
         "corrected for multiple comparisons, and the t-test rows overlap the other two "
         "families by construction (same items, same metrics) — so they are not six "
         "independent extra tests"
@@ -411,6 +513,462 @@ def _reference_validity(steps: list[str]) -> tuple[float, int, int]:
     return (rate, valid, total)
 
 
+def _chain_validity(pred_steps: list[str], gold_steps: list[str]) -> tuple[float, int, int]:
+    """Per-item chaining validity with **no free credit for silence**.
+
+    Return ``(chain_validity, pred_ref_count, gold_ref_count)``.
+
+    The repair issue #40 asked for, made concrete by
+    ``docs/analysis/2026-08-22-metric-candidates.md`` §4 item 3. Three differences from
+    :func:`_reference_validity`, which is left exactly as it was:
+
+    - references are read with :data:`_BARE_REF_RX` (bare ``#k``, which also matches the
+      ``#k`` inside a ``[#k]``), so the syntax MuSiQue's gold actually uses is counted;
+    - the gold decides whether chaining is *required*: if the gold emits no reference the
+      item is vacuous and scores 1.0, but if the gold chains and the prediction emits **no**
+      reference at all the item scores **0.0** rather than the free 1.0 of the house
+      convention (measured to flip a model ranking — that note §3.2);
+    - it is a per-item value, so the whole ADR 0009 battery applies to it.
+
+    Not from the literature: it is a house repair of a house metric, and it is reported
+    beside the Break metrics rather than as one of them.
+    """
+    pred_total = 0
+    pred_valid = 0
+    for idx, step in enumerate(pred_steps, start=1):
+        for ref in _BARE_REF_RX.findall(step):
+            pred_total += 1
+            if 1 <= int(ref) < idx:
+                pred_valid += 1
+    gold_total = sum(len(_BARE_REF_RX.findall(step)) for step in gold_steps)
+
+    if gold_total == 0:
+        # The gold requires no chaining, so there is nothing for the prediction to get
+        # wrong. (On the MuSiQue gold this case does not arise: every gold decomposition
+        # has n-1 references.)
+        return (1.0, pred_total, gold_total)
+    if pred_total == 0:
+        return (0.0, pred_total, gold_total)
+    return (pred_valid / pred_total, pred_total, gold_total)
+
+
+# --------------------------------------------------------------------------------------
+# Break-faithful per-item metrics: EM, SARI, GED (issue #40)
+# --------------------------------------------------------------------------------------
+# Ported from the official Break leaderboard evaluator, ``allenai/break-evaluator`` at
+# master, read file by file rather than recalled (the survey note records the same reading:
+# docs/analysis/2026-08-22-metric-candidates.md §1.2 and §7):
+#
+#   scripts/evaluate_predictions.py   the metric set and the drivers
+#                                     (get_exact_match / get_sari_score), and format_qdmr
+#   evaluation/sari_hook.py           SARI (Tensor2Tensor port of Xu et al., TACL 2016)
+#   evaluation/graph_matcher.py       normalized_graph_edit_distance + the node cost
+#   evaluation/decomposition.py       to_string / to_graph (the reference graph)
+#   evaluation/sequence_matcher.py    get_match_score, the node substitution cost's ratio
+#
+# Three named deviations, so no number here is mistaken for a leaderboard number:
+#
+# (a) ``normalized_exact_match`` (norm_EM) is NOT ported. Its normalizer is a stack of ~14
+#     QDMR-operation-specific rewrite rules over spaCy parses plus a 16-way operation
+#     classifier; MuSiQue's sub-questions are free-form natural language, so porting it
+#     would mean writing a new MuSiQue canonicalizer whose validity is argued from scratch
+#     (survey note §1.3).
+# (b) ``format_qdmr``'s ``re.sub(r'return', '', part)`` is NOT applied. It strips QDMR's
+#     "return" keyword; on natural-language questions it would also eat the substring
+#     inside ordinary words ("returned" -> "ed"). Its ``';'`` split is not applied either —
+#     this pipeline's steps are already split by ``src/step_lines.py``.
+# (c) GED's node substitution cost lemmatizes with spaCy ``en_core_web_sm`` in Break. spaCy
+#     is not a dependency of this repo and its model needs a download, so the cost here is
+#     computed over lowercased whitespace tokens. Absolute GED values are therefore **not
+#     comparable to Break leaderboard GED**; within one run every system is scored the same
+#     way, so comparisons on this data are valid. ADR 0026 records the choice.
+
+#: A bare ``#k`` reference. Deliberately syntax-agnostic where :data:`_REF_RX` is not: it
+#: matches the ``#1`` in ``#1`` *and* in ``[#1]``, which is exactly what Break's own
+#: ``format_qdmr`` does (``re.sub(r'#(\d+)', '@@\\g<1>@@', part)``). MuSiQue's gold uses
+#: bare ``#k``; issue #40 is that ``_REF_RX`` matches only the bracketed form. Nothing that
+#: used ``_REF_RX`` is changed — this regex is used only by the metrics below.
+_BARE_REF_RX = re.compile(r"#(\d+)")
+
+#: Break's step separator (``Decomposition.to_string``).
+_BREAK_SEP = " @@SEP@@ "
+
+#: Largest n-gram SARI scores over (official ``get_sari``'s ``max_gram_size``).
+_SARI_MAX_GRAM_SIZE = 4
+
+#: Beta of SARI's deletion F-measure. 0 = precision only, which is what the paper uses and
+#: what the official hook hard-codes (``BETA_FOR_SARI_DELETION_F_MEASURE = 0``).
+_SARI_DELETION_BETA = 0.0
+
+
+def _break_steps(steps: list[str]) -> list[str]:
+    """Steps in Break's own form: whitespace collapsed, bare ``#k`` rewritten ``@@k@@``.
+
+    ``format_qdmr`` collapses whitespace and rewrites references; ``to_string`` strips each
+    step. Empty steps are dropped, as :func:`_join_steps` already does for ROUGE-L.
+    """
+    out: list[str] = []
+    for step in steps:
+        text = _WS_RX.sub(" ", step.strip())
+        if text:
+            out.append(_BARE_REF_RX.sub(r"@@\1@@", text))
+    return out
+
+
+def _break_string(break_steps: list[str]) -> str:
+    """``Decomposition.to_string``: the steps joined with ``" @@SEP@@ "``."""
+    return _BREAK_SEP.join(break_steps)
+
+
+def _break_exact_match(pred_break_string: str, gold_break_string: str) -> float:
+    """Official ``get_exact_match``: ``d.lower() == g.lower()`` on the joined string.
+
+    Not the same metric as this repo's ``exact_match``, which compares step by step after
+    :func:`_normalize_step` (lowercase **and** punctuation stripped). Break strips no
+    punctuation, so ``permit.`` and ``permit?`` differ here and do not there.
+    """
+    return 1.0 if pred_break_string.lower() == gold_break_string.lower() else 0.0
+
+
+def _ngram_set(tokens: list[str], n: int) -> set[tuple[str, ...]]:
+    """The set of ``n``-grams of ``tokens``.
+
+    The official ``_get_ngram_counter`` builds a Counter whose every value is 1 (it counts
+    the *set* of n-grams), so every count in its arithmetic is 0 or 1 and a set gives the
+    same sums. Its ``token_id != 0`` line drops SentencePiece padding ids and is a no-op on
+    word tokens (no string equals 0), so it is not reproduced.
+    """
+    return {tuple(tokens[i : i + n]) for i in range(len(tokens) + 1 - n)}
+
+
+def _fbeta(true_positives: int, selected: int, relevant: int, beta: float = 1.0) -> float:
+    """Official ``_get_fbeta_score``, including its 0/0 = 1 convention."""
+    precision = 1.0 if selected == 0 else true_positives / selected
+    if beta == 0:
+        return precision
+    recall = 1.0 if relevant == 0 else true_positives / relevant
+    if precision > 0 and recall > 0:
+        beta2 = beta * beta
+        return (1.0 + beta2) * precision * recall / (beta2 * precision + recall)
+    return 0.0
+
+
+def _sari(question: str, pred_break_string: str, gold_break_string: str) -> float:
+    """Official SARI: the mean of the keep-F1, add-F1 and delete-precision terms.
+
+    Inputs are the official driver's (``get_sari_score``): the source is the question split
+    on ``" "``, the prediction and the single target are the ``@@SEP@@``-joined
+    decompositions split on ``" "``. The official hook supports several references and
+    divides target counts by the number of non-empty ones; with exactly one reference —
+    always the case here — those weighted counts equal the plain ones, so the weighting
+    layer is not reproduced.
+
+    A caveat that belongs next to the number: on this data every decomposition shares the
+    ``@@SEP@@`` boilerplate and the gold's ``>>``-style templates, which inflates the keep
+    and add terms. Absolute SARI levels here are not interpretable; differences on the same
+    data are (survey note §3.7c).
+    """
+    source = question.split(" ")
+    prediction = pred_break_string.split(" ")
+    target = gold_break_string.split(" ")
+
+    keep_scores: list[float] = []
+    add_scores: list[float] = []
+    deletion_scores: list[float] = []
+    for n in range(1, _SARI_MAX_GRAM_SIZE + 1):
+        src = _ngram_set(source, n)
+        pred = _ngram_set(prediction, n)
+        tgt = _ngram_set(target, n)
+
+        # keep (equation 5)
+        src_and_pred = src & pred
+        src_and_tgt = src & tgt
+        keep_scores.append(
+            _fbeta(len(src_and_pred & src_and_tgt), len(src_and_pred), len(src_and_tgt))
+        )
+        # deletion (equation 6), precision only at beta = 0
+        src_not_pred = src - pred
+        src_not_tgt = src - tgt
+        deletion_scores.append(
+            _fbeta(
+                len(src_not_pred & src_not_tgt),
+                len(src_not_pred),
+                len(src_not_tgt),
+                beta=_SARI_DELETION_BETA,
+            )
+        )
+        # addition (equation 4)
+        added = pred - src
+        add_scores.append(_fbeta(len(added & tgt), len(added), len(tgt - src)))
+
+    avg_keep = sum(keep_scores) / _SARI_MAX_GRAM_SIZE
+    avg_add = sum(add_scores) / _SARI_MAX_GRAM_SIZE
+    avg_deletion = sum(deletion_scores) / _SARI_MAX_GRAM_SIZE
+    return (avg_keep + avg_add + avg_deletion) / 3.0
+
+
+def _alignment_matches(seq1: list[str], seq2: list[str]) -> int:
+    """Matches on a minimum-edit-distance alignment of two token sequences.
+
+    A port of ``edit_distance.edit_distance`` (belambert/edit-distance), the package Break's
+    ``SequenceMatchScorer`` uses, including its tie-break order (substitution, then
+    insertion, then deletion) — which matters, because the number of matches on a
+    *minimum-cost* path is not the LCS length (``AB`` vs ``BA``: 0 matches, LCS 1).
+    Reimplemented rather than added as a dependency: it is 20 lines of documented DP, and
+    the evaluator stays runnable with no new package to install.
+    """
+    if seq1 == seq2:
+        return len(seq2)
+    m, n = len(seq1), len(seq2)
+    if m == 0 or n == 0:
+        return 0
+    dist_prev = list(range(n + 1))
+    dist_cur = [0] * (n + 1)
+    match_prev = [0] * (n + 1)
+    match_cur = [0] * (n + 1)
+    for i in range(1, m + 1):
+        dist_cur[0] = i
+        for j in range(1, n + 1):
+            cost = 0 if seq1[i - 1] == seq2[j - 1] else 1
+            ins_cost = dist_cur[j - 1] + 1
+            del_cost = dist_prev[j] + 1
+            sub_cost = dist_prev[j - 1] + cost
+            best = min(ins_cost, del_cost, sub_cost)
+            if best == sub_cost:
+                dist_cur[j], match_cur[j] = sub_cost, match_prev[j - 1] + (1 - cost)
+            elif best == ins_cost:
+                dist_cur[j], match_cur[j] = ins_cost, match_cur[j - 1]
+            else:
+                dist_cur[j], match_cur[j] = del_cost, match_prev[j]
+        dist_prev[:] = dist_cur
+        match_prev[:] = match_cur
+    return match_cur[n]
+
+
+def _match_score(text_a: str, text_b: str) -> float:
+    """Break's ``SequenceMatchScorer.get_match_score(..., processing="base")``.
+
+    ``edit_distance.SequenceMatcher.ratio()`` = ``2 * matches / (len(a) + len(b))``, and 1.0
+    when both sides are empty. Deviation (c): the token sequence is
+    :func:`_tokenize` (lowercased whitespace tokens) where Break uses spaCy lemmas.
+    """
+    tokens_a = _tokenize(text_a)
+    tokens_b = _tokenize(text_b)
+    if not tokens_a and not tokens_b:
+        return 1.0
+    return 2.0 * _alignment_matches(tokens_a, tokens_b) / (len(tokens_a) + len(tokens_b))
+
+
+def _decomposition_graph(break_steps: list[str]) -> nx.DiGraph:
+    """Break's ``Decomposition.to_graph``: one node per step, one edge per reference.
+
+    Node ``i`` is the i-th step (1-based) with its text as ``label``; an edge goes **from**
+    the referencing step **to** the step it references (official ``(i+1, ref)``). A
+    reference to a step that does not exist creates that node with an empty label, exactly
+    as the official code does — a prediction that writes ``#7`` in a 3-step plan pays for
+    the dangling node.
+    """
+    graph = nx.DiGraph()
+    graph.add_edges_from(
+        [
+            (i + 1, int(ref))
+            for i, step in enumerate(break_steps)
+            for ref in re.findall(r"@@(\d+)@@", step)
+        ]
+    )
+    for i, step in enumerate(break_steps):
+        graph.add_node(i + 1, label=step)
+    for node in graph.nodes:
+        if "label" not in graph.nodes[node]:
+            graph.add_node(node, label="")
+    return graph
+
+
+def _node_subst_cost(node_a: dict[str, Any], node_b: dict[str, Any]) -> float:
+    """Break's ``node_subst_cost_lexical``: ``1 - get_match_score(label_a, label_b)``."""
+    return 1.0 - _match_score(node_a["label"], node_b["label"])
+
+
+def _positional_edit_cost(graph_a: nx.DiGraph, graph_b: nx.DiGraph) -> float:
+    """A concrete edit path's cost, used as the search-free fallback for GED.
+
+    The path: pair the nodes of the two graphs in sorted id order, substitute each pair,
+    delete/insert the surplus nodes, keep the edges whose endpoints are both paired and
+    whose image exists on the other side, and delete/insert every other edge. It is a real
+    edit path, so its cost is a valid **upper bound** on the graph edit distance, and it is
+    computed in one pass — no optimizer, no wall clock, same value on every machine.
+
+    Break has no such fallback: it wraps the optimizer in ``@exit_after(180)`` and the
+    driver turns a timeout into ``None``, which its aggregator then **drops** from the mean.
+    Dropping items is not available here — a dropped item breaks the pairing every test in
+    the ADR 0009 battery rests on — so an item that cannot be optimized within its budget
+    is reported with this bound and flagged, never dropped. ADR 0026 records that.
+    """
+    nodes_a = sorted(graph_a.nodes)
+    nodes_b = sorted(graph_b.nodes)
+    pairs = list(zip(nodes_a, nodes_b))
+    mapping = dict(pairs)
+    substitution = sum(
+        _node_subst_cost(graph_a.nodes[u], graph_b.nodes[v]) for u, v in pairs
+    )
+    edges_b = set(graph_b.edges)
+    kept = sum(
+        1
+        for u, v in graph_a.edges
+        if u in mapping and v in mapping and (mapping[u], mapping[v]) in edges_b
+    )
+    edge_cost = (graph_a.number_of_edges() - kept) + (graph_b.number_of_edges() - kept)
+    return substitution + abs(len(nodes_a) - len(nodes_b)) + edge_cost
+
+
+def _normalized_ged(
+    pred_graph: nx.DiGraph,
+    gold_graph: nx.DiGraph,
+    max_nodes_for_optimizer: int,
+    time_budget_seconds: float,
+) -> tuple[float, str | None, float | None]:
+    """Break's ``normalized_graph_edit_distance``.
+
+    Returns ``(ged, fallback_reason, fallback_seconds)``, the last being the wall clock at
+    the point the time budget stopped the optimizer and ``None`` on every other path — so a
+    machine-dependent number is recorded where it exists and nowhere else.
+
+    Official arithmetic: the last value yielded by ``nx.optimize_graph_edit_distance``
+    (prediction first, gold second, as the official driver calls it), with the lexical node
+    substitution cost and networkx's default unit insert/delete costs, divided by
+    ``max(nodes + edges of each graph)``. **Lower is better**, and it can exceed 1.0.
+
+    Two guards, both configured in ``configs/musique_eval.json`` under ``break_metrics.ged``
+    and both recorded per item in ``ged_fallback``:
+
+    - ``max_nodes_for_optimizer`` — above it the optimizer is not called at all and
+      :func:`_positional_edit_cost` is reported. **This is the guard that bounds the cost**,
+      and the only one that bounds it at all: it is checked before any search starts, and it
+      is deterministic. The survey note measured a single 39-step runaway prediction costing
+      ~115 s of optimizer time by itself; the cap is set from this implementation's own
+      measurements (recorded in the config note and ADR 0026, with the gold hop depth beside
+      each timing, because cost rises steeply with the gold's size as well as the
+      prediction's).
+    - ``per_item_time_budget_seconds`` — a backstop, **not** a hard timeout: the deadline is
+      only tested between the optimizer's successive approximations, so a single long-running
+      approximation (including the first) cannot be interrupted. When it does fire, the last
+      approximation yielded is kept — still a valid upper bound. It is the one
+      machine-dependent path in this metric, so ``ged_fallback_counts['time_budget']`` is
+      machine-dependent too, and every firing carries its elapsed seconds.
+    """
+    total_a = pred_graph.number_of_nodes() + pred_graph.number_of_edges()
+    total_b = gold_graph.number_of_nodes() + gold_graph.number_of_edges()
+    normalization = max(total_a, total_b)
+    if normalization == 0:
+        # Two empty plans: nothing to edit, so the distance is 0 (the official formula is
+        # 0/0 here, which it never reaches because Break's inputs always have a step).
+        return (0.0, None, None)
+    if pred_graph.number_of_nodes() == 0 or gold_graph.number_of_nodes() == 0:
+        # One side is empty, so the only edit path deletes/inserts everything: the cost is
+        # the other side's nodes + edges, which is the normalization factor. Computed rather
+        # than searched because networkx's optimizer has nothing to align.
+        return (1.0, None, None)
+    if max(pred_graph.number_of_nodes(), gold_graph.number_of_nodes()) > max_nodes_for_optimizer:
+        return (_positional_edit_cost(pred_graph, gold_graph) / normalization, "node_cap", None)
+
+    started = time.monotonic()
+    deadline = started + time_budget_seconds
+    distance = None
+    fallback = None
+    elapsed = None
+    for value in nx.optimize_graph_edit_distance(
+        pred_graph, gold_graph, node_subst_cost=_node_subst_cost
+    ):
+        distance = value
+        if time.monotonic() > deadline:
+            fallback = "time_budget"
+            elapsed = time.monotonic() - started
+            break
+    if distance is None:
+        # networkx yielded NO approximation at all. This is not a timeout — the loop above
+        # cannot exit early without a value — so it is not named like one: it means the
+        # optimizer produced nothing for these graphs, and the deterministic bound is
+        # reported so the item still has a value and still has a pair.
+        return (
+            _positional_edit_cost(pred_graph, gold_graph) / normalization,
+            "no_optimizer_result",
+            None,
+        )
+    return (float(distance) / normalization, fallback, elapsed)
+
+
+#: Floor for ``break_metrics.ged.max_nodes_for_optimizer``. MuSiQue gold is at most 4 steps
+#: and the ``unguided_capped`` arm's step-line budget is 8, so a cap below 8 would send
+#: ordinary predictions to the fallback and quietly change what ``ged`` measures. Refusing it
+#: at load beats discovering it in a metrics JSON (same contract as ``gold_validation``).
+_GED_MIN_NODE_CAP = 8
+
+
+def _ged_policy(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Read GED's two cost guards from config, validate them loudly, and record them.
+
+    The returned object travels into the metrics JSON and the config snapshot, so a run
+    states the policy its numbers were produced under rather than leaving it to be inferred
+    from a default.
+    """
+    max_nodes = require(cfg, "break_metrics.ged.max_nodes_for_optimizer")
+    budget = require(cfg, "break_metrics.ged.per_item_time_budget_seconds")
+
+    if (
+        isinstance(max_nodes, bool)
+        or not isinstance(max_nodes, int)
+        or max_nodes < _GED_MIN_NODE_CAP
+    ):
+        raise SystemExit(
+            f"break_metrics.ged.max_nodes_for_optimizer must be an integer >= "
+            f"{_GED_MIN_NODE_CAP}, got {max_nodes!r}. Below that floor ordinary predictions "
+            f"(MuSiQue gold is at most 4 steps; the capped decomposer arm emits at most 8) "
+            f"would be scored with the search-free upper bound instead of the optimizer, "
+            f"which changes what 'ged' measures without saying so."
+        )
+    if (
+        isinstance(budget, bool)
+        or not isinstance(budget, (int, float))
+        or not math.isfinite(float(budget))
+        or float(budget) <= 0.0
+    ):
+        raise SystemExit(
+            f"break_metrics.ged.per_item_time_budget_seconds must be a finite positive "
+            f"number, got {budget!r}. A non-positive budget would stop the optimizer after "
+            f"its first approximation on every item, so every 'ged' value would be that "
+            f"approximation rather than the metric."
+        )
+
+    return {
+        "max_nodes_for_optimizer": int(max_nodes),
+        "per_item_time_budget_seconds": float(budget),
+        "cost_bound": (
+            "max_nodes_for_optimizer is the guard that bounds cost: it is checked before "
+            "any search starts and is deterministic. per_item_time_budget_seconds is a "
+            "backstop only - the deadline is tested between the optimizer's successive "
+            "approximations, so a single long-running approximation (including the first) "
+            "cannot be interrupted"
+        ),
+        "on_exhaustion": (
+            "the item is reported with a documented upper bound and flagged in "
+            "ged_fallback, never dropped (dropping would break the paired battery; "
+            "Break's own evaluator drops such items) — ADR 0026"
+        ),
+        "node_substitution_cost": (
+            "1 - the edit-distance match ratio over lowercased whitespace tokens; Break "
+            "lemmatizes with spaCy en_core_web_sm, so absolute values are not comparable "
+            "to published Break GED"
+        ),
+        "direction": "lower is better (it is a distance)",
+        "machine_dependence": (
+            "ged_fallback_counts['time_budget'] is machine-dependent, and so are the values "
+            "of the items it counts (the last approximation before the deadline); every "
+            "other path, including 'node_cap' and 'no_optimizer_result', is deterministic. "
+            "An empty ged_fallback_counts means no machine-dependent value in the run"
+        ),
+    }
+
+
 def _safe_div(a: float, b: float) -> float:
     return 0.0 if b == 0 else a / b
 
@@ -502,6 +1060,14 @@ _EMPTY_AGGREGATE = {
     "rouge_l_f1_macro": 0.0,
     "reference_validity_macro": 0.0,
     "reference_validity_micro": 1.0,
+    "chain_validity_macro": 0.0,
+    "break_exact_match_rate": 0.0,
+    "sari_macro": 0.0,
+    # 0.0 like every other placeholder in this block, even though a GED of 0.0 would read as
+    # a perfect score: with no rows there is nothing measured, and the scoring path aborts
+    # before it can report this block ("No evaluable rows").
+    "ged_macro": 0.0,
+    "ged_fallback_counts": {},
     "step_count_abs_error_mae": 0.0,
     "step_count_mae": 0.0,
     "mean_signed_step_count_error": 0.0,
@@ -527,6 +1093,11 @@ def _aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
     for it in items:
         k = str(int(it["predicted_hop_count"]))
         pred_dist[k] = pred_dist.get(k, 0) + 1
+    ged_fallbacks: dict[str, int] = {}
+    for it in items:
+        reason = it["ged_fallback"]
+        if reason is not None:
+            ged_fallbacks[reason] = ged_fallbacks.get(reason, 0) + 1
 
     def mean(key: str) -> float:
         return sum(float(it[key]) for it in items) / m
@@ -546,6 +1117,13 @@ def _aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
         "rouge_l_f1_macro": mean("rouge_l_f1"),
         "reference_validity_macro": mean("reference_validity_rate"),
         "reference_validity_micro": 1.0 if ref_valid_den == 0 else ref_valid_num / ref_valid_den,
+        # The additive metrics of issue #40. All four are per-item values, so all four are
+        # plain macro averages and all four are in the paired battery.
+        "chain_validity_macro": mean("chain_validity"),
+        "break_exact_match_rate": mean("break_exact_match"),
+        "sari_macro": mean("sari"),
+        "ged_macro": mean("ged"),
+        "ged_fallback_counts": ged_fallbacks,
         "step_count_abs_error_mae": step_count_mae,
         "step_count_mae": step_count_mae,
         "mean_signed_step_count_error": sum(signed) / m,
@@ -576,10 +1154,43 @@ def _composite_score(overall: dict[str, Any], weights: dict[str, float], scale: 
 
 #: Statistics compared with a paired bootstrap CI. Every one is recomputed from the
 #: resampled items, so the point estimate and the interval come from the same code path.
-BOOTSTRAP_STATISTICS = ("rouge_l_f1", "step_f1", "ordered_step_accuracy", "composite_score")
+BOOTSTRAP_STATISTICS = (
+    "rouge_l_f1",
+    "step_f1",
+    "ordered_step_accuracy",
+    "sari",
+    "ged",
+    "chain_validity",
+    "composite_score",
+)
 
 #: Binary per-item metrics compared with McNemar.
-MCNEMAR_STATISTICS = ("exact_match", "hop_count_exact_match")
+MCNEMAR_STATISTICS = ("exact_match", "hop_count_exact_match", "break_exact_match")
+
+#: Compared statistics that are a plain mean of a per-item column. Everything in
+#: :data:`BOOTSTRAP_STATISTICS` except ``composite_score``, which is built from aggregates.
+_MEAN_PER_ITEM_STATISTICS = tuple(n for n in BOOTSTRAP_STATISTICS if n != "composite_score")
+
+#: The per-item columns ``composite_score`` is rebuilt from on every resample.
+_COMPOSITE_INPUT_COLUMNS = (
+    "step_f1",
+    "ordered_step_accuracy",
+    "reference_valid_count",
+    "reference_total_count",
+    "step_count_abs_error",
+)
+
+#: Statistics where a **lower** value is better. Everything else this script compares is
+#: higher-is-better, so a reader who does not know which is which can invert a verdict: a
+#: difference of -0.16 on ``ged`` means system_a is BETTER. Every reported row therefore
+#: carries ``direction``, and every significant row names the system it ``favours``.
+LOWER_IS_BETTER_STATISTICS = ("ged",)
+
+#: Per-item metrics this script gained with issue #40. They are required of a v2 per-item
+#: file (they are computed by default) but cannot exist in a v1 prior-work file, which
+#: predates them — so a ``--v1-per-item`` comparison covers the legacy statistics only and
+#: records which ones it could not compute.
+_ISSUE_40_STATISTICS = ("sari", "ged", "chain_validity", "break_exact_match")
 
 #: Statistics a paired t-test is reported on, added alongside the two families above per
 #: ADR 0017 item 4 / issue #30 (never as a replacement). It is every compared metric that
@@ -607,7 +1218,69 @@ _REQUIRED_PER_ITEM_FIELDS = (
     "reference_total_count",
     "step_count_abs_error",
     *MCNEMAR_STATISTICS,
+    *(n for n in _ISSUE_40_STATISTICS if n not in MCNEMAR_STATISTICS),
 )
+
+
+#: The v2 per-item fields the loader type-checks: every required field except ``item_id``,
+#: which is the alignment key and a string. It is deliberately **not** the v1 list — every
+#: compared column is read through ``float()`` downstream, so leaving the issue #40 columns
+#: out of this gate would let a ``null`` surface as a raw ``TypeError`` inside the statistics
+#: and a ``NaN`` travel through the whole battery into the run note (PR #44 review, I1).
+_NUMERIC_PER_ITEM_FIELDS = tuple(f for f in _REQUIRED_PER_ITEM_FIELDS if f != "item_id")
+
+
+def _unusable_numeric_fields(obj: dict[str, Any], fields: tuple[str, ...]) -> list[str]:
+    """``field=value`` for every one of ``fields`` that is not a finite number.
+
+    One definition for both loaders, so the v2 and v1 paths cannot drift on what "usable"
+    means. ``bool`` is rejected explicitly: ``True`` is an ``int`` in Python and a metric
+    column that says ``true`` is a broken file, not a 1.0.
+    """
+    return [
+        f"{f}={obj[f]!r}"
+        for f in fields
+        if isinstance(obj[f], bool)
+        or not isinstance(obj[f], (int, float))
+        or not math.isfinite(float(obj[f]))
+    ]
+
+
+def _statistics_available(
+    names: tuple[str, ...],
+    rows_a: list[dict[str, Any]],
+    rows_b: list[dict[str, Any]],
+) -> tuple[str, ...]:
+    """Those of ``names`` that every row of both files carries.
+
+    ``composite_score`` is always available: it is rebuilt from columns that predate it.
+    Everything else has to be in the data — a v1 prior-work file cannot carry the issue #40
+    metrics, and computing them here from its stored steps would be a re-score, not a
+    comparison. What is missing is recorded in the output rather than silently omitted.
+    """
+    return tuple(
+        name
+        for name in names
+        if name == "composite_score"
+        or (all(name in r for r in rows_a) and all(name in r for r in rows_b))
+    )
+
+
+def _direction(name: str) -> str:
+    """``"lower_is_better"`` for a distance, ``"higher_is_better"`` for a score."""
+    return "lower_is_better" if name in LOWER_IS_BETTER_STATISTICS else "higher_is_better"
+
+
+def _favours(name: str, difference: float, significant: bool) -> str | None:
+    """Which system a **significant** difference favours, direction taken into account.
+
+    None when the row is not significant (there is nothing to favour) or the difference is
+    exactly 0.
+    """
+    if not significant or difference == 0.0:
+        return None
+    a_is_better = difference < 0.0 if name in LOWER_IS_BETTER_STATISTICS else difference > 0.0
+    return "system_a" if a_is_better else "system_b"
 
 
 def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
@@ -654,16 +1327,12 @@ def _load_per_item(path: Path) -> tuple[dict[str, dict[str, Any]], dict[str, Any
                 f"'<prefix>_per_item.json' files written by this script; re-run the "
                 f"evaluation to regenerate them."
             )
-        # Same contract as the v1 loader: every compared field is read through float()
-        # downstream, so a null/string/NaN here gets the file, row and field named now
-        # rather than a TypeError three functions away from the cause.
-        unusable = [
-            f"{f}={obj[f]!r}"
-            for f in _REQUIRED_V1_PER_ITEM_FIELDS
-            if isinstance(obj[f], bool)
-            or not isinstance(obj[f], (int, float))
-            or not math.isfinite(float(obj[f]))
-        ]
+        # Every compared field is read through float() downstream, so a null/string/NaN
+        # here gets the file, row and field named now rather than a TypeError three
+        # functions away from the cause. The gate runs over the full v2 set — including the
+        # issue #40 columns, which an earlier revision of this loader skipped (PR #44
+        # review, I1): a null there died as a raw TypeError and a NaN reached the run note.
+        unusable = _unusable_numeric_fields(obj, _NUMERIC_PER_ITEM_FIELDS)
         if unusable:
             raise SystemExit(
                 f"{path}: row {i} has non-numeric or non-finite compared field(s): "
@@ -703,10 +1372,17 @@ V1_ALIGNMENTS = ("normalized_question", "position")
 _V1_POSITION_ID_WIDTH = 6
 
 #: The per-item fields a v1 file must carry. v1 wrote every one of them except ``item_id``,
-#: which it had no concept of. Every one is numeric and every one is read through
-#: ``float()`` downstream, so the loader type-checks them rather than letting a JSON ``null``
-#: surface as a bare TypeError three functions later.
-_REQUIRED_V1_PER_ITEM_FIELDS = tuple(f for f in _REQUIRED_PER_ITEM_FIELDS if f != "item_id")
+#: which it had no concept of, and except the issue #40 metrics, which did not exist when v1
+#: ran — requiring those would refuse every v1 file and retire the ADR 0020 path, so they
+#: are optional here and their absence is reported in the comparison output instead
+#: (``statistics_not_available_in_inputs``). Every field is numeric and every one is read
+#: through ``float()`` downstream, so the loader type-checks them rather than letting a JSON
+#: ``null`` surface as a bare TypeError three functions later.
+_REQUIRED_V1_PER_ITEM_FIELDS = tuple(
+    f
+    for f in _REQUIRED_PER_ITEM_FIELDS
+    if f != "item_id" and f not in _ISSUE_40_STATISTICS
+)
 
 #: Fields that can witness "this row of file A and that row of file B are the same
 #: evaluation item". v1 files carry no id, so the pairing rests on a reconstructed key and
@@ -822,13 +1498,7 @@ def _load_v1_per_item(
         # Every compared field is read through float() downstream. A JSON null or a string
         # there is a broken input, and saying so with the file, row and field beats a
         # TypeError raised three functions away from the cause.
-        unusable = [
-            f"{f}={obj[f]!r}"
-            for f in _REQUIRED_V1_PER_ITEM_FIELDS
-            if isinstance(obj[f], bool)
-            or not isinstance(obj[f], (int, float))
-            or not math.isfinite(float(obj[f]))
-        ]
+        unusable = _unusable_numeric_fields(obj, _REQUIRED_V1_PER_ITEM_FIELDS)
         if unusable:
             raise SystemExit(
                 f"{path}: row {i} has non-numeric or non-finite compared field(s): "
@@ -1078,19 +1748,17 @@ def _aligned_ids(
     return sorted(a_by_id)
 
 
-def _statistic_arrays(rows: list[dict[str, Any]]) -> dict[str, np.ndarray]:
-    """The per-item columns every compared statistic is built from."""
+def _statistic_arrays(
+    rows: list[dict[str, Any]], statistics: tuple[str, ...]
+) -> dict[str, np.ndarray]:
+    """The per-item columns the compared ``statistics`` are built from."""
     def col(key: str) -> np.ndarray:
         return np.array([float(r[key]) for r in rows], dtype=float)
 
-    return {
-        "step_f1": col("step_f1"),
-        "ordered_step_accuracy": col("ordered_step_accuracy"),
-        "rouge_l_f1": col("rouge_l_f1"),
-        "reference_valid_count": col("reference_valid_count"),
-        "reference_total_count": col("reference_total_count"),
-        "step_count_abs_error": col("step_count_abs_error"),
-    }
+    needed = {name for name in statistics if name in _MEAN_PER_ITEM_STATISTICS}
+    if "composite_score" in statistics:
+        needed |= set(_COMPOSITE_INPUT_COLUMNS)
+    return {key: col(key) for key in sorted(needed)}
 
 
 def _statistics_for(
@@ -1098,37 +1766,40 @@ def _statistics_for(
     index: np.ndarray,
     weights: dict[str, float],
     scale: float,
+    statistics: tuple[str, ...],
 ) -> dict[str, np.ndarray]:
     """Evaluate every bootstrap statistic on resamples ``index`` of shape (draws, n).
 
     Returns one array of length ``draws`` per statistic. The point estimate uses this
     same function with a single "resample" that is the identity, so the observed value
     and the bootstrap distribution can never drift apart.
+
+    Every statistic but ``composite_score`` is the mean of a per-item column — including
+    the issue #40 additions (``sari``, ``ged``, ``chain_validity``), which is exactly why
+    they get the full battery where the composite gets one third of it.
     """
-    step_f1 = arrays["step_f1"][index].mean(axis=1)
-    ordered = arrays["ordered_step_accuracy"][index].mean(axis=1)
-    rouge = arrays["rouge_l_f1"][index].mean(axis=1)
+    cache: dict[str, np.ndarray] = {}
 
-    valid = arrays["reference_valid_count"][index].sum(axis=1)
-    total = arrays["reference_total_count"][index].sum(axis=1)
-    # A resample with no [#k] references at all scores 1.0, matching _aggregate().
-    ref_micro = np.where(total == 0, 1.0, valid / np.where(total == 0, 1.0, total))
+    def mean(key: str) -> np.ndarray:
+        if key not in cache:
+            cache[key] = arrays[key][index].mean(axis=1)
+        return cache[key]
 
-    mae = arrays["step_count_abs_error"][index].mean(axis=1)
-    step_count_term = np.maximum(0.0, 1.0 - mae / scale)
-
-    composite = (
-        float(require(weights, "step_f1_macro")) * step_f1
-        + float(require(weights, "ordered_step_accuracy_macro")) * ordered
-        + float(require(weights, "reference_validity_micro")) * ref_micro
-        + float(require(weights, "step_count_error")) * step_count_term
-    )
-    return {
-        "rouge_l_f1": rouge,
-        "step_f1": step_f1,
-        "ordered_step_accuracy": ordered,
-        "composite_score": composite,
-    }
+    out = {name: mean(name) for name in statistics if name != "composite_score"}
+    if "composite_score" in statistics:
+        valid = arrays["reference_valid_count"][index].sum(axis=1)
+        total = arrays["reference_total_count"][index].sum(axis=1)
+        # A resample with no [#k] references at all scores 1.0, matching _aggregate().
+        ref_micro = np.where(total == 0, 1.0, valid / np.where(total == 0, 1.0, total))
+        step_count_term = np.maximum(0.0, 1.0 - mean("step_count_abs_error") / scale)
+        out["composite_score"] = (
+            float(require(weights, "step_f1_macro")) * mean("step_f1")
+            + float(require(weights, "ordered_step_accuracy_macro"))
+            * mean("ordered_step_accuracy")
+            + float(require(weights, "reference_validity_micro")) * ref_micro
+            + float(require(weights, "step_count_error")) * step_count_term
+        )
+    return out
 
 
 def _paired_bootstrap(
@@ -1142,6 +1813,7 @@ def _paired_bootstrap(
     scale: float,
     chunk_size: int,
     underpowered: bool,
+    statistics: tuple[str, ...] = BOOTSTRAP_STATISTICS,
 ) -> dict[str, dict[str, float]]:
     """Paired percentile bootstrap, resampled ``chunk_size`` draws at a time.
 
@@ -1157,18 +1829,18 @@ def _paired_bootstrap(
         )
 
     identity = np.arange(n)[None, :]
-    point_a = _statistics_for(arrays_a, identity, weights, scale)
-    point_b = _statistics_for(arrays_b, identity, weights, scale)
+    point_a = _statistics_for(arrays_a, identity, weights, scale, statistics)
+    point_b = _statistics_for(arrays_b, identity, weights, scale, statistics)
 
     rng = np.random.default_rng(seed)
-    diffs = {name: np.empty(iterations, dtype=float) for name in BOOTSTRAP_STATISTICS}
+    diffs = {name: np.empty(iterations, dtype=float) for name in statistics}
     done = 0
     while done < iterations:
         take = min(chunk_size, iterations - done)
         index = rng.integers(0, n, size=(take, n))
-        chunk_a = _statistics_for(arrays_a, index, weights, scale)
-        chunk_b = _statistics_for(arrays_b, index, weights, scale)
-        for name in BOOTSTRAP_STATISTICS:
+        chunk_a = _statistics_for(arrays_a, index, weights, scale, statistics)
+        chunk_b = _statistics_for(arrays_b, index, weights, scale, statistics)
+        for name in statistics:
             diffs[name][done : done + take] = chunk_a[name] - chunk_b[name]
         done += take
 
@@ -1176,17 +1848,21 @@ def _paired_bootstrap(
     hi_pct = 100.0 * (1.0 - alpha / 2.0)
 
     out: dict[str, dict[str, float]] = {}
-    for name in BOOTSTRAP_STATISTICS:
+    for name in statistics:
         ci_low, ci_high = (float(x) for x in np.percentile(diffs[name], [lo_pct, hi_pct]))
+        difference = float(point_a[name][0] - point_b[name][0])
+        significant = bool(ci_low > 0.0 or ci_high < 0.0)
         out[name] = {
             "system_a": float(point_a[name][0]),
             "system_b": float(point_b[name][0]),
-            "difference": float(point_a[name][0] - point_b[name][0]),
+            "difference": difference,
             "ci_low": ci_low,
             "ci_high": ci_high,
-            "significant": bool(ci_low > 0.0 or ci_high < 0.0),
+            "significant": significant,
             "n": n,
             "underpowered": underpowered,
+            "direction": _direction(name),
+            "favours": _favours(name, difference, significant),
         }
     return out
 
@@ -1205,9 +1881,10 @@ def _mcnemar(
     rows_b: list[dict[str, Any]],
     alpha: float,
     underpowered: bool,
+    statistics: tuple[str, ...] = MCNEMAR_STATISTICS,
 ) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
-    for name in MCNEMAR_STATISTICS:
+    for name in statistics:
         a_vals = [float(r[name]) >= 1.0 for r in rows_a]
         b_vals = [float(r[name]) >= 1.0 for r in rows_b]
         only_a = sum(1 for x, y in zip(a_vals, b_vals) if x and not y)
@@ -1217,19 +1894,25 @@ def _mcnemar(
         # it is >= alpha, "not significant" is a statement about n, not about the systems.
         min_p = _mcnemar_exact_p(only_a + only_b, 0)
         n = len(a_vals)
+        difference = (sum(a_vals) - sum(b_vals)) / n
+        significant = bool(p_value < alpha)
         out[name] = {
             "system_a_rate": sum(a_vals) / n,
             "system_b_rate": sum(b_vals) / n,
-            "difference": (sum(a_vals) - sum(b_vals)) / n,
+            "difference": difference,
             "correct_only_in_a": only_a,
             "correct_only_in_b": only_b,
             "discordant_pairs": only_a + only_b,
             "p_value": p_value,
-            "significant": bool(p_value < alpha),
+            "significant": significant,
             "n": n,
             "min_attainable_p_value": min_p,
             "min_attainable_p_reaches_alpha": bool(min_p < alpha),
             "underpowered": bool(underpowered or min_p >= alpha),
+            # Every McNemar metric here is higher-is-better, but the field is written
+            # anyway so a consumer reads direction off the row rather than off a name.
+            "direction": _direction(name),
+            "favours": _favours(name, difference, significant),
         }
     return out
 
@@ -1239,6 +1922,7 @@ def _paired_t_test_row(
     values_b: np.ndarray,
     alpha: float,
     underpowered: bool,
+    name: str,
 ) -> dict[str, Any]:
     """One two-sided paired t-test row over the per-item differences ``a - b``.
 
@@ -1249,6 +1933,9 @@ def _paired_t_test_row(
     lenient one silently turns them into a float no consumer can compare. A row with an
     undefined t therefore carries nulls, makes no significance claim, and says why in
     ``degenerate``.
+
+    ``name`` is **required**: it is what decides the row's ``direction`` and ``favours``, and
+    a default would silently label a distance as higher-is-better (PR #44 review, nit 7).
     """
     differences = values_a - values_b
     n = int(differences.size)
@@ -1265,6 +1952,7 @@ def _paired_t_test_row(
         "n": n,
         "degrees_of_freedom": n - 1,
         "underpowered": underpowered,
+        "direction": _direction(name),
     }
 
     def degenerate(reason: str) -> dict[str, Any]:
@@ -1273,6 +1961,7 @@ def _paired_t_test_row(
             "t_statistic": None,
             "p_value": None,
             "significant": False,
+            "favours": None,
             "degenerate": reason,
         }
 
@@ -1301,11 +1990,13 @@ def _paired_t_test_row(
             f"the test returned a non-finite result (t={t_statistic!r}, p={p_value!r}), so "
             f"no p-value can be reported; the bootstrap CI for this metric still applies"
         )
+    significant = bool(p_value < alpha)
     return {
         **row,
         "t_statistic": t_statistic,
         "p_value": p_value,
-        "significant": bool(p_value < alpha),
+        "significant": significant,
+        "favours": _favours(name, mean_difference, significant),
         "degenerate": None,
     }
 
@@ -1315,13 +2006,14 @@ def _paired_t_test(
     rows_b: list[dict[str, Any]],
     alpha: float,
     underpowered: bool,
+    statistics: tuple[str, ...] = T_TEST_STATISTICS,
 ) -> dict[str, dict[str, Any]]:
     """Paired t-tests on the aligned rows, one per :data:`T_TEST_STATISTICS` metric."""
     out: dict[str, dict[str, Any]] = {}
-    for name in T_TEST_STATISTICS:
+    for name in statistics:
         values_a = np.array([float(r[name]) for r in rows_a], dtype=float)
         values_b = np.array([float(r[name]) for r in rows_b], dtype=float)
-        out[name] = _paired_t_test_row(values_a, values_b, alpha, underpowered)
+        out[name] = _paired_t_test_row(values_a, values_b, alpha, underpowered, name=name)
     return out
 
 
@@ -1424,9 +2116,19 @@ def _compare(
     floor = _significance_floor(n, min_items)
     underpowered = bool(floor["below_min_items"])
 
+    # A v1 prior-work file predates the issue #40 metrics and cannot carry them, so the
+    # compared set is what the inputs actually hold — and what they do not hold is recorded.
+    bootstrap_statistics = _statistics_available(BOOTSTRAP_STATISTICS, rows_a, rows_b)
+    mcnemar_statistics = _statistics_available(MCNEMAR_STATISTICS, rows_a, rows_b)
+    t_test_statistics = _statistics_available(T_TEST_STATISTICS, rows_a, rows_b)
+    unavailable = sorted(
+        set(BOOTSTRAP_STATISTICS + MCNEMAR_STATISTICS)
+        - set(bootstrap_statistics + mcnemar_statistics)
+    )
+
     bootstrap = _paired_bootstrap(
-        _statistic_arrays(rows_a),
-        _statistic_arrays(rows_b),
+        _statistic_arrays(rows_a, bootstrap_statistics),
+        _statistic_arrays(rows_b, bootstrap_statistics),
         n=n,
         iterations=iterations,
         alpha=alpha,
@@ -1435,13 +2137,14 @@ def _compare(
         scale=scale,
         chunk_size=chunk_size,
         underpowered=underpowered,
+        statistics=bootstrap_statistics,
     )
-    mcnemar = _mcnemar(rows_a, rows_b, alpha, underpowered)
-    t_test = _paired_t_test(rows_a, rows_b, alpha, underpowered)
+    mcnemar = _mcnemar(rows_a, rows_b, alpha, underpowered, statistics=mcnemar_statistics)
+    t_test = _paired_t_test(rows_a, rows_b, alpha, underpowered, statistics=t_test_statistics)
     tests_reported = {
-        "bootstrap": len(BOOTSTRAP_STATISTICS),
-        "mcnemar": len(MCNEMAR_STATISTICS),
-        "paired_t_test": len(T_TEST_STATISTICS),
+        "bootstrap": len(bootstrap_statistics),
+        "mcnemar": len(mcnemar_statistics),
+        "paired_t_test": len(t_test_statistics),
         "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
         "multiple_comparison_correction": None,
     }
@@ -1477,6 +2180,10 @@ def _compare(
         "mcnemar": mcnemar,
         "t_test": t_test,
         "tests_reported": tests_reported,
+        # Empty for v2 inputs. Non-empty when the inputs cannot carry a compared metric
+        # (a v1 prior-work file predates the issue #40 columns).
+        "statistics_not_available_in_inputs": unavailable,
+        "lower_is_better_statistics": list(LOWER_IS_BETTER_STATISTICS),
         # Null for v2 inputs; an object (with the prior-work caveat) for v1 inputs.
         "v1_format_inputs": v1_inputs,
         "composite_score_weights": weights,
@@ -1529,23 +2236,35 @@ def _compare(
         f"{100 * (1 - alpha):.0f}% percentile CI of (a - b)",
         "",
         # The interval column carries a CI for the bootstrap rows and a p-value for the
-        # McNemar and t-test rows, so it is not labelled "CI".
-        "| statistic | a | b | a - b | CI or p | test | significant | underpowered |",
-        "|---|---|---|---|---|---|---|---|",
+        # McNemar and t-test rows, so it is not labelled "CI". The "better" column states
+        # each metric's direction, because ged is a distance and every other row is a score:
+        # without it, a reader takes a negative difference on ged for a loss.
+        "| statistic | better | a | b | a - b | CI or p | test | significant | underpowered |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
+
+    def better(name: str) -> str:
+        return "lower" if name in LOWER_IS_BETTER_STATISTICS else "higher"
+
+    def verdict(r: dict[str, Any]) -> str:
+        if not r["significant"]:
+            return "no"
+        return f"yes (favours {'a' if r['favours'] == 'system_a' else 'b'})"
+
     for name, r in bootstrap.items():
         note_lines.append(
-            f"| {name} | {r['system_a']:.4f} | {r['system_b']:.4f} | {r['difference']:+.4f} | "
+            f"| {name} | {better(name)} | {r['system_a']:.4f} | {r['system_b']:.4f} | "
+            f"{r['difference']:+.4f} | "
             f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | bootstrap | "
-            f"{'yes' if r['significant'] else 'no'} | "
+            f"{verdict(r)} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
     for name, r in mcnemar.items():
         note_lines.append(
-            f"| {name} | {r['system_a_rate']:.4f} | {r['system_b_rate']:.4f} | "
+            f"| {name} | {better(name)} | {r['system_a_rate']:.4f} | {r['system_b_rate']:.4f} | "
             f"{r['difference']:+.4f} | p={r['p_value']:.4g} (b={r['correct_only_in_a']}, "
             f"c={r['correct_only_in_b']}, min attainable p={r['min_attainable_p_value']:.4g}) | "
-            f"McNemar | {'yes' if r['significant'] else 'no'} | "
+            f"McNemar | {verdict(r)} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
     for name, r in t_test.items():
@@ -1562,11 +2281,24 @@ def _compare(
                 f"'degenerate' in the metrics JSON)"
             )
         note_lines.append(
-            f"| {name} | {r['system_a']:.4f} | {r['system_b']:.4f} | {r['difference']:+.4f} | "
-            f"{cell} | paired t-test | {'yes' if r['significant'] else 'no'} | "
+            f"| {name} | {better(name)} | {r['system_a']:.4f} | {r['system_b']:.4f} | "
+            f"{r['difference']:+.4f} | "
+            f"{cell} | paired t-test | {verdict(r)} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
     note_lines.append("")
+    note_lines.append(
+        "- The `better` column is the metric's direction: `ged` is a graph edit **distance**, "
+        "so a negative `a - b` on that row means system a is better; every other row is a "
+        "score, where positive means system a is better. Each significant row also names the "
+        "system it favours, and the metrics JSON carries `direction` / `favours` per row."
+    )
+    if unavailable:
+        note_lines.append(
+            f"- NOT COMPARED (the inputs do not carry these per-item columns): "
+            f"{', '.join(unavailable)}. A v1 prior-work per-item file predates them; "
+            f"computing them here would be a re-score of v1 outputs, not a comparison."
+        )
     note_lines.append(
         f"- n = {n}; the reporting floor is min_items_for_significance_claim = {min_items} "
         f"(configs/musique_eval.json)."
@@ -1679,6 +2411,11 @@ def main() -> None:
 
     limit = args.limit if args.limit is not None else require(cfg, "limit")
     out_prefix = args.out_prefix or require(cfg, "out_prefix")
+    # GED's two cost guards, validated at load. Read here (scoring only): --compare reads
+    # per-item values that were already scored, so it needs no GED policy of its own.
+    ged_policy = _ged_policy(cfg)
+    ged_max_nodes = ged_policy["max_nodes_for_optimizer"]
+    ged_time_budget = ged_policy["per_item_time_budget_seconds"]
 
     gold_path = (
         args.gold
@@ -1716,6 +2453,19 @@ def main() -> None:
         step_p, step_r, step_f1 = _step_prf(row.pred_steps, row.gold_steps)
         rouge_lp, rouge_lr, rouge_lf = _rouge_l(_join_steps(row.pred_steps), _join_steps(row.gold_steps))
         ref_rate, ref_ok, ref_total = _reference_validity(row.pred_steps)
+        chain_valid, chain_pred_refs, chain_gold_refs = _chain_validity(
+            row.pred_steps, row.gold_steps
+        )
+        pred_break = _break_steps(row.pred_steps)
+        gold_break = _break_steps(row.gold_steps)
+        pred_break_string = _break_string(pred_break)
+        gold_break_string = _break_string(gold_break)
+        ged, ged_fallback, ged_fallback_seconds = _normalized_ged(
+            _decomposition_graph(pred_break),
+            _decomposition_graph(gold_break),
+            max_nodes_for_optimizer=ged_max_nodes,
+            time_budget_seconds=ged_time_budget,
+        )
         pred_hops = len(row.pred_steps)
         gold_hops = row.gold_hop_count
 
@@ -1737,6 +2487,20 @@ def main() -> None:
             "reference_validity_rate": ref_rate,
             "reference_valid_count": ref_ok,
             "reference_total_count": ref_total,
+            # The issue #40 additions. chain_validity is the repaired house term; the other
+            # three are the official Break leaderboard metrics (EM / SARI / GED).
+            "chain_validity": chain_valid,
+            "chain_pred_reference_count": chain_pred_refs,
+            "chain_gold_reference_count": chain_gold_refs,
+            "break_exact_match": _break_exact_match(pred_break_string, gold_break_string),
+            "sari": _sari(row.question, pred_break_string, gold_break_string),
+            "ged": ged,
+            "ged_fallback": ged_fallback,
+            # Null except where the time budget stopped the optimizer, which is the one
+            # machine-dependent path: the elapsed seconds are recorded so a reader can see
+            # how far past the budget that item ran (the deadline is only tested between
+            # approximations, so it can overshoot).
+            "ged_fallback_seconds": ged_fallback_seconds,
             "step_count_signed_error": len(row.pred_steps) - len(row.gold_steps),
             "step_count_abs_error": abs(len(row.pred_steps) - len(row.gold_steps)),
             "predicted_hop_count": pred_hops,
@@ -1769,6 +2533,7 @@ def main() -> None:
         "composite_score": _composite_score(overall, weights, scale),
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "ged_policy": ged_policy,
         "metric_definitions": METRIC_DEFINITIONS,
     }
 
@@ -1800,7 +2565,9 @@ def main() -> None:
         "out_prefix": out_prefix,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "ged_policy": ged_policy,
     }
+    fallbacks = metrics["ged_fallback_counts"]
     write_run_artifacts(
         run_dir,
         config_snapshot=snapshot,
@@ -1820,6 +2587,37 @@ def main() -> None:
             f"under {metrics['under_decomposition_rate']:.4f} / "
             f"exact {metrics['step_count_exact_rate']:.4f})",
             f"- Composite score: {metrics['composite_score']:.4f}",
+            # The issue #40 additions, reported beside the house metrics and not folded into
+            # any of them. GED is a distance, so its direction is stated on the line.
+            f"- Break EM: {metrics['break_exact_match_rate']:.4f} / SARI: "
+            f"{metrics['sari_macro']:.4f} / GED: {metrics['ged_macro']:.4f} (lower is "
+            f"better) / chain validity: {metrics['chain_validity_macro']:.4f}",
+            # This note is what gets quoted into experiments/log.md, so the caveat travels
+            # with the numbers rather than living only in docs (PR #44 review, I3).
+            "- CAVEAT on the three numbers above: the GED and SARI **levels** are not "
+            "comparable to published Break leaderboard numbers — GED's node cost uses no "
+            "lemmatizer here (Break uses spaCy), and SARI's floor on this data is well "
+            "above 0 because every decomposition shares the `@@SEP@@`/template "
+            "boilerplate. Differences on the same evaluation set are what these support "
+            "(ADR 0026, docs/METRICS.md §2.2). `chain_validity` is a house repair, not a "
+            "published metric.",
+            "- GED policy: node cap "
+            f"{ged_policy['max_nodes_for_optimizer']} (the guard that bounds cost), "
+            f"per-item budget {ged_policy['per_item_time_budget_seconds']} s (a backstop "
+            f"checked between the optimizer's approximations, so it cannot interrupt one); "
+            f"fallbacks used: "
+            + (
+                ", ".join(f"{reason} x{count}" for reason, count in sorted(fallbacks.items()))
+                + (
+                    " — 'time_budget' items are MACHINE-DEPENDENT values (elapsed seconds "
+                    "per item in the per-item file)"
+                    if "time_budget" in fallbacks
+                    else ""
+                )
+                if fallbacks
+                else "none (every value is the optimizer's own, so nothing here is "
+                "machine-dependent)"
+            ),
             f"- Per-item: `{per_item_path}`",
         ],
         prefix=f"{out_prefix}_",

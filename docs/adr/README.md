@@ -53,6 +53,7 @@ When **not** to write one:
 | [0023](./0023-jahid-2026-08-22-direction-metric-pipeline-completion-generalisation.md) | Jahid's 2026-08-22 Direction: Composite Replacement, Pipeline Completion Order, Generalisation Framing | Accepted (Jahid, 2026-08-22, in session; marked items pending supervisor confirmation) |
 | [0024](./0024-router-readiness-query-id-keyed-predictions-and-the-router-guided-arm.md) | Router Readiness: Query-Id-Keyed Predictions, a Retrieved-Few-Shot Router, and the Router-Guided Decomposer Arm | Accepted (design agent-authored, pending Jahid) |
 | [0025](./0025-end-to-end-backend-conventions-the-implementers-design.md) | End-to-End Backend Conventions: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
+| [0026](./0026-break-faithful-metrics-the-implementers-conventions.md) | Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions | Accepted (implementer design, pending Jahid) |
 
 ---
 

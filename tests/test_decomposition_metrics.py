@@ -20,6 +20,7 @@ Run::
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import importlib.util
 import json
@@ -359,6 +360,375 @@ class TestReferenceValidity(EvaluatorTestBase):
         )
 
 
+class TestBreakMetrics(EvaluatorTestBase):
+    """Hand-computed checks for the Break-faithful trio and the repaired chain validity.
+
+    Every expected number is derived in the docstring from the official semantics
+    (``allenai/break-evaluator``: ``get_exact_match``, ``sari_hook.py``,
+    ``graph_matcher.normalized_graph_edit_distance``) and the fabricated fixture gold. The
+    conventions these pin — including the two deviations from the official code and the
+    fallback policy — are ADR 0026.
+
+    Note the fixture gold writes references as ``[#k]`` while real MuSiQue gold writes bare
+    ``#k``. Both are matched by the ``#(\\d+)`` rule these metrics use (Break's own rule), so
+    the arithmetic below is the same either way; the bracket characters only ride along as
+    part of the step text.
+    """
+
+    def test_identical_prediction_scores_the_ceiling_on_every_new_metric(self) -> None:
+        """2hop__d001_a predicted exactly as gold: EM 1, SARI 1, GED 0, chain validity 1.
+
+        Hand computation (1 evaluated row):
+          break EM   the two ' @@SEP@@ '-joined strings are the same string -> 1.0
+          SARI       prediction == target, so for every n: keep tp = selected = relevant
+                     (F1 1.0), add tp = selected = relevant (F1 1.0), delete tp = selected
+                     (precision 1.0) -> (1 + 1 + 1)/3 = 1.0
+          GED        the graphs are identical (2 nodes, edge 2->1, equal labels), so the
+                     minimum edit path is empty: 0 / max(3, 3) = 0.0
+          chain      gold emits 1 reference so chaining is required; the prediction's [#1]
+                     in step 2 is backward -> 1/1 = 1.0
+          fallbacks  a 2-node graph is far under the node cap and the optimizer returns in
+                     microseconds -> ged_fallback_counts is empty
+        """
+        item = "2hop__d001_a"
+        metrics, per_item = self.evaluate("break_identical", [prediction(item, gold_steps(item))])
+
+        self.assertMetrics(
+            metrics,
+            {
+                "break_exact_match_rate": 1.0,
+                "sari_macro": 1.0,
+                "ged_macro": 0.0,
+                "chain_validity_macro": 1.0,
+            },
+        )
+        self.assertEqual(metrics["ged_fallback_counts"], {})
+        # Per gold hop, exactly like every existing metric.
+        self.assertMetrics(
+            metrics["per_gold_hop_metrics"]["2"],
+            {"break_exact_match_rate": 1.0, "sari_macro": 1.0, "ged_macro": 0.0,
+             "chain_validity_macro": 1.0},
+        )
+        row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
+        self.assertIsNone(row["ged_fallback"])
+        self.assertEqual(row["chain_pred_reference_count"], 1)
+        self.assertEqual(row["chain_gold_reference_count"], 1)
+
+    def test_reversed_prediction_is_punished_where_step_f1_is_blind(self) -> None:
+        """3hop1__d002_b predicted with its gold steps in reverse order.
+
+        This is the survey's order-blindness probe (§3.7): the content is perfect and only
+        the order is wrong, so a set-based metric cannot see it at all.
+
+        Hand computation (1 evaluated row):
+          step F1    the pred and gold step SETS are identical -> P = R = F1 = 1.0. Wholly
+                     blind, which is the point of the comparison below
+          ordered    only step 2 sits at its gold index -> 1/3
+          break EM   the joined strings differ -> 0.0
+          GED        pred graph: step1 has '#2' -> edge (1,2); step2 has '#1' -> edge (2,1);
+                     3 nodes, 2 edges. gold graph: edges (2,1) and (3,2); 3 nodes, 2 edges.
+                     normalization = max(3+2, 3+2) = 5.
+                     Cheapest edit path maps pred 1->gold 3, 2->2, 3->1 (labels then match
+                     exactly, so all three substitutions cost 0); the pred edges become
+                     (3,2) and (2,3); (3,2) is in the gold, (2,3) is not -> 1 deletion +
+                     1 insertion of (2,1) = 2. The identity mapping costs more (2 label
+                     substitutions of unrelated steps ~1 each, plus 2 edge edits), so the
+                     minimum is 2 -> 2/5 = 0.4
+          chain      pred step 1 references #2 (needs 1 <= 2 < 1: invalid), step 2
+                     references #1 (valid), step 3 none -> 1/2 = 0.5
+        """
+        item = "3hop1__d002_b"
+        metrics, _ = self.evaluate(
+            "break_reversed", [prediction(item, list(reversed(gold_steps(item))))]
+        )
+
+        self.assertMetrics(
+            metrics,
+            {
+                "step_f1_macro": 1.0,
+                "ordered_step_accuracy_macro": 1 / 3,
+                "break_exact_match_rate": 0.0,
+                "ged_macro": 0.4,
+                "chain_validity_macro": 0.5,
+            },
+        )
+        # SARI is an n-gram bag: reversing the steps moves only the n-grams that straddle a
+        # step boundary, so it stays close to 1.0. Asserted as a bound rather than a digit
+        # because the exact value is a 1-to-4-gram count over 30+ tokens; the point being
+        # pinned is the blindness, not the decimal (survey §3.7: SARI 0.9414 on this probe
+        # over the real 600).
+        self.assertGreater(metrics["sari_macro"], 0.9)
+
+    def test_two_step_reversal_hits_the_inherited_self_loop_blind_spot(self) -> None:
+        """A 2-step reversal scores GED 0.0 — networkx's self-loop pricing, kept on purpose.
+
+        Hand computation (1 evaluated row), and the reason this number is 0.0 and not 2/3:
+          pred graph  reversing 2 steps puts '#1' in step 1, so the reference becomes a
+                      SELF-LOOP: nodes 1,2, edge (1,1)
+          gold graph  nodes 1,2, edge (2,1)
+          true GED    map pred 1->gold 2 and pred 2->gold 1 (labels then match, cost 0); the
+                      pred edge (1,1) becomes (2,2), which the gold does not have, so 1
+                      deletion + 1 insertion of (2,1) = 2 -> 2 / max(3,3) = 2/3
+          reported    0.0, because networkx's edit-path search pairs the self-loop (1,1) with
+                      the ordinary edge (2,1) at cost 0
+        The official Break evaluator computes GED with this same networkx call, so this is
+        the ported metric's behaviour and it is pinned rather than "fixed" — fixing it would
+        be inventing a metric (ADR 0026). Break EM still catches the reversal, which is why
+        the survey's §4 item 2 says an order-sensitive metric has to stay in the reported set.
+        """
+        item = "2hop__d001_a"
+        metrics, _ = self.evaluate(
+            "break_reversed_two", [prediction(item, list(reversed(gold_steps(item))))]
+        )
+
+        self.assertMetrics(
+            metrics,
+            {
+                "ged_macro": 0.0,
+                # EM sees it, and so does the ordered metric: 0 positional matches of 2.
+                "break_exact_match_rate": 0.0,
+                "exact_match_rate": 0.0,
+                "ordered_step_accuracy_macro": 0.0,
+                # pred step 1 references #1 (needs 1 <= 1 < 1: invalid), step 2 has none.
+                "chain_validity_macro": 0.0,
+            },
+        )
+
+    def test_over_long_prediction_pays_one_node_deletion(self) -> None:
+        """2hop__d001_a predicted as its gold plus one extra, reference-free step.
+
+        Hand computation (1 evaluated row):
+          break EM   the joined strings differ by the extra step -> 0.0
+          GED        pred graph: 3 nodes, 1 edge (2->1) = 4; gold: 2 nodes, 1 edge = 3;
+                     normalization = max(4, 3) = 4. Map pred 1->1 and 2->2 (labels equal,
+                     cost 0), delete node 3 (cost 1); the pred edge (2,1) is the gold edge,
+                     so it is free. Total 1 -> 1/4 = 0.25. It cannot be cheaper: the node
+                     counts differ by 1, so at least one deletion is unavoidable
+          chain      1 reference, backward -> 1.0 (over-decomposition is not a chaining
+                     error, and this metric does not price length)
+          steps      signed +1, so the directional family sees what GED prices as a deletion
+        """
+        item = "2hop__d001_a"
+        steps = gold_steps(item) + ["Which city is the union based in?"]
+        metrics, _ = self.evaluate("break_over_long", [prediction(item, steps)])
+
+        self.assertMetrics(
+            metrics,
+            {
+                "break_exact_match_rate": 0.0,
+                "ged_macro": 0.25,
+                "chain_validity_macro": 1.0,
+                "mean_signed_step_count_error": 1.0,
+                "over_decomposition_rate": 1.0,
+            },
+        )
+
+    def test_empty_prediction_is_a_maximal_distance_and_zero_chain_validity(self) -> None:
+        """An empty decomposition against the 2-step gold of 2hop__d001_a.
+
+        Hand computation (1 evaluated row):
+          break EM   '' != the gold string -> 0.0
+          GED        the prediction graph is empty, so the only edit path inserts the gold's
+                     2 nodes and 1 edge: 3 / max(0, 3) = 1.0. Computed rather than searched
+                     (the optimizer has nothing to align), which is the official formula's
+                     value for this degenerate input
+          chain      the gold emits a reference and the prediction emits none, so 0.0 — where
+                     reference_validity gives the same row 1.0. This is the repair issue #40
+                     asked for, and the two numbers are reported side by side
+          SARI       source  = the question, 10 tokens ('the' twice), 9 unique unigrams
+                     target  = the gold's joined string, 11 tokens, all unique
+                     pred    = ''.split(' ') = [''], one token — so there are no pred
+                              bigrams/trigrams/4-grams at all
+                     keep    tp = 0 with relevant > 0 -> recall 0 -> F1 0, for every n
+                     add     tp = 0 with relevant > 0 -> 0, for every n
+                     delete  precision only (beta = 0) = |source n-grams NOT in target| /
+                             |source n-grams|, since the prediction deletes everything:
+                             n=1  1/9 ('that' is the only source unigram absent from gold)
+                             n=2  4/9   n=3  5/8   n=4  5/7
+                     SARI    ((0) + (0) + (1/9 + 4/9 + 5/8 + 5/7)/4) / 3 = 0.157903...
+                     — the floor is well above 0 because SARI rewards deleting question
+                     tokens, which is why absolute SARI levels here are not interpretable
+        """
+        item = "2hop__d001_a"
+        pred = prediction(item, [])
+        pred["decomposition"] = ""
+        metrics, _ = self.evaluate("break_empty", [pred])
+
+        self.assertMetrics(
+            metrics,
+            {
+                "break_exact_match_rate": 0.0,
+                "ged_macro": 1.0,
+                "chain_validity_macro": 0.0,
+                # The old term, unchanged, on the same row: silence still scores 1.0 there.
+                "reference_validity_macro": 1.0,
+                "reference_validity_micro": 1.0,
+                "sari_macro": ((1 / 9 + 4 / 9 + 5 / 8 + 5 / 7) / 4) / 3,
+            },
+        )
+
+    def test_a_runaway_prediction_uses_the_deterministic_fallback(self) -> None:
+        """17 identical junk steps against the 2-step gold: over the node cap, not dropped.
+
+        The config cap is 16 nodes, so the optimizer is never called and the reported value
+        is the search-free positional bound. Hand computation (1 evaluated row):
+          graphs      pred 17 nodes, 0 edges = 17; gold 2 nodes, 1 edge = 3;
+                      normalization = max(17, 3) = 17
+          bound       pair nodes in sorted id order: (1,1) and (2,2). 'zzz' shares no token
+                      with either gold step, so each substitution costs 1 - 0 = 1 -> 2.
+                      Delete the 15 surplus nodes -> 15. No pred edge survives and the gold
+                      edge must be inserted -> 1. Total 18 -> 18/17 = 1.058823...
+          flag        ged_fallback 'node_cap' on the item and ged_fallback_counts
+                      {'node_cap': 1} in the aggregate — the item is reported, never dropped,
+                      because a dropped item has no pair for the paired battery (ADR 0026).
+                      The cap path is deterministic, so ged_fallback_seconds stays null
+        """
+        item = "2hop__d001_a"
+        metrics, per_item = self.evaluate("break_node_cap", [prediction(item, ["zzz"] * 17)])
+
+        self.assertMetrics(metrics, {"ged_macro": 18 / 17})
+        self.assertEqual(metrics["ged_fallback_counts"], {"node_cap": 1})
+        row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(row["ged_fallback"], "node_cap")
+        self.assertIsNone(row["ged_fallback_seconds"])
+        self.assertEqual(metrics["ged_policy"]["max_nodes_for_optimizer"], 16)
+
+    def test_the_node_cap_is_a_knob_and_the_optimizer_is_used_under_it(self) -> None:
+        """The same two graphs, scored with the cap below and above their size.
+
+        Checked on the function so the knob itself is pinned: with the cap at 2 the 3-node
+        prediction takes the positional bound (0.25 here as well — the bound is tight for
+        this shape), and with the cap at 30 the optimizer runs and reports no fallback.
+        """
+        item = "2hop__d001_a"
+        pred = EVAL._decomposition_graph(
+            EVAL._break_steps(gold_steps(item) + ["Which city is the union based in?"])
+        )
+        gold = EVAL._decomposition_graph(EVAL._break_steps(gold_steps(item)))
+
+        capped_value, capped_reason, capped_seconds = EVAL._normalized_ged(pred, gold, 2, 20.0)
+        self.assertEqual(capped_reason, "node_cap")
+        self.assertAlmostEqual(capped_value, 0.25, places=PLACES)
+        self.assertIsNone(capped_seconds)
+
+        value, reason, seconds = EVAL._normalized_ged(pred, gold, 16, 20.0)
+        self.assertIsNone(reason)
+        self.assertIsNone(seconds)
+        self.assertAlmostEqual(value, 0.25, places=PLACES)
+
+    def test_break_exact_match_is_stricter_than_the_house_exact_match(self) -> None:
+        """2hop__d004_p differs from its gold only by punctuation.
+
+        The house `exact_match` normalizes each step (lowercase, punctuation stripped except
+        '#') and scores 1.0; Break's `get_exact_match` lowercases the joined string and
+        strips nothing, so it scores 0.0. Both are correct definitions of "exact"; the point
+        of pinning them together is that they are not the same metric and a report must not
+        read one as the other.
+        """
+        metrics, _ = self.evaluate(
+            "break_punct",
+            [
+                prediction(
+                    "2hop__d004_p",
+                    ["Which board approved the Rill Valley permit.", "Who chairs [#1]"],
+                )
+            ],
+        )
+        self.assertMetrics(
+            metrics, {"exact_match_rate": 1.0, "break_exact_match_rate": 0.0}
+        )
+
+    def test_aggregates_are_the_mean_of_the_per_item_columns(self) -> None:
+        """The four new aggregates are plain macro averages of their per-item columns.
+
+        Checked over the committed fixture predictions rather than asserted from a docstring:
+        an aggregate that drifted from its column is exactly the failure mode that makes a
+        per-item metric untestable in the paired battery.
+        """
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        metrics, per_item = self.evaluate("break_aggregate", preds)
+        items = json.loads(per_item.read_text(encoding="utf-8"))["items"]
+        self.assertEqual(len(items), 4)
+        for column, aggregate in (
+            ("break_exact_match", "break_exact_match_rate"),
+            ("sari", "sari_macro"),
+            ("ged", "ged_macro"),
+            ("chain_validity", "chain_validity_macro"),
+        ):
+            with self.subTest(metric=column):
+                expected = sum(float(row[column]) for row in items) / len(items)
+                self.assertAlmostEqual(metrics[aggregate], expected, places=PLACES)
+
+
+class TestChainValidity(EvaluatorTestBase):
+    """The repaired chaining term: bare `#k`, per item, no free credit for silence."""
+
+    def test_a_prediction_that_emits_no_reference_scores_zero_not_one(self) -> None:
+        """3hop1__d002_b with every reference written out in words instead.
+
+        Hand computation (1 evaluated row):
+          gold refs  2 ([#1] in step 2, [#2] in step 3), so chaining IS required
+          pred refs  0 — the steps read 'the river' and 'the country' instead
+          chain      0.0 (no free credit)
+          old term   reference_validity_macro 1.0 and reference_validity_micro 1.0, because
+                     a row with no references scores 1.0 and adds nothing to the micro
+                     denominator. Both numbers are reported; neither is changed by this test
+        The survey measured this convention flipping a model ranking: 76 of 600 items in one
+        arm were paid 1.0 for chaining not at all (§3.2).
+        """
+        steps = gold_steps("3hop1__d002_b")
+        steps[1] = steps[1].replace("[#1]", "the river")
+        steps[2] = steps[2].replace("[#2]", "the country")
+        metrics, per_item = self.evaluate("chain_no_refs", [prediction("3hop1__d002_b", steps)])
+
+        self.assertMetrics(
+            metrics,
+            {
+                "chain_validity_macro": 0.0,
+                "reference_validity_macro": 1.0,
+                "reference_validity_micro": 1.0,
+            },
+        )
+        row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(row["chain_pred_reference_count"], 0)
+        self.assertEqual(row["chain_gold_reference_count"], 2)
+
+    def test_an_invalid_reference_is_priced_by_the_ratio(self) -> None:
+        """3hop1__d002_b with step 2 pointing forward at [#3] instead of back at [#1].
+
+        Hand computation: 2 predicted references, step 2's [#3] is not backward (needs
+        1 <= 3 < 2) and step 3's [#2] is -> 1/2 = 0.5, the same ratio the old macro term
+        reports for this row. The two terms differ only where a prediction is SILENT.
+        """
+        steps = gold_steps("3hop1__d002_b")
+        steps[1] = steps[1].replace("[#1]", "[#3]")
+        metrics, _ = self.evaluate("chain_forward_ref", [prediction("3hop1__d002_b", steps)])
+        self.assertMetrics(
+            metrics, {"chain_validity_macro": 0.5, "reference_validity_macro": 0.5}
+        )
+
+    def test_bare_and_bracketed_references_are_both_counted(self) -> None:
+        """`#(\\d+)` is Break's own rule: it sees `#1` and the `#1` inside `[#1]`.
+
+        MuSiQue's real gold writes bare `#k` and the fixture writes `[#k]`; a chaining metric
+        that saw only one of them would be issue #40 again, in the other direction. Checked
+        on the function, on both syntaxes of the same 2-step plan.
+        """
+        for reference in ("#1", "[#1]"):
+            with self.subTest(reference=reference):
+                self.assertEqual(
+                    EVAL._chain_validity(
+                        ["Which union organised the strike?", f"Who leads {reference}?"],
+                        ["Which union organised the strike?", "Who leads #1?"],
+                    ),
+                    (1.0, 1, 1),
+                )
+        # And the untouched house regex still matches only the bracketed form, which is what
+        # issue #40 recorded: this change adds a term, it does not redefine the old one.
+        self.assertEqual(EVAL._reference_validity(["a", "b #1"]), (1.0, 0, 0))
+        self.assertEqual(EVAL._reference_validity(["a", "b [#1]"]), (1.0, 1, 1))
+
+
 class TestStepNormalization(EvaluatorTestBase):
     def test_punctuation_only_difference_is_a_perfect_step_match(self) -> None:
         """2hop__d004_p predicted with punctuation-only changes: '?' -> '.' and '?' dropped.
@@ -466,7 +836,11 @@ class TestMcNemarPower(unittest.TestCase):
           "significant: false" here is a statement about n, and 'underpowered' says so.
         """
         def row(exact: float) -> dict[str, Any]:
-            return {"exact_match": exact, "hop_count_exact_match": 1.0}
+            return {
+                "exact_match": exact,
+                "hop_count_exact_match": 1.0,
+                "break_exact_match": exact,
+            }
 
         rows_a = [row(1.0), row(1.0), row(1.0), row(0.0), row(0.0)]
         rows_b = [row(0.0), row(0.0), row(0.0), row(1.0), row(0.0)]
@@ -501,10 +875,34 @@ class TestPairedTTest(unittest.TestCase):
 
     ALPHA = 0.05
 
-    def _row(self, a: list[float], b: list[float]) -> dict[str, Any]:
+    def _row(
+        self, a: list[float], b: list[float], name: str = "step_f1"
+    ) -> dict[str, Any]:
         return EVAL._paired_t_test_row(
-            np.array(a, dtype=float), np.array(b, dtype=float), self.ALPHA, underpowered=False
+            np.array(a, dtype=float),
+            np.array(b, dtype=float),
+            self.ALPHA,
+            underpowered=False,
+            name=name,
         )
+
+    def test_the_metric_name_is_required_and_sets_the_direction(self) -> None:
+        """No default name: a distance must not be labelled higher-is-better by omission.
+
+        The same numbers under two metric names give opposite `favours` verdicts, which is
+        precisely why the argument cannot have a default (PR #44 review, nit 7).
+        """
+        with self.assertRaises(TypeError):
+            EVAL._paired_t_test_row(
+                np.array([1.0, 1.0, 0.9]), np.array([0.0, 0.0, 0.0]), self.ALPHA, False
+            )
+        higher = self._row([1.0, 1.0, 0.9], [0.0, 0.0, 0.0], name="step_f1")
+        lower = self._row([1.0, 1.0, 0.9], [0.0, 0.0, 0.0], name="ged")
+        self.assertEqual(higher["direction"], "higher_is_better")
+        self.assertEqual(lower["direction"], "lower_is_better")
+        self.assertTrue(higher["significant"] and lower["significant"])
+        self.assertEqual(higher["favours"], "system_a")
+        self.assertEqual(lower["favours"], "system_b")
 
     def test_two_items_dof_one(self) -> None:
         """differences [1, 0]: mean 0.5, sd sqrt(0.5), se 0.5, t = 1.0, dof = 1.
@@ -606,8 +1004,12 @@ class TestPairedTTest(unittest.TestCase):
                     "rouge_l_f1",
                     "step_f1",
                     "ordered_step_accuracy",
+                    "sari",
+                    "ged",
+                    "chain_validity",
                     "exact_match",
                     "hop_count_exact_match",
+                    "break_exact_match",
                 ]
             ),
         )
@@ -615,6 +1017,32 @@ class TestPairedTTest(unittest.TestCase):
         # to t-test exists.
         self.assertIn("composite_score", EVAL.BOOTSTRAP_STATISTICS)
         self.assertNotIn("composite_score", EVAL.T_TEST_STATISTICS)
+
+
+class TestMetricDirection(unittest.TestCase):
+    """GED is a distance, so a comparison has to carry direction, not assume it."""
+
+    def test_ged_is_the_only_lower_is_better_statistic(self) -> None:
+        self.assertEqual(EVAL.LOWER_IS_BETTER_STATISTICS, ("ged",))
+        self.assertIn("ged", EVAL.BOOTSTRAP_STATISTICS)
+        self.assertEqual(EVAL._direction("ged"), "lower_is_better")
+        for name in ("step_f1", "sari", "chain_validity", "break_exact_match"):
+            with self.subTest(statistic=name):
+                self.assertEqual(EVAL._direction(name), "higher_is_better")
+
+    def test_favours_applies_the_direction_to_the_sign(self) -> None:
+        """A negative difference favours a on ged and b on everything else.
+
+        This is the misreading the labelling exists to prevent: -0.16 on ged means system a
+        is 0.16 closer to the gold graph, i.e. better.
+        """
+        self.assertEqual(EVAL._favours("ged", -0.16, True), "system_a")
+        self.assertEqual(EVAL._favours("ged", +0.16, True), "system_b")
+        self.assertEqual(EVAL._favours("step_f1", +0.16, True), "system_a")
+        self.assertEqual(EVAL._favours("step_f1", -0.16, True), "system_b")
+        # Nothing to favour when the row is not significant, or the difference is 0.
+        self.assertIsNone(EVAL._favours("ged", -0.16, False))
+        self.assertIsNone(EVAL._favours("ged", 0.0, True))
 
 
 class TestBootstrapChunking(unittest.TestCase):
@@ -637,6 +1065,10 @@ class TestBootstrapChunking(unittest.TestCase):
             "step_f1": np.clip(base + offset, 0.0, 1.0),
             "ordered_step_accuracy": np.clip(base * 0.9 + offset, 0.0, 1.0),
             "rouge_l_f1": np.clip(base * 0.8 + offset, 0.0, 1.0),
+            # The issue #40 columns, so the chunking invariance covers them too.
+            "sari": np.clip(base * 0.7 + offset, 0.0, 1.0),
+            "ged": np.clip(1.0 - base - offset, 0.0, 2.0),
+            "chain_validity": np.clip(base * 0.95 + offset, 0.0, 1.0),
             "reference_valid_count": np.array([1, 2, 0, 3, 1, 2], dtype=float),
             "reference_total_count": np.array([2, 2, 0, 3, 2, 2], dtype=float),
             "step_count_abs_error": np.array([0, 1, 2, 0, 1, 3], dtype=float),
@@ -761,7 +1193,16 @@ class TestPairedComparison(EvaluatorTestBase):
         # 5 fixture predictions, 1 without a gold row -> 4 evaluated, so 4 aligned items.
         self.assertEqual(metrics["num_aligned_items"], 4)
         self.assertEqual(sorted(metrics["bootstrap"]), sorted(
-            ["rouge_l_f1", "step_f1", "ordered_step_accuracy", "composite_score"]
+            [
+                "rouge_l_f1",
+                "step_f1",
+                "ordered_step_accuracy",
+                # The issue #40 additions, each a per-item value and so each bootstrapped.
+                "sari",
+                "ged",
+                "chain_validity",
+                "composite_score",
+            ]
         ))
         for name, result in metrics["bootstrap"].items():
             with self.subTest(statistic=name):
@@ -770,7 +1211,12 @@ class TestPairedComparison(EvaluatorTestBase):
                 self.assertAlmostEqual(result["ci_high"], 0.0, places=PLACES)
                 self.assertFalse(result["significant"])
                 self.assertEqual(result["n"], 4)
-        self.assertEqual(sorted(metrics["mcnemar"]), ["exact_match", "hop_count_exact_match"])
+                # Not significant, so there is nothing to favour.
+                self.assertIsNone(result["favours"])
+        self.assertEqual(
+            sorted(metrics["mcnemar"]),
+            ["break_exact_match", "exact_match", "hop_count_exact_match"],
+        )
         for name, result in metrics["mcnemar"].items():
             with self.subTest(statistic=name):
                 self.assertEqual(result["discordant_pairs"], 0)
@@ -827,6 +1273,69 @@ class TestPairedComparison(EvaluatorTestBase):
         self.assertIn("SAME composite-score weights", message)
         self.assertIn("composite_score_weights", message)
 
+    def test_a_null_or_nan_in_a_new_column_is_refused_at_load(self) -> None:
+        """PR #44 review, I1: the v2 loader's finite-number gate covers the new columns.
+
+        Before the fix the gate iterated the v1 field list, which excludes the issue #40
+        columns — so a `"ged": null` died as a raw TypeError inside the statistics and a
+        `"ged": NaN` travelled through the entire battery and blew up formatting the run
+        note. Both must be refused at load, naming the file, the row and the field. `NaN` is
+        written here the way Python's json writer emits it (not valid JSON, which is exactly
+        why nothing may rely on a downstream reader catching it).
+        """
+        per_item = self._per_item_of_fixture()
+        payload = json.loads(per_item.read_text(encoding="utf-8"))
+        for name, field, value in (
+            ("ged_null", "ged", None),
+            ("ged_nan", "ged", float("nan")),
+            ("sari_string", "sari", "0.9"),
+            ("chain_null", "chain_validity", None),
+            ("break_em_bool", "break_exact_match", True),
+        ):
+            with self.subTest(case=name):
+                tampered = copy.deepcopy(payload)
+                tampered["items"][2][field] = value
+                path = self.tmp / f"compare_{name}_per_item.json"
+                path.write_text(
+                    json.dumps(tampered, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                run_dir = self.tmp / f"compare_{name}"
+                proc = self._run(
+                    ["--compare", str(path), str(per_item), "--run-dir", str(run_dir)],
+                    expect_ok=False,
+                )
+                self.assertNotEqual(proc.returncode, 0)
+                message = proc.stdout + proc.stderr
+                self.assertIn("row 2", message)
+                self.assertIn(field, message)
+                self.assertIn("non-numeric or non-finite", message)
+                self.assertNotIn("TypeError", message)
+                # Nothing was reported: the refusal is before any statistic is computed.
+                self.assertFalse((run_dir / "compare_metrics.json").exists())
+
+    def test_the_v2_numeric_gate_covers_every_compared_column(self) -> None:
+        """The gate's field set is the v2 one, not the v1 one — checked on the constants.
+
+        The regression this pins is a set-difference bug, so it is asserted as a set: every
+        compared statistic (and every column the composite is rebuilt from) must be in the
+        gate, and `item_id` must not be, because it is a string.
+        """
+        gate = set(EVAL._NUMERIC_PER_ITEM_FIELDS)
+        self.assertNotIn("item_id", gate)
+        for name in EVAL._ISSUE_40_STATISTICS:
+            self.assertIn(name, gate)
+        for name in EVAL.MCNEMAR_STATISTICS:
+            self.assertIn(name, gate)
+        for name in EVAL.BOOTSTRAP_STATISTICS:
+            if name != "composite_score":
+                self.assertIn(name, gate)
+        for name in EVAL._COMPOSITE_INPUT_COLUMNS:
+            self.assertIn(name, gate)
+        # The v1 gate is the same set minus the columns v1 could not have written.
+        self.assertEqual(
+            gate - set(EVAL._REQUIRED_V1_PER_ITEM_FIELDS), set(EVAL._ISSUE_40_STATISTICS)
+        )
+
     def test_legacy_bare_list_per_item_file_is_refused(self) -> None:
         """A per-item file with no stamped weights cannot be recomputed against."""
         per_item = self._per_item_of_fixture()
@@ -873,8 +1382,12 @@ class TestPairedComparison(EvaluatorTestBase):
                     "rouge_l_f1",
                     "step_f1",
                     "ordered_step_accuracy",
+                    "sari",
+                    "ged",
+                    "chain_validity",
                     "exact_match",
                     "hop_count_exact_match",
+                    "break_exact_match",
                 ]
             ),
         )
@@ -882,9 +1395,9 @@ class TestPairedComparison(EvaluatorTestBase):
         self.assertEqual(
             metrics["tests_reported"],
             {
-                "bootstrap": 4,
-                "mcnemar": 2,
-                "paired_t_test": 5,
+                "bootstrap": 7,
+                "mcnemar": 3,
+                "paired_t_test": 9,
                 "headline_protocol": (
                     "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)"
                 ),
@@ -914,6 +1427,55 @@ class TestPairedComparison(EvaluatorTestBase):
         self.assertIn("paired t-test", note)
         self.assertIn("dof=3", note)
         self.assertIn("headline protocol", note)
+
+    def test_every_row_states_its_direction_and_the_note_says_it_too(self) -> None:
+        """No row can be read without its direction, and the run note prints the column.
+
+        The failure this guards is arithmetic-free: `ged` is the only distance in the report,
+        so a table that drops the direction turns "system a is 0.16 better" into "0.16
+        worse". Every row therefore carries `direction`, every significant row names the
+        system it `favours` with the direction already applied, and the note has a `better`
+        column plus a sentence saying which way `ged` reads.
+        """
+        run_dir, metrics = self._degraded_comparison()
+        for family in ("bootstrap", "mcnemar", "t_test"):
+            for name, row in metrics[family].items():
+                with self.subTest(family=family, statistic=name):
+                    self.assertEqual(
+                        row["direction"],
+                        "lower_is_better" if name == "ged" else "higher_is_better",
+                    )
+                    if not row["significant"]:
+                        self.assertIsNone(row["favours"])
+                    else:
+                        difference = row["difference"]
+                        a_better = difference < 0 if name == "ged" else difference > 0
+                        self.assertEqual(
+                            row["favours"], "system_a" if a_better else "system_b"
+                        )
+        self.assertEqual(metrics["lower_is_better_statistics"], ["ged"])
+        # v2 inputs carry every compared column, so nothing is skipped.
+        self.assertEqual(metrics["statistics_not_available_in_inputs"], [])
+
+        note = (run_dir / "compare_notes.md").read_text(encoding="utf-8")
+        self.assertIn("| statistic | better |", note)
+        self.assertIn("| ged | lower |", note)
+        self.assertIn("graph edit **distance**", note)
+
+    def test_the_degraded_arm_is_worse_on_every_new_metric(self) -> None:
+        """Direction sanity on real rows: A is perfect, B is degraded.
+
+        Not a significance claim (n = 4 is below the reporting floor) — a check that the
+        point estimates move the way the definitions say they must: the perfect arm scores
+        higher on SARI, chain validity and Break EM, and LOWER on ged, because ged is a
+        distance.
+        """
+        _, metrics = self._degraded_comparison()
+        for name in ("sari", "chain_validity"):
+            with self.subTest(statistic=name):
+                self.assertGreater(metrics["bootstrap"][name]["difference"], 0.0)
+        self.assertLess(metrics["bootstrap"]["ged"]["difference"], 0.0)
+        self.assertGreaterEqual(metrics["mcnemar"]["break_exact_match"]["difference"], 0.0)
 
     def test_t_test_matches_a_directly_computed_value(self) -> None:
         """The step-F1 t of the degraded comparison, recomputed from its per-item rows.
@@ -965,10 +1527,28 @@ class TestV1CompareShim(EvaluatorTestBase):
     read-only, outside this repo, and a test must not depend on it existing.
     """
 
+    #: Fields a v1 per-item row cannot have: ``item_id`` (v1 had no concept of it) and every
+    #: column added by issue #40 (v1 ran years before those metrics existed). Both are
+    #: dropped when a v1 file is reconstructed here, so the shim is exercised on rows the
+    #: shape v1 actually wrote.
+    NOT_IN_V1 = (
+        "item_id",
+        "break_exact_match",
+        "sari",
+        "ged",
+        "ged_fallback",
+        "chain_validity",
+        "chain_pred_reference_count",
+        "chain_gold_reference_count",
+    )
+
     def _v1_file(self, name: str, predictions: list[dict[str, Any]]) -> Path:
         _, per_item = self.evaluate(f"v1src_{name}", predictions)
         payload = json.loads(per_item.read_text(encoding="utf-8"))
-        rows = [{k: v for k, v in row.items() if k != "item_id"} for row in payload["items"]]
+        rows = [
+            {k: v for k, v in row.items() if k not in self.NOT_IN_V1}
+            for row in payload["items"]
+        ]
         path = self.tmp / f"v1_{name}.json"
         path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
@@ -1037,20 +1617,51 @@ class TestV1CompareShim(EvaluatorTestBase):
         v2 = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
 
         self.assertEqual(v1["num_aligned_items"], v2["num_aligned_items"])
-        for name, row in v2["bootstrap"].items():
+        # v1 rows predate the issue #40 columns, so the v1 comparison covers a SUBSET of the
+        # v2 one. Every statistic it does report must match; the ones it cannot are asserted
+        # separately (test_v1_inputs_record_the_metrics_they_cannot_carry).
+        for name, row in v1["bootstrap"].items():
             with self.subTest(bootstrap=name):
                 for key in ("system_a", "system_b", "difference"):
-                    self.assertAlmostEqual(v1["bootstrap"][name][key], row[key], places=PLACES)
+                    self.assertAlmostEqual(row[key], v2["bootstrap"][name][key], places=PLACES)
         for family in ("mcnemar", "t_test"):
-            for name, row in v2[family].items():
+            for name, row in v1[family].items():
                 with self.subTest(family=family, statistic=name):
-                    self.assertEqual(sorted(v1[family][name]), sorted(row))
+                    self.assertEqual(sorted(row), sorted(v2[family][name]))
                     for key, value in row.items():
-                        got = v1[family][name][key]
+                        expected = v2[family][name][key]
                         if isinstance(value, float):
-                            self.assertAlmostEqual(got, value, places=PLACES)
+                            self.assertAlmostEqual(value, expected, places=PLACES)
                         else:
-                            self.assertEqual(got, value)
+                            self.assertEqual(value, expected)
+
+    def test_v1_inputs_record_the_metrics_they_cannot_carry(self) -> None:
+        """A v1 file predates sari / ged / chain_validity / break_exact_match.
+
+        Requiring them would refuse every v1 file and retire the ADR 0020 path; computing
+        them from a v1 file's stored steps would be a re-score of v1 output rather than a
+        comparison of what v1 measured. So they are omitted, named in the metrics JSON and
+        named in the run note (ADR 0026 item 10).
+        """
+        a, b = self._v1_pair()
+        run_dir = self.tmp / "v1_missing_metrics"
+        self._run(["--compare", str(a), str(b), "--v1-per-item", "--run-dir", str(run_dir)])
+        metrics = json.loads((run_dir / "compare_metrics.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            metrics["statistics_not_available_in_inputs"],
+            sorted(["sari", "ged", "chain_validity", "break_exact_match"]),
+        )
+        for name in ("sari", "ged", "chain_validity"):
+            self.assertNotIn(name, metrics["bootstrap"])
+        self.assertNotIn("break_exact_match", metrics["mcnemar"])
+        # The legacy battery is untouched: 4 bootstrap intervals, 2 McNemar, 5 t-tests.
+        self.assertEqual(metrics["tests_reported"]["bootstrap"], 4)
+        self.assertEqual(metrics["tests_reported"]["mcnemar"], 2)
+        self.assertEqual(metrics["tests_reported"]["paired_t_test"], 5)
+        self.assertIn(
+            "NOT COMPARED", (run_dir / "compare_notes.md").read_text(encoding="utf-8")
+        )
 
     def _v1_source_of_degraded(self) -> Path:
         _, per_item = self.evaluate("v1src_degraded", degraded_predictions())
@@ -1428,6 +2039,81 @@ class TestV1CompareShim(EvaluatorTestBase):
         self.assertEqual(v1_cfg["default_alignment"], "normalized_question")
         self.assertIn(v1_cfg["default_alignment"], EVAL.V1_ALIGNMENTS)
         self.assertTrue(v1_cfg["read_only_prior_work_root"])
+
+
+class TestGedConfigKnobs(unittest.TestCase):
+    """GED's two cost guards are config, not literals in the source (ADR 0026 item 4)."""
+
+    def test_the_config_declares_both_guards_and_explains_them(self) -> None:
+        config = json.loads(
+            (REPO_ROOT / "configs" / "musique_eval.json").read_text(encoding="utf-8")
+        )
+        block = config["break_metrics"]
+        self.assertIn("_note", block)
+        ged = block["ged"]
+        # At or above the capped decomposer arm's 8-step budget, so ordinary predictions are
+        # scored by the optimizer and not by the fallback.
+        self.assertGreaterEqual(ged["max_nodes_for_optimizer"], 8)
+        self.assertGreater(ged["per_item_time_budget_seconds"], 0.0)
+        # There is deliberately no on/off switch: the metrics are additive columns.
+        self.assertNotIn("enabled", block)
+
+    def test_a_bad_knob_aborts_at_load_naming_the_key(self) -> None:
+        """The code path, not just the committed values (PR #44 review, nit 6).
+
+        `_ged_policy` is what the scoring run reads its guards through, so the refusals are
+        checked there: a cap below the 8-step floor, a non-integer cap, and a non-positive or
+        non-finite budget each abort with the config key in the message. This is the contract
+        `gold_validation` already has — a parameter that would quietly change what the metric
+        measures is refused at load.
+        """
+        def cfg(max_nodes: Any, budget: Any) -> dict[str, Any]:
+            return {
+                "_config_path": "configs/musique_eval.json",
+                "break_metrics": {
+                    "ged": {
+                        "max_nodes_for_optimizer": max_nodes,
+                        "per_item_time_budget_seconds": budget,
+                    }
+                },
+            }
+
+        good = EVAL._ged_policy(cfg(16, 20.0))
+        self.assertEqual(good["max_nodes_for_optimizer"], 16)
+        self.assertEqual(good["per_item_time_budget_seconds"], 20.0)
+        # The floor itself is admissible; one below it is not.
+        self.assertEqual(EVAL._ged_policy(cfg(8, 0.5))["max_nodes_for_optimizer"], 8)
+
+        for max_nodes, budget, expected_key in (
+            (7, 20.0, "max_nodes_for_optimizer"),
+            (0, 20.0, "max_nodes_for_optimizer"),
+            (16.5, 20.0, "max_nodes_for_optimizer"),
+            (True, 20.0, "max_nodes_for_optimizer"),
+            ("16", 20.0, "max_nodes_for_optimizer"),
+            (16, 0, "per_item_time_budget_seconds"),
+            (16, -1.0, "per_item_time_budget_seconds"),
+            (16, None, "per_item_time_budget_seconds"),
+            (16, float("inf"), "per_item_time_budget_seconds"),
+        ):
+            with self.subTest(max_nodes=max_nodes, budget=budget):
+                with self.assertRaises(SystemExit) as caught:
+                    EVAL._ged_policy(cfg(max_nodes, budget))
+                self.assertIn(
+                    f"break_metrics.ged.{expected_key}", str(caught.exception)
+                )
+
+    def test_a_missing_knob_is_a_missing_config_key_not_a_default(self) -> None:
+        """No silent default: an absent knob is `require`'s ConfigError (a SystemExit)."""
+        with self.assertRaises(SystemExit) as caught:
+            EVAL._ged_policy({"_config_path": "x", "break_metrics": {"ged": {}}})
+        self.assertIn("max_nodes_for_optimizer", str(caught.exception))
+
+    def test_no_ged_parameter_is_hard_coded_in_the_scoring_path(self) -> None:
+        """The scoring path reads both guards through require(), not from a literal."""
+        source = EVALUATOR.read_text(encoding="utf-8")
+        for key in ("max_nodes_for_optimizer", "per_item_time_budget_seconds"):
+            with self.subTest(key=key):
+                self.assertIn(f'require(cfg, "break_metrics.ged.{key}")', source)
 
 
 if __name__ == "__main__":

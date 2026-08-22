@@ -17,6 +17,15 @@ scikit-learn==1.8.0
 # transitive pin. Version read from the installed .venv on 2026-08-20, not guessed.
 threadpoolctl==3.6.0
 
+# Graph edit distance for the Break-faithful GED metric
+# (scripts/musique_decompositions_evaluator.py, issue #40): the reference graph of a
+# decomposition and nx.optimize_graph_edit_distance over it. It already arrived here as a
+# torch dependency, but a metric in the evaluation path should not rest on a transitive pin.
+# Version read from the installed .venv on 2026-08-22, not guessed. (Break's own
+# requirements.txt pins networkx==2.4; the two APIs used here - DiGraph and
+# optimize_graph_edit_distance - exist in both.)
+networkx==3.6.1
+
 # Plotting (scripts/analyze_runs.py, plot_pool_sweep.py, plot_musique_chunk_stats.py,
 # compare_answer_accuracy.py --report)
 matplotlib==3.10.8
