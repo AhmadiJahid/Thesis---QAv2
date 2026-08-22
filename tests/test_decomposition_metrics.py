@@ -366,7 +366,7 @@ class TestBreakMetrics(EvaluatorTestBase):
     (``allenai/break-evaluator``: ``get_exact_match``, ``sari_hook.py``,
     ``graph_matcher.normalized_graph_edit_distance``) and the fabricated fixture gold. The
     conventions these pin — including the two deviations from the official code and the
-    fallback policy — are ADR 0024.
+    fallback policy — are ADR 0026.
 
     Note the fixture gold writes references as ``[#k]`` while real MuSiQue gold writes bare
     ``#k``. Both are matched by the ``#(\\d+)`` rule these metrics use (Break's own rule), so
@@ -472,7 +472,7 @@ class TestBreakMetrics(EvaluatorTestBase):
                       the ordinary edge (2,1) at cost 0
         The official Break evaluator computes GED with this same networkx call, so this is
         the ported metric's behaviour and it is pinned rather than "fixed" — fixing it would
-        be inventing a metric (ADR 0024). Break EM still catches the reversal, which is why
+        be inventing a metric (ADR 0026). Break EM still catches the reversal, which is why
         the survey's §4 item 2 says an order-sensitive metric has to stay in the reported set.
         """
         item = "2hop__d001_a"
@@ -579,7 +579,7 @@ class TestBreakMetrics(EvaluatorTestBase):
                       edge must be inserted -> 1. Total 32 -> 32/31 = 1.032258...
           flag        ged_fallback 'node_cap' on the item and ged_fallback_counts
                       {'node_cap': 1} in the aggregate — the item is reported, never dropped,
-                      because a dropped item has no pair for the paired battery (ADR 0024)
+                      because a dropped item has no pair for the paired battery (ADR 0026)
         """
         item = "2hop__d001_a"
         metrics, per_item = self.evaluate("break_node_cap", [prediction(item, ["zzz"] * 31)])
@@ -1549,7 +1549,7 @@ class TestV1CompareShim(EvaluatorTestBase):
         Requiring them would refuse every v1 file and retire the ADR 0020 path; computing
         them from a v1 file's stored steps would be a re-score of v1 output rather than a
         comparison of what v1 measured. So they are omitted, named in the metrics JSON and
-        named in the run note (ADR 0024 item 10).
+        named in the run note (ADR 0026 item 10).
         """
         a, b = self._v1_pair()
         run_dir = self.tmp / "v1_missing_metrics"
@@ -1950,7 +1950,7 @@ class TestV1CompareShim(EvaluatorTestBase):
 
 
 class TestGedConfigKnobs(unittest.TestCase):
-    """GED's two cost guards are config, not literals in the source (ADR 0024 item 4)."""
+    """GED's two cost guards are config, not literals in the source (ADR 0026 item 4)."""
 
     def test_the_config_declares_both_guards_and_explains_them(self) -> None:
         config = json.loads(

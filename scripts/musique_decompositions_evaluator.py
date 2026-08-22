@@ -159,7 +159,7 @@ METRIC_DEFINITIONS: dict[str, Any] = {
         "aggregator DROPS an item that times out, which would break the paired battery, so "
         "an item over max_nodes_for_optimizer or over per_item_time_budget_seconds is "
         "reported with a documented upper bound and flagged in ged_fallback instead of "
-        "being dropped (ADR 0024)"
+        "being dropped (ADR 0026)"
     ),
     "ged_fallback": (
         "per item: null when the value is the optimizer's own last approximation; "
@@ -573,7 +573,7 @@ def _chain_validity(pred_steps: list[str], gold_steps: list[str]) -> tuple[float
 #     is not a dependency of this repo and its model needs a download, so the cost here is
 #     computed over lowercased whitespace tokens. Absolute GED values are therefore **not
 #     comparable to Break leaderboard GED**; within one run every system is scored the same
-#     way, so comparisons on this data are valid. ADR 0024 records the choice.
+#     way, so comparisons on this data are valid. ADR 0026 records the choice.
 
 #: A bare ``#k`` reference. Deliberately syntax-agnostic where :data:`_REF_RX` is not: it
 #: matches the ``#1`` in ``#1`` *and* in ``[#1]``, which is exactly what Break's own
@@ -794,7 +794,7 @@ def _positional_edit_cost(graph_a: nx.DiGraph, graph_b: nx.DiGraph) -> float:
     driver turns a timeout into ``None``, which its aggregator then **drops** from the mean.
     Dropping items is not available here — a dropped item breaks the pairing every test in
     the ADR 0009 battery rests on — so an item that cannot be optimized within its budget
-    is reported with this bound and flagged, never dropped. ADR 0024 records that.
+    is reported with this bound and flagged, never dropped. ADR 0026 records that.
     """
     nodes_a = sorted(graph_a.nodes)
     nodes_b = sorted(graph_b.nodes)
@@ -2305,7 +2305,7 @@ def main() -> None:
         "on_exhaustion": (
             "the item is reported with a documented upper bound and flagged in "
             "ged_fallback, never dropped (dropping would break the paired battery; "
-            "Break's own evaluator drops such items) — ADR 0024"
+            "Break's own evaluator drops such items) — ADR 0026"
         ),
         "node_substitution_cost": (
             "1 - the edit-distance match ratio over lowercased whitespace tokens; Break "

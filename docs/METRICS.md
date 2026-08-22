@@ -162,7 +162,7 @@ master: `scripts/evaluate_predictions.py`, `evaluation/sari_hook.py`,
 `evaluation/sequence_matcher.py`), read file by file — the survey note §1.2 and §7 record the
 same reading. Additive, like §2.1: none of the three enters `composite_score`. The
 conventions and the deviations are ADR
-[0024](adr/0024-break-faithful-metrics-the-implementers-conventions.md).
+[0026](adr/0026-break-faithful-metrics-the-implementers-conventions.md).
 
 All three score the **`" @@SEP@@ "`-joined** decomposition (`_break_steps` collapses
 whitespace per step and rewrites `#k` → `@@k@@`; `_break_string` joins).

@@ -1,4 +1,4 @@
-# 0024. Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions
+# 0026. Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions
 
 - **Status**: Accepted (implementer design, pending Jahid)
 - **Date**: 2026-08-22
