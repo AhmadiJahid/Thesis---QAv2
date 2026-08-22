@@ -15,6 +15,14 @@
   },
   "composite_step_count_error_scale": 3.0,
 
+  "break_metrics": {
+    "_note": "Knobs of the additive metrics from docs/analysis/2026-08-22-metric-candidates.md (issue #40): the official Break leaderboard trio (EM / SARI / GED, ported from allenai/break-evaluator) and the repaired per-item chain validity. They are ADDITIVE columns and always computed - there is no switch to turn them off, because a metric nobody computes is a metric nobody can check, and none of them enters composite_score, so no published number changes value. Only GED needs parameters, because it is the one expensive metric: the survey measured a single 39-step runaway prediction costing ~115 s of optimizer time on its own. max_nodes_for_optimizer is the guard that bounds that cost DETERMINISTICALLY - above it the search is skipped and a search-free upper bound (pair nodes in id order, substitute each pair, delete/insert the surplus, keep the edges whose endpoints are both paired, delete/insert the rest) is reported instead, so the value does not depend on how busy the machine was. 30 is chosen from measurement, not taste: MuSiQue gold is 2-4 steps and the capped decomposer arm emits at most 8, and on synthetic predictions against the fixture gold this implementation's optimizer took 0.07 s at 12 steps and 1.27 s at 39 (chain-shaped), 0.01 s at 20 steps with every step referencing every earlier one, and under 0.01 s at 30 steps with no references - so a cap of 30 leaves every plausible decomposition to the optimizer while sending the survey's 39- and 51-step runaways to the deterministic bound (on the 39-step chain the bound was 0.9620 against the optimizer's 0.9597). per_item_time_budget_seconds is a wall-clock backstop for graphs under the cap, checked between the optimizer's successive approximations; it keeps the last approximation, which IS machine-dependent, so every firing is counted in ged_fallback_counts and named in the run note. Break's own evaluator instead DROPS an item that times out, which would break the paired battery (a dropped item has no pair) - see ADR 0024.",
+    "ged": {
+      "max_nodes_for_optimizer": 30,
+      "per_item_time_budget_seconds": 20.0
+    }
+  },
+
   "gold_validation": {
     "_note": "The gold rows carry two step-count denominators: the 'hop_count' field (used by the hop-count metrics) and len(question_decomposition) (used by the directional step-count metrics). They must agree or the two families measure different things under one report, so the loader aborts on a disagreement; this caps how many offending ids the error message lists.",
     "max_reported_mismatches": 20
