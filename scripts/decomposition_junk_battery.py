@@ -15,8 +15,10 @@ each of them beside every real arm's, plus the pass/fail verdicts:
 
     A1  the gold itself scores the extremum on every term
     A2  every real arm beats J1-J4 on ged_macro, chain_validity_macro, break_exact_match_rate
-    A3  SARI is EXEMPT from A2 by design - its junk floor on this data is high (Break's own
-        published Copy row scores SARI 0.431) - so the margin is recorded, not asserted
+    A3  SARI is EXEMPT from the A2 assertion by design - its junk floor on this data is high
+        (Break's own published Copy row scores SARI 0.431) - so what A2 asserts of the other
+        terms is only RECORDED here, as a margin. The ordering itself (every real arm above
+        every junk baseline on sari_macro) is still gated by this script's exit code
     A4  the additive blend decomp_mean must rank every junk system below every real arm.
         This is a HARD GATE: failing it disqualifies the blend rather than prompting a
         weight tweak, because the composite's weights were never the disease
@@ -306,22 +308,40 @@ def _verdicts(rows: dict[str, dict[str, Any]], real_names: list[str]) -> dict[st
 
     junk_sari = {j: rows[j]["sari_macro"] for j in JUNK_BASELINES}
     real_sari = {a: rows[a]["sari_macro"] for a in real_names}
+    junk_max_system = max(junk_sari, key=junk_sari.get)
+    ordering_holds = (
+        bool(min(real_sari.values()) > max(junk_sari.values())) if real_sari else None
+    )
+    # The A2 ASSERTION stays off SARI (its junk floor is high, so the separation is small by
+    # construction and A2's terms carry that load). The ORDERING is a different claim, and it
+    # is gated: a future arm falling below the junk SARI floor has to be caught here rather
+    # than merely reported (PR #48 review, nit 1).
+    a3_failures = (
+        []
+        if ordering_holds is not False
+        else [
+            f"sari_macro: junk {junk_max_system} ({max(junk_sari.values()):.4f}) ranks at "
+            f"or above real arm {min(real_sari, key=real_sari.get)} "
+            f"({min(real_sari.values()):.4f})"
+        ]
+    )
     a3 = {
         "exempt_from_a2": True,
         "why": (
             "SARI's floor on this data is far above 0 (an additive blend containing it hands "
             "junk a nonzero floor), and Break's own published Copy row scores SARI 0.431 "
-            "against its best model's 0.748. The ordering is recorded and the MARGIN is "
-            "reported; it is not asserted"
+            "against its best model's 0.748. SARI is therefore left out of the A2 assertion "
+            "and its MARGIN is reported; the ordering itself is still gated by this script's "
+            "exit code"
         ),
+        "passed": not a3_failures,
         "junk_max": max(junk_sari.values()),
-        "junk_max_system": max(junk_sari, key=junk_sari.get),
+        "junk_max_system": junk_max_system,
         "real_min": min(real_sari.values()) if real_sari else None,
         "real_min_arm": min(real_sari, key=real_sari.get) if real_sari else None,
         "margin": (min(real_sari.values()) - max(junk_sari.values())) if real_sari else None,
-        "ordering_holds": (
-            bool(min(real_sari.values()) > max(junk_sari.values())) if real_sari else None
-        ),
+        "ordering_holds": ordering_holds,
+        "failures": a3_failures,
     }
 
     a4_failures = [
@@ -545,18 +565,22 @@ def main() -> None:
     print()
     if verdicts is None:
         print(
-            "A2 / A4 / A5 NOT EVALUATED: no real arms were read (--no-real-arms), and every "
-            "one of them is a statement about junk versus a real arm."
+            "A2 / A3 / A4 / A5 NOT EVALUATED: no real arms were read (--no-real-arms), and "
+            "every one of them is a statement about junk versus a real arm."
         )
     else:
         for name, verdict in verdicts.items():
-            if "passed" not in verdict:
+            if verdict.get("exempt_from_a2"):
                 print(
-                    f"{name}: ordering_holds={verdict['ordering_holds']} "
+                    f"{name}: {'PASS' if verdict['passed'] else 'FAIL'} — "
+                    f"ordering_holds={verdict['ordering_holds']} "
                     f"(junk max {verdict['junk_max']:.4f} on {verdict['junk_max_system']}, "
                     f"real min {verdict['real_min']:.4f} on {verdict['real_min_arm']}, "
-                    f"margin {verdict['margin']:+.4f}) — EXEMPT from A2 by design"
+                    f"margin {verdict['margin']:+.4f}) — EXEMPT from the A2 assertion by "
+                    f"design; the ordering is gated"
                 )
+                for failure in verdict["failures"]:
+                    print(f"    {failure}")
                 continue
             print(f"{name}: {'PASS' if verdict['passed'] else 'FAIL'}")
             for failure in verdict["failures"]:
@@ -593,9 +617,9 @@ def main() -> None:
         )
         print(f"\nWrote {args.json}")
 
-    if verdicts is not None and not all(
-        v.get("passed", True) for v in verdicts.values()
-    ):
+    # Every verdict carries `passed`, A3's included: an exemption from A2's assertion is not
+    # an exemption from the exit code (PR #48 review, nit 1).
+    if verdicts is not None and not all(v["passed"] for v in verdicts.values()):
         raise SystemExit(1)
 
 

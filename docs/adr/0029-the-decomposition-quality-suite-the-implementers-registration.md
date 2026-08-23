@@ -119,7 +119,12 @@ is a **tool, not an experiment**: it scores no system of the thesis, takes no
 `experiments/log.md` entry, needs no GPU and takes no `runs/run.lock`, and it carries a tiny
 mode (`--limit`, `--eval-set all-gold`, `--no-real-arms`) so the full path is smoke-testable.
 A1–A6 are asserted over the fixture gold in
-`tests/test_decomposition_metrics.py::TestJunkBattery`.
+`tests/test_decomposition_metrics.py::TestJunkBattery`, and every verdict the script computes
+on the real 600 — **A3's SARI ordering included** — carries a `passed` and drives the exit
+code. SARI's exemption is from A2's junk-separation *assertion* (its floor is high by
+construction, so the margin is reported rather than asserted as separation); it is not an
+exemption from the gate, so an arm that ever falls below the junk SARI floor fails the battery
+instead of being reported by it.
 
 **6. Three guards ship with the suite**, each replacing an argument with a check:
 
@@ -165,9 +170,12 @@ files. Re-run the script rather than quoting this table from memory.
 | exp009 mixed | 0.0533 | 0.5851 | 0.4713 | 0.9686 | 0.5150 | 0.2000 | 0.2850 | 0.5301 |
 | exp009 oracle_hop_matched | 0.0483 | 0.5879 | 0.4540 | 0.9686 | 0.6000 | 0.1300 | 0.2700 | 0.5503 |
 
-Verdicts as printed: **A1 PASS · A2 PASS · A3 ordering holds (junk max SARI 0.4676 on J2, real
-min 0.5849 on exp004 `unguided_capped`, margin +0.1173), exempt from A2 by design · A4 PASS ·
-A5 PASS.**
+Verdicts as printed: **A1 PASS · A2 PASS · A3 PASS — ordering_holds=True (junk max SARI 0.4676
+on J2, real min 0.5849 on exp004 `unguided_capped`, margin +0.1173), exempt from the A2
+assertion by design; the ordering is gated · A4 PASS · A5 PASS.** (The A3 line gained its
+PASS/FAIL when the ordering was put behind the exit code — the PR #48 review's nit 1. The
+battery was re-run on the same pinned 600 with that change and every row of the table above,
+and every verdict, reproduced digit-for-digit.)
 
 **The A4 gate, stated as the number it turns on:** the best junk baseline scores
 `decomp_mean` **0.1412** (J4) against a real-arm worst of **0.5085** (exp005 `unguided` /
@@ -195,7 +203,15 @@ every real arm on both — and is caught only by `break_exact_match` (0.0000) an
   5 / 12 — the counts are in `tests_reported` and no correction for multiple comparisons is
   applied to any of them, exactly as before.
 - **The ADR 0017 asymmetry became testable.** Until the two direction columns existed, the
-  over/under rates were aggregate-only and no paired test could be run on either.
+  over/under rates were aggregate-only and no paired test could be run on either. It also made
+  McNemar's discordant counts polarity-dependent: on the two rate rows a 1 is the **error**
+  occurring, not a correct item, so the counts are emitted neutrally as
+  `discordant_only_in_a` / `discordant_only_in_b` on every row, and the direction-specific
+  name is only ever written where it is true (`correct_only_in_*` on the three
+  higher-is-better rows, `error_only_in_*` on the two lower-is-better ones). A single pair of
+  names would have read backwards on half the rows (PR #48 review, Important 1); no value
+  moved, and the committed metrics JSONs, which carry only higher-is-better rows, keep their
+  existing key.
 - **Old per-item files still compare.** The three new columns are computed on every run but are
   **not required** of a file being compared: nine committed arms and 33 sweep cells were scored
   before they existed, and requiring them would refuse those files instead of comparing what

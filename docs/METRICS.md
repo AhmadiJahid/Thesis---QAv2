@@ -352,9 +352,12 @@ The acceptance criteria are tests in
 - **A1** J6 scores the extremum on every term.
 - **A2** every real arm beats J1–J4 on `ged_macro`, `chain_validity_macro` and
   `break_exact_match_rate`.
-- **A3** SARI is **exempt** from A2 by design and its margin is recorded instead: its floor on
-  this data is high (Break's own published `Copy` row scores SARI 0.431), so it separates junk
-  by a small margin from a high floor.
+- **A3** SARI is **exempt from A2's assertion** by design and its margin is recorded instead:
+  its floor on this data is high (Break's own published `Copy` row scores SARI 0.431), so it
+  separates junk by a small margin from a high floor. The *ordering* — every real arm above
+  every junk baseline on `sari_macro` — is still gated: it carries a `passed` like every other
+  verdict and drives the battery's exit code, so an arm that falls below the junk floor is
+  caught rather than reported.
 - **A4** the **hard gate** on `decomp_mean`: every junk baseline must rank below every real
   arm. Failing it disqualifies the blend — it is not a prompt to re-tune weights, because the
   legacy composite's weights were never the disease.
@@ -535,10 +538,17 @@ Compares two runs **on the same evaluation set**. Parameters live in
 - **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the five binary metrics `exact_match`,
   `hop_count_exact_match`, `break_exact_match`, `over_decomposition` and
   `under_decomposition` (the last two added with the §2.3 suite, so the ADR 0017 asymmetry
-  can be significance-tested at all): with b = #(a correct, b wrong) and c = #(a wrong, b correct),
+  can be significance-tested at all): with b = the discordant items whose indicator is 1 for
+  a and 0 for b (`discordant_only_in_a`) and c the reverse (`discordant_only_in_b`),
   the exact two-sided p-value is `min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5))`, computed
   with exact integer arithmetic. With no discordant pairs p = 1.0. `significant` is
-  `p < alpha`.
+  `p < alpha`. **What a 1 means follows the row's direction**, so the same two counts are
+  repeated under a direction-specific name and the name is only ever emitted where it is
+  true: on the three higher-is-better rows a 1 is a correct item, so b = #(a correct, b
+  wrong) and the pair also appears as `correct_only_in_a` / `correct_only_in_b`; on the two
+  lower-is-better rate rows a 1 is the **error occurring**, so b = #(a errs, b does not) and
+  the pair appears as `error_only_in_a` / `error_only_in_b` instead. The run note's McNemar
+  cell prints the neutral `b=` / `c=`, with the reading spelled out beneath the table.
 - **How much evidence there is, recorded next to the verdicts.** Every row carries `n` and
   `underpowered`; each McNemar row also carries `min_attainable_p_value` — the smallest p
   its discordant count m = b + c could have produced, `min(1, 2 · 0.5^m)`, reached when all
@@ -582,11 +592,15 @@ Compares two runs **on the same evaluation set**. Parameters live in
   run note says so too.
 - **A compared metric the inputs do not carry is skipped and named**, not silently omitted:
   `statistics_not_available_in_inputs` in the metrics JSON, plus a `NOT COMPARED` line in the
-  run note. On v2 artifacts it is empty (the §2.1 / §2.2 columns are **required** — a
-  per-item file written before them gets the existing "re-run the evaluation to regenerate
-  them" refusal). It is non-empty only for `--v1-per-item` inputs, which predate those
-  columns; computing them there from the stored steps would be a *re-score of v1 output*
-  rather than a comparison of what v1 measured.
+  run note. Two kinds of input reach it, and the note names both: a `--v1-per-item`
+  prior-work file, which predates the §2.1 / §2.2 columns (those columns are **required** of
+  a v2 file — one written before them gets the existing "re-run the evaluation to regenerate
+  them" refusal); and a **v2 file scored before the §2.3 suite existed**, which is missing
+  `over_decomposition` / `under_decomposition` / `decomp_mean` because those three are
+  computed on every run but deliberately *not* required of a compared file (ADR 0029 — nine
+  committed arms and 33 sweep cells predate them, and this is the common case until they are
+  re-scored). Either way, computing the missing columns here from the stored steps would be
+  a *re-score of that input* rather than a comparison of what it measured.
 - **v1 prior-work inputs** (`--v1-per-item`, `--v1-alignment`; ADR
   [0020](adr/0020-prior-work-re-analysis-convention.md)). `--compare` can read v1's
   bare-list per-item files — the format that predates

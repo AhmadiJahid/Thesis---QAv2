@@ -376,8 +376,14 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
     ),
     "mcnemar": (
         "exact two-sided McNemar on the discordant pairs of a binary metric: with b = "
-        "#(a correct, b wrong) and c = #(a wrong, b correct), p = min(1, 2 * "
-        "BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs"
+        "discordant_only_in_a (the indicator is 1 for a and 0 for b) and c = "
+        "discordant_only_in_b, p = min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5)). "
+        "p = 1.0 when there are no discordant pairs. WHAT A 1 MEANS depends on the row's "
+        "direction, so the counts are also emitted under a direction-specific name: on a "
+        "higher_is_better row 1 is a correct item, so b = #(a correct, b wrong) and the "
+        "pair is repeated as correct_only_in_a / correct_only_in_b; on a lower_is_better "
+        "row (the over/under-decomposition rates) 1 is the ERROR occurring, so b = #(a "
+        "errs, b does not) and the pair is repeated as error_only_in_a / error_only_in_b"
     ),
     "mcnemar_significance": "significant = p_value < alpha",
     "mcnemar_min_attainable_p_value": (
@@ -2576,12 +2582,26 @@ def _mcnemar(
         n = len(a_vals)
         difference = (sum(a_vals) - sum(b_vals)) / n
         significant = bool(p_value < alpha)
+        # The two discordant counts are named for what a 1 MEANS on this row, which the
+        # row's direction decides: on a higher-is-better metric a 1 is a correct item, on
+        # the over/under-decomposition rates a 1 is the error occurring. One pair of names
+        # cannot be right for both, so `discordant_only_in_*` (always correct, and what the
+        # run note prints) is emitted on every row and the direction-specific pair beside
+        # it. `correct_only_in_*` therefore still appears on exactly the rows it has always
+        # been true of, and a consumer that reads it off an error row gets a KeyError
+        # rather than a number that means the opposite of its name.
+        named_counts = (
+            {"error_only_in_a": only_a, "error_only_in_b": only_b}
+            if _direction(name) == "lower_is_better"
+            else {"correct_only_in_a": only_a, "correct_only_in_b": only_b}
+        )
         out[name] = {
             "system_a_rate": sum(a_vals) / n,
             "system_b_rate": sum(b_vals) / n,
             "difference": difference,
-            "correct_only_in_a": only_a,
-            "correct_only_in_b": only_b,
+            "discordant_only_in_a": only_a,
+            "discordant_only_in_b": only_b,
+            **named_counts,
             "discordant_pairs": only_a + only_b,
             "p_value": p_value,
             "significant": significant,
@@ -2589,8 +2609,8 @@ def _mcnemar(
             "min_attainable_p_value": min_p,
             "min_attainable_p_reaches_alpha": bool(min_p < alpha),
             "underpowered": bool(underpowered or min_p >= alpha),
-            # Every McNemar metric here is higher-is-better, but the field is written
-            # anyway so a consumer reads direction off the row rather than off a name.
+            # Written on every row so a consumer reads the direction off the row rather
+            # than off a name: two of these metrics are lower-is-better error rates.
             "direction": _direction(name),
             "favours": _favours(name, difference, significant),
         }
@@ -2943,8 +2963,9 @@ def _compare(
     for name, r in mcnemar.items():
         note_lines.append(
             f"| {name} | {better(name)} | {r['system_a_rate']:.4f} | {r['system_b_rate']:.4f} | "
-            f"{r['difference']:+.4f} | p={r['p_value']:.4g} (b={r['correct_only_in_a']}, "
-            f"c={r['correct_only_in_b']}, min attainable p={r['min_attainable_p_value']:.4g}) | "
+            f"{r['difference']:+.4f} | p={r['p_value']:.4g} "
+            f"(b={r['discordant_only_in_a']}, c={r['discordant_only_in_b']}, "
+            f"min attainable p={r['min_attainable_p_value']:.4g}) | "
             f"McNemar | {verdict(r)} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
@@ -2977,6 +2998,13 @@ def _compare(
         "carries `direction` / `favours` per row."
     )
     note_lines.append(
+        "- `b` and `c` in a McNemar cell are the discordant counts (`discordant_only_in_a` "
+        "/ `discordant_only_in_b` in the metrics JSON): the items where the metric's "
+        "indicator is 1 for one system and 0 for the other. What a 1 means follows the "
+        "`better` column — a correct item on a higher-is-better row, the error occurring on "
+        "the two length-error rate rows."
+    )
+    note_lines.append(
         "- The over/under rows are a PAIR and are never summed: ADR 0017 records that "
         "over-decomposition is tolerable and under-decomposition is not, so read the two "
         "verdicts separately rather than as one 'wrong length' result."
@@ -2984,8 +3012,10 @@ def _compare(
     if unavailable:
         note_lines.append(
             f"- NOT COMPARED (the inputs do not carry these per-item columns): "
-            f"{', '.join(unavailable)}. A v1 prior-work per-item file predates them; "
-            f"computing them here would be a re-score of v1 outputs, not a comparison."
+            f"{', '.join(unavailable)}. An input scored before those columns existed does "
+            f"not carry them — either a v1 prior-work per-item file, or a v2 file scored "
+            f"before ADR 0029 added the suite columns. Computing them here from the stored "
+            f"steps would be a re-score of that input, not a comparison of what it measured."
         )
     note_lines.append(
         f"- n = {n}; the reporting floor is min_items_for_significance_claim = {min_items} "

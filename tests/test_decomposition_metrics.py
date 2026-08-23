@@ -921,6 +921,8 @@ class TestMcNemarPower(unittest.TestCase):
             rows_a, rows_b, alpha=0.05, underpowered=False, statistics=("exact_match",)
         )["exact_match"]
 
+        self.assertEqual(out["discordant_only_in_a"], 3)
+        self.assertEqual(out["discordant_only_in_b"], 1)
         self.assertEqual(out["correct_only_in_a"], 3)
         self.assertEqual(out["correct_only_in_b"], 1)
         self.assertEqual(out["discordant_pairs"], 4)
@@ -930,6 +932,51 @@ class TestMcNemarPower(unittest.TestCase):
         self.assertFalse(out["significant"])
         self.assertTrue(out["underpowered"])
         self.assertEqual(out["n"], 5)
+
+    def test_the_discordant_counts_are_named_for_what_a_one_means(self) -> None:
+        """A 1 is a correct item on a score and an ERROR on the two length-error rates.
+
+        `correct_only_in_*` would therefore read backwards on `over_decomposition` /
+        `under_decomposition`, which joined `MCNEMAR_STATISTICS` with the §2.3 suite
+        (PR #48 review, Important 1). The neutral `discordant_only_in_*` pair is on every
+        row; the direction-specific pair appears only where its name is true, so a consumer
+        reading `correct_only_in_a` off an error row raises rather than reading a number
+        that means the opposite of its name.
+        """
+        def row(over: float) -> dict[str, Any]:
+            return {"exact_match": 1.0, "over_decomposition": over}
+
+        rows_a = [row(0.0), row(0.0), row(0.0), row(0.0)]
+        rows_b = [row(1.0), row(1.0), row(0.0), row(0.0)]
+        out = EVAL._mcnemar(
+            rows_a,
+            rows_b,
+            alpha=0.05,
+            underpowered=False,
+            statistics=("exact_match", "over_decomposition"),
+        )
+
+        error = out["over_decomposition"]
+        self.assertEqual(error["direction"], "lower_is_better")
+        # b over-decomposed on 2 items where a did not: b was WRONG on those two.
+        self.assertEqual(error["discordant_only_in_b"], 2)
+        self.assertEqual(error["error_only_in_b"], 2)
+        self.assertEqual(error["discordant_only_in_a"], 0)
+        self.assertEqual(error["error_only_in_a"], 0)
+        self.assertNotIn("correct_only_in_a", error)
+        self.assertNotIn("correct_only_in_b", error)
+
+        score = out["exact_match"]
+        self.assertEqual(score["direction"], "higher_is_better")
+        self.assertEqual(score["correct_only_in_a"], score["discordant_only_in_a"])
+        self.assertEqual(score["correct_only_in_b"], score["discordant_only_in_b"])
+        self.assertNotIn("error_only_in_a", score)
+
+        # The definition string states both readings where the numbers are reported.
+        definition = EVAL.COMPARISON_DEFINITIONS["mcnemar"]
+        self.assertIn("discordant_only_in_a", definition)
+        self.assertIn("error_only_in_a", definition)
+        self.assertIn("correct_only_in_a", definition)
 
     def test_six_discordant_pairs_can_reach_alpha(self) -> None:
         """m = 6 is the smallest discordant count whose min p clears 0.05: 2/2^6 = 0.03125."""
@@ -2607,6 +2654,31 @@ class TestJunkBattery(EvaluatorTestBase):
                     ),
                     real_min - junk_max,
                 )
+
+    def test_a3_ordering_is_gated_by_the_exit_code_like_every_other_verdict(self) -> None:
+        """Exempt from A2's ASSERTION is not exempt from the exit code (PR #48 review, nit 1).
+
+        The battery exits non-zero when any verdict fails, and A3 now carries a `passed` like
+        the rest — so a future arm whose SARI falls below the junk floor is caught rather than
+        reported. Checked by pushing one real arm's `sari_macro` under the junk maximum.
+        """
+        verdicts = BATTERY._verdicts(self.rows, self.real_names)
+        for name, verdict in verdicts.items():
+            with self.subTest(verdict=name):
+                self.assertIn("passed", verdict)
+        self.assertTrue(verdicts["A3_sari_exempt"]["passed"])
+        self.assertEqual(verdicts["A3_sari_exempt"]["failures"], [])
+
+        junk_max = max(self.rows[j]["sari_macro"] for j in BATTERY.JUNK_BASELINES)
+        broken = copy.deepcopy(self.rows)
+        broken[self.real_names[0]]["sari_macro"] = junk_max - 0.01
+        a3 = BATTERY._verdicts(broken, self.real_names)["A3_sari_exempt"]
+        self.assertFalse(a3["ordering_holds"])
+        self.assertFalse(a3["passed"])
+        self.assertTrue(a3["failures"])
+        # The exemption itself is untouched: SARI is still out of A2's terms.
+        self.assertTrue(a3["exempt_from_a2"])
+        self.assertNotIn("sari_macro", BATTERY.A2_TERMS)
 
     def test_a4_the_blend_ranks_every_junk_baseline_below_every_real_arm(self) -> None:
         """The HARD GATE on `decomp_mean`. Failing it disqualifies the blend.
