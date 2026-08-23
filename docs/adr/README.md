@@ -55,6 +55,7 @@ When **not** to write one:
 | [0025](./0025-end-to-end-backend-conventions-the-implementers-design.md) | End-to-End Backend Conventions: The Implementer's Design | Accepted (design agent-authored, pending Jahid) |
 | [0026](./0026-break-faithful-metrics-the-implementers-conventions.md) | Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions | Accepted (implementer design, pending Jahid) |
 | [0027](./0027-a-number-that-justifies-a-constant-is-a-committed-script.md) | A Number That Justifies a Config Constant Is a Committed Script, Not Prose | Accepted (implementer convention, pending Jahid) |
+| [0028](./0028-jahid-2026-08-23-delegations-pool-choice-router-call-composite-authorized.md) | Jahid's 2026-08-23 Delegations: Pool Choice and the Router Call Move to the Lead; the Composite Replacement Is Authorized to Implement | Accepted (Jahid, 2026-08-23) |
 
 ---
 
