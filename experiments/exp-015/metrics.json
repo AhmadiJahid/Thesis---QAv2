@@ -1,0 +1,185 @@
+{
+  "_note": "Metrics snapshot for exp-015 (Issue #46 S2 GPU feasibility cell). Full detail lives on the box: runs/exp-015/eval/eval_metrics.json, runs/exp-015/compare_vs_exp008_full_train/compare_metrics.json. The under/over-decomposition descriptive comparison (not in the paired --compare, since the exp-011 comparator file predates those columns) draws exp008_full_train's side from runs/exp-016/exp008_full_train/eval_metrics.json (exp-016's post-e3725c7 re-score of exp-008's own predictions).",
+  "evaluator_git_commit": "6a15158ecdf0c1bdb2366f73d2791f02036abc80",
+  "seed": 42,
+  "prompting_arm_full_600": {
+    "total_evaluated": 600,
+    "missing_gold_count": 0,
+    "exact_match_rate": 0.045,
+    "step_f1_macro": 0.18937942612942613,
+    "ordered_step_accuracy_macro": 0.16621296296296295,
+    "rouge_l_f1_macro": 0.5446538650842114,
+    "hop_count_exact_match_rate": 0.54,
+    "break_exact_match_rate": 0.035,
+    "sari_macro": 0.5785111845637434,
+    "ged_macro": 0.47139162229586484,
+    "chain_validity_macro": 0.9693636363636364,
+    "under_decomposition_rate": 0.23166666666666666,
+    "over_decomposition_rate": 0.22833333333333333,
+    "composite_score_legacy_not_headlined": 0.31322677045177044
+  },
+  "fine_tuned_comparator_full_600_exp016_rescore": {
+    "under_decomposition_rate": 0.25666666666666665,
+    "over_decomposition_rate": 0.03333333333333333,
+    "note": "descriptive only, not in the paired --compare below (comparator side predates these columns)"
+  },
+  "compare_vs_exp008_full_train": {
+    "system_a": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-015/eval/eval_per_item.json",
+    "system_b": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-011/exp008_full_train/eval_per_item.json",
+    "n": 600,
+    "bootstrap": {
+      "rouge_l_f1": {
+        "a": 0.5446538650842114,
+        "b": 0.6646664024857436,
+        "diff_a_minus_b": -0.12001253740153217,
+        "ci": [
+          -0.13462426203534542,
+          -0.10508033869865889
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      },
+      "step_f1": {
+        "a": 0.18937942612942613,
+        "b": 0.3411322751322751,
+        "diff_a_minus_b": -0.151752849002849,
+        "ci": [
+          -0.17421858974358972,
+          -0.12946004019129018
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      },
+      "ordered_step_accuracy": {
+        "a": 0.16621296296296295,
+        "b": 0.3237222222222222,
+        "diff_a_minus_b": -0.15750925925925924,
+        "ci": [
+          -0.1798611111111111,
+          -0.1348143518518519
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      },
+      "sari": {
+        "a": 0.5785111845637435,
+        "b": 0.6822884470647773,
+        "diff_a_minus_b": -0.1037772625010338,
+        "ci": [
+          -0.11862496253574714,
+          -0.08875277577912337
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      },
+      "ged": {
+        "a": 0.47139162229586484,
+        "b": 0.30939302184449674,
+        "diff_a_minus_b": 0.1619986004513681,
+        "ci": [
+          0.14211468735212773,
+          0.1812348817882067
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "lower_is_better",
+        "n": 600
+      },
+      "chain_validity": {
+        "a": 0.9693636363636364,
+        "b": 0.9941666666666666,
+        "diff_a_minus_b": -0.024803030303030216,
+        "ci": [
+          -0.03822045454545465,
+          -0.01172222222222219
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      },
+      "composite_score": {
+        "a": 0.31322677045177044,
+        "b": 0.5235695767195767,
+        "diff_a_minus_b": -0.21034280626780627,
+        "ci": [
+          -0.31702992597680096,
+          -0.16010895706145717
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600
+      }
+    },
+    "mcnemar": {
+      "exact_match": {
+        "system_a_rate": 0.045,
+        "system_b_rate": 0.10833333333333334,
+        "difference": -0.06333333333333334,
+        "discordant_only_in_a": 7,
+        "discordant_only_in_b": 45,
+        "correct_only_in_a": 7,
+        "correct_only_in_b": 45,
+        "discordant_pairs": 52,
+        "p_value": 6.973810151578164e-08,
+        "significant": true,
+        "n": 600,
+        "min_attainable_p_value": 4.440892098500626e-16,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "higher_is_better",
+        "favours": "system_b"
+      },
+      "hop_count_exact_match": {
+        "system_a_rate": 0.54,
+        "system_b_rate": 0.71,
+        "difference": -0.17,
+        "discordant_only_in_a": 66,
+        "discordant_only_in_b": 168,
+        "correct_only_in_a": 66,
+        "correct_only_in_b": 168,
+        "discordant_pairs": 234,
+        "p_value": 1.9437888299962026e-11,
+        "significant": true,
+        "n": 600,
+        "min_attainable_p_value": 7.24454326306137e-71,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "higher_is_better",
+        "favours": "system_b"
+      },
+      "break_exact_match": {
+        "system_a_rate": 0.035,
+        "system_b_rate": 0.10166666666666667,
+        "difference": -0.06666666666666667,
+        "discordant_only_in_a": 6,
+        "discordant_only_in_b": 46,
+        "correct_only_in_a": 6,
+        "correct_only_in_b": 46,
+        "discordant_pairs": 52,
+        "p_value": 1.0325821975243343e-08,
+        "significant": true,
+        "n": 600,
+        "min_attainable_p_value": 4.440892098500626e-16,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "higher_is_better",
+        "favours": "system_b"
+      }
+    },
+    "statistics_not_available_in_inputs": [
+      "decomp_mean",
+      "over_decomposition",
+      "under_decomposition"
+    ]
+  }
+}

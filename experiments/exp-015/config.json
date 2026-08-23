@@ -1,0 +1,16 @@
+{
+  "_note": "Config snapshot for exp-015 (Issue #46 S2 GPU feasibility cell / ADR 0023 item 2.3): best-pool (size2000_imbalanced, ADR 0028 item 1) reranked few-shot prompting (unguided) vs the exp-008 full_train fine-tune, ADR 0007 pinned 600. configs/decomposer_musique.json and configs/musique_eval.json unedited; only --retrieval-input changed vs exp-009's shape.",
+  "step_1_decompose": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --retrieval-input runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --output-root runs/exp-015/decomposer",
+  "step_2_evaluate": ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions <results.json> --run-dir runs/exp-015/eval --out-prefix eval --seed 42",
+  "step_3_compare": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-015/eval/eval_per_item.json runs/exp-011/exp008_full_train/eval_per_item.json --run-dir runs/exp-015/compare_vs_exp008_full_train --out-prefix compare --seed 42",
+  "retrieval_artifact": "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl (sha256 3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0, 600 rows, 200/200/200 per hop, over the size2000_imbalanced pool, ADR 0028 item 1, 0/2000 overlap with the pinned 600)",
+  "seed": 42,
+  "model": "mistralai/Mistral-7B-Instruct-v0.3 (mistral_7b_instruct, quantization: none) vs the already-committed fine-tuned arm (LoRA full_train, exp-008, not re-run)",
+  "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop)",
+  "git": {
+    "actual_run_commit": "6a15158ecdf0c1bdb2366f73d2791f02036abc80",
+    "pre_run_expected_commit": "c69ef5f",
+    "discrepancy_reason": "PR #48 (e3725c7, Refs #40, decomposition_report_card six-term suite) landed on main while this run queued behind exp-013's GPU-lock hold. git diff --stat c69ef5f 6a15158 -- scripts/ configs/ components/ touches the same 4 shared-pipeline files as exp-013, confirmed additive-only by exp-016's independent coverage re-score (Refs #40).",
+    "dirty": false
+  }
+}

@@ -1,0 +1,408 @@
+{
+  "_note": "Metrics snapshot for exp-013 (Issue #41 instrument 1 / issue #46 S3). Full detail lives on the box: runs/exp-013/eval/eval_metrics.json, runs/exp-013/compare_vs_unguided_4hop/compare_metrics.json, runs/exp-013/compare_vs_exp008_hop4/compare_metrics.json (the last is this update's Task 1 addition).",
+  "evaluator_git_commit": "6a15158ecdf0c1bdb2366f73d2791f02036abc80",
+  "seed": 42,
+  "full_600": {
+    "total_evaluated": 600,
+    "missing_gold_count": 0,
+    "exact_match_rate": 0.095,
+    "step_f1_macro": 0.329218253968254,
+    "ordered_step_accuracy_macro": 0.30775,
+    "rouge_l_f1_macro": 0.6472685119749962,
+    "hop_count_exact_match_rate": 0.6216666666666667,
+    "break_exact_match_rate": 0.085,
+    "sari_macro": 0.6639854707408496,
+    "ged_macro": 0.3450258761707364,
+    "chain_validity_macro": 0.9941666666666666,
+    "under_decomposition_rate": 0.3616666666666667,
+    "over_decomposition_rate": 0.016666666666666666,
+    "decomp_mean_macro": 0.6039585855806893,
+    "composite_score_legacy_not_headlined": 0.5109567460317461
+  },
+  "per_gold_hop_metrics": {
+    "2": {
+      "hop_count_exact_match_rate": 0.96,
+      "under_decomposition_rate": 0.0,
+      "over_decomposition_rate": 0.04,
+      "break_exact_match_rate": 0.2,
+      "ged_macro": 0.20650098328113348,
+      "chain_validity_macro": 0.995,
+      "num_rows": 200
+    },
+    "3": {
+      "hop_count_exact_match_rate": 0.76,
+      "under_decomposition_rate": 0.24,
+      "over_decomposition_rate": 0.0,
+      "break_exact_match_rate": 0.055,
+      "ged_macro": 0.31363783719843413,
+      "chain_validity_macro": 0.9875,
+      "num_rows": 200
+    },
+    "4": {
+      "hop_count_exact_match_rate": 0.145,
+      "under_decomposition_rate": 0.845,
+      "over_decomposition_rate": 0.01,
+      "break_exact_match_rate": 0.0,
+      "ged_macro": 0.5149388080326416,
+      "chain_validity_macro": 1.0,
+      "num_rows": 200
+    }
+  },
+  "comparison_A_vs_unguided_4hop_pre_existing": {
+    "system_a": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-013/eval/eval_per_item_hop4_only.json",
+    "system_b": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-013/baseline_unguided_4hop_per_item.json",
+    "n": 200,
+    "bootstrap": {
+      "rouge_l_f1": {
+        "a": 0.55511676543046,
+        "b": 0.4757695486840049,
+        "diff_a_minus_b": 0.07934721674645506,
+        "ci": [
+          0.06001411229449625,
+          0.0985315471756492
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "step_f1": {
+        "a": 0.19815476190476194,
+        "b": 0.1171941946941947,
+        "diff_a_minus_b": 0.08096056721056724,
+        "ci": [
+          0.05378521825396824,
+          0.10830167818292817
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "ordered_step_accuracy": {
+        "a": 0.15575,
+        "b": 0.08457142857142858,
+        "diff_a_minus_b": 0.07117857142857142,
+        "ci": [
+          0.04626160714285714,
+          0.0961440476190476
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "sari": {
+        "a": 0.6050581978045395,
+        "b": 0.5554404145192824,
+        "diff_a_minus_b": 0.04961778328525712,
+        "ci": [
+          0.03195007983845086,
+          0.06682848032686653
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "ged": {
+        "a": 0.5149388080326416,
+        "b": 0.5730838316153104,
+        "diff_a_minus_b": -0.05814502358266882,
+        "ci": [
+          -0.08335268233606638,
+          -0.03354536591123154
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "lower_is_better",
+        "n": 200
+      },
+      "chain_validity": {
+        "a": 1.0,
+        "b": 0.9567976190476191,
+        "diff_a_minus_b": 0.04320238095238094,
+        "ci": [
+          0.02211785714285712,
+          0.06743005952380936
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "composite_score": {
+        "a": 0.39615357142857144,
+        "b": 0.13324910644910648,
+        "diff_a_minus_b": 0.26290446497946496,
+        "ci": [
+          0.04706871101121109,
+          0.2821604563492064
+        ],
+        "significant": true,
+        "favours": "system_a",
+        "direction": "higher_is_better",
+        "n": 200
+      }
+    },
+    "mcnemar": {
+      "exact_match": {
+        "system_a_rate": 0.0,
+        "system_b_rate": 0.025,
+        "difference": -0.025,
+        "discordant_only_in_a": 0,
+        "discordant_only_in_b": 5,
+        "correct_only_in_a": 0,
+        "correct_only_in_b": 5,
+        "discordant_pairs": 5,
+        "p_value": 0.0625,
+        "significant": false,
+        "n": 200,
+        "min_attainable_p_value": 0.0625,
+        "min_attainable_p_reaches_alpha": false,
+        "underpowered": true,
+        "direction": "higher_is_better",
+        "favours": null
+      },
+      "hop_count_exact_match": {
+        "system_a_rate": 0.145,
+        "system_b_rate": 0.3,
+        "difference": -0.155,
+        "discordant_only_in_a": 13,
+        "discordant_only_in_b": 44,
+        "correct_only_in_a": 13,
+        "correct_only_in_b": 44,
+        "discordant_pairs": 57,
+        "p_value": 4.710437609395379e-05,
+        "significant": true,
+        "n": 200,
+        "min_attainable_p_value": 1.3877787807814457e-17,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "higher_is_better",
+        "favours": "system_b"
+      },
+      "break_exact_match": {
+        "system_a_rate": 0.0,
+        "system_b_rate": 0.025,
+        "difference": -0.025,
+        "discordant_only_in_a": 0,
+        "discordant_only_in_b": 5,
+        "correct_only_in_a": 0,
+        "correct_only_in_b": 5,
+        "discordant_pairs": 5,
+        "p_value": 0.0625,
+        "significant": false,
+        "n": 200,
+        "min_attainable_p_value": 0.0625,
+        "min_attainable_p_reaches_alpha": false,
+        "underpowered": true,
+        "direction": "higher_is_better",
+        "favours": null
+      }
+    }
+  },
+  "comparison_B_vs_exp008_hop4_task1_addition": {
+    "system_a": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-013/eval/eval_per_item_hop4_only.json",
+    "system_b": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-013/baseline_exp008_4hop_per_item.json",
+    "n": 200,
+    "bootstrap": {
+      "rouge_l_f1": {
+        "a": 0.55511676543046,
+        "b": 0.6033378995381377,
+        "diff_a_minus_b": -0.0482211341076777,
+        "ci": [
+          -0.06750686161771999,
+          -0.028821202285933566
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "step_f1": {
+        "a": 0.19815476190476194,
+        "b": 0.24944444444444444,
+        "diff_a_minus_b": -0.051289682539682496,
+        "ci": [
+          -0.07821428571428568,
+          -0.023729166666666638
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "ordered_step_accuracy": {
+        "a": 0.15575,
+        "b": 0.22699999999999998,
+        "diff_a_minus_b": -0.07124999999999998,
+        "ci": [
+          -0.09774999999999998,
+          -0.043999999999999984
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "sari": {
+        "a": 0.6050581978045395,
+        "b": 0.6438765528761617,
+        "diff_a_minus_b": -0.038818355071622235,
+        "ci": [
+          -0.05506335273753993,
+          -0.02231838198723013
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "ged": {
+        "a": 0.5149388080326416,
+        "b": 0.39948102913902594,
+        "diff_a_minus_b": 0.11545777889361564,
+        "ci": [
+          0.08834473617456652,
+          0.14347973372907027
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "lower_is_better",
+        "n": 200
+      },
+      "chain_validity": {
+        "a": 1.0,
+        "b": 0.9941666666666665,
+        "diff_a_minus_b": 0.005833333333333468,
+        "ci": [
+          0.0,
+          0.01333333333333342
+        ],
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "decomp_mean": {
+        "a": 0.44702387795437964,
+        "b": 0.5337124380807605,
+        "diff_a_minus_b": -0.08668856012638088,
+        "ci": [
+          -0.10860638937250507,
+          -0.06526930557353315
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      },
+      "composite_score": {
+        "a": 0.39615357142857144,
+        "b": 0.4472111111111111,
+        "diff_a_minus_b": -0.05105753968253968,
+        "ci": [
+          -0.07113285714285715,
+          -0.030521398809523773
+        ],
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 200
+      }
+    },
+    "mcnemar": {
+      "exact_match": {
+        "system_a_rate": 0.0,
+        "system_b_rate": 0.02,
+        "difference": -0.02,
+        "discordant_only_in_a": 0,
+        "discordant_only_in_b": 4,
+        "correct_only_in_a": 0,
+        "correct_only_in_b": 4,
+        "discordant_pairs": 4,
+        "p_value": 0.125,
+        "significant": false,
+        "n": 200,
+        "min_attainable_p_value": 0.125,
+        "min_attainable_p_reaches_alpha": false,
+        "underpowered": true,
+        "direction": "higher_is_better",
+        "favours": null
+      },
+      "hop_count_exact_match": {
+        "system_a_rate": 0.145,
+        "system_b_rate": 0.41,
+        "difference": -0.265,
+        "discordant_only_in_a": 12,
+        "discordant_only_in_b": 65,
+        "correct_only_in_a": 12,
+        "correct_only_in_b": 65,
+        "discordant_pairs": 77,
+        "p_value": 5.917714592428801e-10,
+        "significant": true,
+        "n": 200,
+        "min_attainable_p_value": 1.3234889800848443e-23,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "higher_is_better",
+        "favours": "system_b"
+      },
+      "break_exact_match": {
+        "system_a_rate": 0.0,
+        "system_b_rate": 0.02,
+        "difference": -0.02,
+        "discordant_only_in_a": 0,
+        "discordant_only_in_b": 4,
+        "correct_only_in_a": 0,
+        "correct_only_in_b": 4,
+        "discordant_pairs": 4,
+        "p_value": 0.125,
+        "significant": false,
+        "n": 200,
+        "min_attainable_p_value": 0.125,
+        "min_attainable_p_reaches_alpha": false,
+        "underpowered": true,
+        "direction": "higher_is_better",
+        "favours": null
+      },
+      "over_decomposition": {
+        "system_a_rate": 0.01,
+        "system_b_rate": 0.04,
+        "difference": -0.03,
+        "discordant_only_in_a": 2,
+        "discordant_only_in_b": 8,
+        "error_only_in_a": 2,
+        "error_only_in_b": 8,
+        "discordant_pairs": 10,
+        "p_value": 0.109375,
+        "significant": false,
+        "n": 200,
+        "min_attainable_p_value": 0.001953125,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "lower_is_better",
+        "favours": null
+      },
+      "under_decomposition": {
+        "system_a_rate": 0.845,
+        "system_b_rate": 0.55,
+        "difference": 0.295,
+        "discordant_only_in_a": 72,
+        "discordant_only_in_b": 13,
+        "error_only_in_a": 72,
+        "error_only_in_b": 13,
+        "discordant_pairs": 85,
+        "p_value": 4.628573788074828e-11,
+        "significant": true,
+        "n": 200,
+        "min_attainable_p_value": 5.169878828456423e-26,
+        "min_attainable_p_reaches_alpha": true,
+        "underpowered": false,
+        "direction": "lower_is_better",
+        "favours": "system_b"
+      }
+    }
+  }
+}
