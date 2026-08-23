@@ -136,9 +136,13 @@ A1–A6 are asserted over the fixture gold in
 
 ## The measured junk battery
 
-Printed by `scripts/decomposition_junk_battery.py` at commit `222862f` (working tree carrying
-this change), seed 42, on the **ADR 0007 pinned 600** — all fifteen rows on the same 600
-items, with each arm's per-item file checked to cover exactly that set. The nine real arms are
+Printed by `scripts/decomposition_junk_battery.py` from the code of commit **`87e3765`**
+(clean tree; the run stamped `f3b4d87`, a later commit on this branch whose only difference
+from `87e3765` is this ADR file — a record citing the SHA it was measured at can never cite
+its own commit, so the code SHA is what is quoted), seed 42,
+on the **ADR 0007 pinned 600** (the gold file holds 2411 rows; 0 pinned questions had no gold
+row) — all fifteen rows on the same 600 items, with each arm's per-item file checked to cover
+exactly that set. The nine real arms are
 the ones exp-011 re-scored under the Break-faithful columns; nothing was re-scored here, and
 `decomp_mean` and the two direction columns are derived from the columns already in those
 files. Re-run the script rather than quoting this table from memory.
