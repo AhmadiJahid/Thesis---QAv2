@@ -7,6 +7,7 @@
   "out_prefix": "eval",
   "limit": null,
 
+  "_composite_score_status_note": "LEGACY. composite_score and the [#k]-only _REF_RX behind its reference_validity_micro term are FROZEN, byte-identical to the form every committed number was produced under (nine arms, exp-010's 33 sweep cells, both v1 re-analysis notes). It is NOT the reported primary - the six-term decomposition_report_card is - and it is deliberately NOT repaired: correcting the regex would move every committed value under an unchanged name while leaving the actual defect in place, because even a corrected reference-validity term is a micro-pooled rate with a MODEL-DEPENDENT denominator inside an aggregate-of-aggregates (issue #40, docs/analysis/2026-08-23-decomposition-quality-metric-specification.md section 5 option 1, ADR 0029). Do not change these weights or that regex to 'fix' the metric; the replacement is the suite. Whether the composite is retired outright is issue #6 item 5, Jahid's with his supervisor.",
   "composite_score_weights": {
     "step_f1_macro": 0.4,
     "ordered_step_accuracy_macro": 0.3,
@@ -20,6 +21,21 @@
     "ged": {
       "max_nodes_for_optimizer": 16,
       "per_item_time_budget_seconds": 20.0
+    }
+  },
+
+  "decomposition_suite": {
+    "_note": "The reported primary is an UNBLENDED six-term suite (decomposition_report_card): Break EM, SARI, GED (lower is better), chain_validity, hop-count EM, and the over/under-decomposition pair kept split and never summed. All six were already computed before this block existed; the suite is registration, direction metadata, guards and reporting, not new metric mathematics, so no committed number moves. The suite's MEMBERSHIP is deliberately not a knob: it is a metric definition and lives in the script (DECOMPOSITION_SUITE_TERMS), next to the code that computes each term. What lives here is the one thing that is a parameter - the contingency blend. See docs/METRICS.md section 2.3 and ADR 0029.",
+    "decomp_mean": {
+      "_note": "The BLENDED CONTINGENCY of the specification's section 2.3 (P3), reported beside the suite and never as the suite. It exists for the case where one blended number is required; the recommendation remains the suite plus ged_macro. Equal weights by construction and there is NO weighted variant: GLUE's unweighted average is the only weighting form the survey found a precedent for, and any unequal weighting would need a Dynascore-style unit conversion that nothing in this repo estimates. ged_clamp is a JUDGMENT CALL with no source: GED is a distance, unbounded above (measured above 1.0 for junk predictions), so an additive blend has to clamp it before flipping direction - the term is 1 - min(ged_clamp, ged). Alternatives considered and not taken: 1/(1+ged), exp(-ged), or leaving GED out of the blend (ADR 0029). The blend SHIPS only because scripts/decomposition_junk_battery.py measured every junk baseline below every real arm on it; an additive blend containing SARI hands junk a nonzero floor, which is the same failure family as issue #40, and a junk baseline outranking a real arm disqualifies the blend rather than prompting a weight tweak. Changing components or ged_clamp means re-running that battery.",
+      "components": [
+        "break_exact_match",
+        "sari",
+        "ged",
+        "chain_validity",
+        "hop_count_exact_match"
+      ],
+      "ged_clamp": 1.0
     }
   },
 

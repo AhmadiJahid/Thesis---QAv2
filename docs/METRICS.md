@@ -8,7 +8,8 @@ a bug.
 
 Every metric here is **string-level**: no model is in the loop (`METRIC_DEFINITIONS`
 `not_a_semantic_metric`). Two decompositions that mean the same thing but word a step
-differently score as a mismatch. That still holds for the metrics added in §2.1 and §2.2:
+differently score as a mismatch. That still holds for the metrics added in §2.1, §2.2 and
+§2.3:
 the graph edit distance is computed by `networkx`, a graph library, and every candidate that
 would have put a *model* in the scoring loop is left out — whether the supervisor's
 "no closed commercial model may judge decomposition quality" extends to open-weight scorers
@@ -25,6 +26,13 @@ overall and per gold hop depth, in the same style as `per_gold_hop_metrics` belo
 are string-level too — no model scores anything on either side. The two halves share one
 reading of "a step" (`src/step_lines.py`), pinned against each other by
 `tests/test_answer_musique.py::TestStepReadingMatchesTheDecompositionEvaluator`.
+
+**What leads the report.** The reported primary is the six-term suite of §2.3
+(`decomposition_report_card`) — six unblended numbers, always printed together. The weighted
+`composite_score` of §4 is **legacy**: frozen byte-identical so committed numbers stay
+quotable, and not repaired. Whether any of this becomes the *thesis*-primary metric is
+[issue #6](https://github.com/AhmadiJahid/Thesis---QAv2/issues/6) item 5 — Jahid's decision
+with his supervisor. This file describes what is measured and reported, not what is adopted.
 
 ## 1. How rows are built
 
@@ -74,9 +82,10 @@ Unless stated otherwise, an aggregate is the **macro average**: the metric is co
 item and the per-item values are averaged over evaluated rows (`_aggregate`). Four keys are
 not macro averages: `reference_validity_micro` pools counts across all rows;
 `predicted_hop_distribution` / `gold_hop_distribution` are item counts per hop count;
-`ged_fallback_counts` is an item count per fallback reason (§2.2); and
+`ged_fallback_counts` is an item count per fallback reason (§2.2);
+`chain_validity_gold_unchained_items` is an item count (§2.3); and
 `composite_score` is computed from the aggregate values, not averaged from per-item ones
-(§4).
+(§4). **Every term of the reported suite (§2.3) is a macro average**, and the run asserts it.
 
 | metrics JSON key | definition (function) |
 |---|---|
@@ -94,7 +103,8 @@ not macro averages: `reference_validity_micro` pools counts across all rows;
 | `step_count_exact_rate` | fraction of rows with len(pred) == len(gold), i.e. exactly 1 − `over_decomposition_rate` − `under_decomposition_rate`. **Not** `hop_count_exact_match_rate`: this one is against len(gold steps), that one against the gold `hop_count` field (§1). The two are equal whenever the gold passes the load-time assertion, but they are different definitions and only one of them belongs next to the over/under rates |
 | `hop_count_exact_match_rate`, `hop_count_abs_error_mae` | predicted hop count = number of predicted steps; gold hop count = the gold row's `hop_count` when it is a positive int, else the gold step count |
 | `predicted_hop_distribution`, `gold_hop_distribution` | counts of items per hop count |
-| `chain_validity_macro` | see §2.1 |
+| `chain_validity_macro`, `chain_validity_gold_unchained_items` | see §2.1, §2.3 |
+| `over_decomposition` / `under_decomposition` (per item), `decomp_mean` (per item), `decomp_mean_macro`, `decomposition_report_card`, `decomp_mean_policy` | see §2.3 |
 | `break_exact_match_rate`, `sari_macro`, `ged_macro`, `ged_fallback_counts` | see §2.2 |
 | `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics and everything in §2.1 / §2.2 |
 
@@ -251,6 +261,115 @@ rather than "fixed" — fixing it would be inventing a metric. `break_exact_matc
 reversal in both cases, which is the survey's §4 item 2 in one sentence: an order-sensitive
 metric has to stay in the reported set.
 
+### 2.3 The reported primary — `decomposition_report_card`, a suite and not a composite
+
+Read off `DECOMPOSITION_SUITE_TERMS` and `_report_card`. It is **registration and reporting,
+not new metric mathematics**: every term below was already computed by §2, so nothing moved
+when the card was added. The specification is
+[`docs/analysis/2026-08-23-decomposition-quality-metric-specification.md`](analysis/2026-08-23-decomposition-quality-metric-specification.md)
+§2.1 and the implementer's record is ADR
+[0029](adr/0029-the-decomposition-quality-suite-the-implementers-registration.md).
+
+The finding it rests on is that **the decomposition literature does not composite** — Break
+reports four metrics side by side, EntailmentBank four dimensions, Spider three, and where a
+single number is used it is one member of the family made stricter, never a blend over it.
+
+| # | term (metrics JSON key) | per-item column | better | range | what it prices | provenance |
+|---|---|---|---|---|---|---|
+| 1 | `break_exact_match_rate` | `break_exact_match` | ⇑ | {0,1} | whole-plan verbatim identity of the `@@SEP@@`-joined string | literature (§2.2) |
+| 2 | `sari_macro` | `sari` | ⇑ | [0,1] | n-gram edit quality vs the question | literature (§2.2) |
+| 3 | `ged_macro` | `ged` | **⇓** | [0,∞) | wording, chaining and step count in one distance | literature (§2.2) |
+| 4 | `chain_validity_macro` | `chain_validity` | ⇑ | [0,1] | did the plan chain where the gold requires it | house repair (§2.1) |
+| 5 | `hop_count_exact_match_rate` | `hop_count_exact_match` | ⇑ | {0,1} | granularity: the right number of steps | house |
+| 6a | `under_decomposition_rate` | `under_decomposition` | **⇓** | {0,1} | a length error in the direction ADR 0017 calls **not** tolerable | house |
+| 6b | `over_decomposition_rate` | `over_decomposition` | **⇓** | {0,1} | a length error in the direction ADR 0017 calls tolerable | house |
+
+Rules that are part of the metric, not decoration:
+
+1. **All six are reported together, with directions.** A note or table quoting fewer than six
+   is not reporting this metric. The run note prints the whole card, because the note is what
+   gets quoted into `experiments/log.md`.
+2. **Terms 6a and 6b are a pair and are never summed.** ADR 0017 records the supervisor's
+   judgment that over-decomposition is tolerable and under-decomposition is not; summing them
+   erases exactly that. (`step_count_exact_rate` is `1 −` the two of them and is separate.)
+   Both are *lower-is-better* — the asymmetry is in how heavily a reader weighs them, not in
+   their sign, and registering `over_decomposition` as higher-is-better would make `favours`
+   name the wrong system in §5.
+3. **Every term has a per-item value**, so every one takes the full §5 battery — bootstrap CI,
+   paired t-test, and McNemar for the binary terms 1, 5, 6a and 6b. The 1-of-3-tests weakness
+   is now the legacy composite's alone.
+4. **No term may be a ratio pooled across items.** Every term is a macro mean over a
+   denominator fixed by the *evaluation set*, never by what the model emitted — the structural
+   fix for the issue #40 defect class. `_assert_suite_terms_are_macro_means` **checks** this at
+   the point of reporting and aborts the run if a term ever drifts from the mean of its column;
+   `reference_validity_micro` and `composite_score` are named in the card as excluded, with the
+   reason.
+5. **The one conditional-credit branch left is counted.** `chain_validity_gold_unchained_items`
+   is the number of items whose *gold* emits no `#k` and which therefore score 1.0 on term 4
+   for free. It is 0 on the pinned 600 and on the fixture, and the counter exists so a future
+   gold cannot reintroduce free credit silently.
+
+**Where one number is structurally required** (ranking a 33-cell sweep, model selection, an
+abstract sentence), it is **`ged_macro`** — a member of the suite, not a function over it, the
+shape Break/QDMR's NormEM and EntailmentBank's *Overall AllCorrect* both have. Three caveats
+travel with it in the card every time it is printed: (a) **lower is better**; (b) it is
+order-light and on a 2-step plan order-**blind** (a reversed gold measured GED 0.2875 on the
+pinned 600, better than every real arm), which is why terms 1, 5 and 6 must stay beside it;
+(c) absolute values are **not** comparable to published Break GED (no spaCy lemmatizer, and a
+MuSiQue rather than a QDMR target).
+
+**`decomp_mean` — the blended contingency, reported beside the suite and never as it.** Per
+item, the unweighted mean of five [0,1] higher-is-better terms: `break_exact_match`, `sari`,
+`1 − min(ged_clamp, ged)`, `chain_validity`, `hop_count_exact_match`. Equal weights, and there
+is **no weighted variant** — an unequal weighting would need a unit conversion nothing here
+estimates. The component list and the clamp live in `configs/musique_eval.json` under
+`decomposition_suite.decomp_mean`, so a run's snapshot records the blend it was scored under.
+The GED clamp is a **judgment call with no source**: GED is unbounded above, so an additive
+blend has to clamp it before flipping direction. It has a per-item value, so unlike the legacy
+composite it takes all three tests. It exists only for the case where a single blended number
+is required; the recommendation remains the suite plus `ged_macro`, and adopting any of it as
+the *thesis*-primary metric is issue #6 item 5 — Jahid's with his supervisor.
+
+### 2.4 The junk battery — `scripts/decomposition_junk_battery.py`
+
+Break prints a trivial `Copy` baseline (question echo) in its own results table, scored beside
+the real systems. This is that practice as a pass/fail gate, and it is what stops a repeat of
+issue #40, where junk outranked the deployable baseline under the legacy composite and it took
+two analysis notes to notice.
+
+Six systems built out of the gold column, scored with the evaluator's own `score_item` (there
+is no second copy of any metric): **J1** empty, **J2** question echo (= Break's `Copy`),
+**J3** one fixed step, **J4** three fixed steps, **J5** gold reversed, **J6** gold itself. The
+fixed step texts are in `configs/decomposition_junk_battery.json` and are deliberately
+reference-free. The junk rows are scored on the **ADR 0007 pinned set**, and each committed
+arm's per-item file is *checked* to cover exactly that set before it is placed beside them —
+comparing across two evaluation sets is not a comparison.
+
+The acceptance criteria are tests in
+[`tests/test_decomposition_metrics.py`](../tests/test_decomposition_metrics.py)
+(`TestJunkBattery`), asserted over the fixture gold so they run in the smoke test:
+
+- **A1** J6 scores the extremum on every term.
+- **A2** every real arm beats J1–J4 on `ged_macro`, `chain_validity_macro` and
+  `break_exact_match_rate`.
+- **A3** SARI is **exempt from A2's assertion** by design and its margin is recorded instead:
+  its floor on this data is high (Break's own published `Copy` row scores SARI 0.431), so it
+  separates junk by a small margin from a high floor. The *ordering* — every real arm above
+  every junk baseline on `sari_macro` — is still gated: it carries a `passed` like every other
+  verdict and drives the battery's exit code, so an arm that falls below the junk floor is
+  caught rather than reported.
+- **A4** the **hard gate** on `decomp_mean`: every junk baseline must rank below every real
+  arm. Failing it disqualifies the blend — it is not a prompt to re-tune weights, because the
+  legacy composite's weights were never the disease.
+- **A5** order sensitivity survives, carried by `break_exact_match` and
+  `ordered_step_accuracy`; **GED is not allowed to carry it**.
+- **A6** no pre-existing metric moved — the legacy composite and its inputs keep their golden
+  values, and `_REF_RX` keeps its bracketed pattern.
+
+It is a **tool, not an experiment** (ADR 0027 point 5): it scores no system of the thesis,
+takes no `experiments/log.md` entry, needs no GPU and takes no `runs/run.lock`. Re-run it
+rather than quoting a remembered number; the measured table is in ADR 0029 with the SHA.
+
 ## 3. ROUGE-L — the answer to the supervisor's question
 
 Read off `_rouge_l`, `_join_steps` and `_tokenize`, verbatim behaviour:
@@ -271,7 +390,22 @@ Read off `_rouge_l`, `_join_steps` and `_tokenize`, verbatim behaviour:
   this is the repo's own implementation, so it is not numerically comparable to a
   `rouge-score` / `pyrouge` number without checking their tokenizers.
 
-## 4. Composite score
+## 4. Composite score — **LEGACY, frozen**
+
+> **Status: `legacy`.** It is **not** the reported primary — §2.3 is — and it is deliberately
+> **not repaired**. It is computed, reported and stamped `composite_score_status: "legacy"` in
+> every metrics JSON so that nine committed arms, exp-010's 33 sweep cells and both v1
+> re-analysis notes stay valid and quotable. **Frozen for reproducibility, not because it is
+> correct.** Whether it is retired outright is issue #6 item 5, Jahid's with his supervisor.
+>
+> Why frozen rather than fixed (specification §5 option 1, ADR 0029): its 0.2-weight
+> `reference_validity_micro` term reads references with `_REF_RX = r"\[#(\d+)\]"`, and
+> MuSiQue's gold writes **bare** `#k` — 1200 bare references and 0 bracketed across the pinned
+> 600 — so the term has never measured reference validity on this data. Correcting the regex
+> would move every committed number under an unchanged name **and still leave a micro-pooled
+> rate with a model-dependent denominator inside an aggregate-of-aggregates**: the defect
+> *class*, not just this instance. The replacement is `chain_validity` (§2.1), which is term 4
+> of the suite. **Do not "fix" `_REF_RX`.**
 
 `_composite_score` combines **aggregate** values (not per-item ones):
 
@@ -293,12 +427,12 @@ snapshot and metrics JSON):
 | `composite_score_weights.step_count_error` | 0.1 |
 | `composite_step_count_error_scale` | 3.0 |
 
-**The composite is unchanged by the metrics of §2.1 and §2.2.** None of `chain_validity`,
-`break_exact_match`, `sari` or `ged` enters this formula, and neither
-`reference_validity_micro` nor its `[#k]`-only regex was touched, so every committed
-`composite_score` still has the value it was published with. Whether the composite keeps
-leading — or is repaired, or retired — is issue #6 item 5, Jahid's with his supervisor; the
-code measures, it does not adopt.
+**The composite is unchanged by the metrics of §2.1, §2.2 and §2.3.** None of
+`chain_validity`, `break_exact_match`, `sari`, `ged`, the two direction columns or
+`decomp_mean` enters this formula, and neither `reference_validity_micro` nor its `[#k]`-only
+regex was touched, so every committed `composite_score` still has the value it was published
+with. What §2.3 changed is which number *leads the report*, not what any number is; the code
+measures and reports, it does not adopt.
 
 The weights are a **choice, not a result**: they were hard-coded literals in v1 and were
 promoted to config in v2 so a run records them. Jahid's supervisor flagged this score as
@@ -372,8 +506,8 @@ Compares two runs **on the same evaluation set**. Parameters live in
   `config_weights_match_per_item_files`, and the run note prints a WARNING line when they
   disagree.
 - **Paired bootstrap CIs** (`_paired_bootstrap`, `_statistics_for`) for `rouge_l_f1`,
-  `step_f1`, `ordered_step_accuracy`, `sari`, `ged`, `chain_validity` and `composite_score`
-  (`BOOTSTRAP_STATISTICS`). Each of the 10000 resamples
+  `step_f1`, `ordered_step_accuracy`, `sari`, `ged`, `chain_validity`, `decomp_mean` and
+  `composite_score` (`BOOTSTRAP_STATISTICS`). Each of the 10000 resamples
   draws n item indices with replacement (`numpy.random.default_rng(seed)`) and applies the
   **same** indices to both systems; every statistic is recomputed from the resampled items.
   The interval is the [alpha/2, 1−alpha/2] percentile of the difference **system_a minus
@@ -390,21 +524,31 @@ Compares two runs **on the same evaluation set**. Parameters live in
   single-block draw (pinned by `TestBootstrapChunking`, which also asserts equality with
   `chunk_size == iterations`, i.e. the un-chunked path).
 - **Direction, carried in the data** (`LOWER_IS_BETTER_STATISTICS`, `_direction`,
-  `_favours`). `ged` is a **distance** — lower is better — and it is the only one in the
-  report, so a bare `-0.16` on that row means the *opposite* of what it means on every other
-  row. Every bootstrap, McNemar and t-test row therefore carries `direction`
+  `_favours`). Three compared metrics are lower-is-better — `ged`, a graph edit **distance**,
+  and the two length-error rates `under_decomposition` / `over_decomposition` — so a bare
+  `-0.16` on one of those rows means the *opposite* of what it means on every other row. Every bootstrap, McNemar and t-test row therefore carries `direction`
   (`higher_is_better` / `lower_is_better`) and, when it is significant, `favours`
   (`system_a` / `system_b`) with the direction already applied (null otherwise); **both**
   metrics JSONs — a comparison's and a scoring run's `eval_metrics.json` — list
-  `lower_is_better_statistics` (the per-item column names, whose aggregate is
-  `<name>_macro`), so a program never has to read prose to learn the direction; and the run
-  note's table has a `better` column plus a sentence saying which way `ged` reads, with each
-  significant verdict annotated `yes (favours a|b)`.
-- **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the three binary metrics `exact_match`,
-  `hop_count_exact_match` and `break_exact_match`: with b = #(a correct, b wrong) and c = #(a wrong, b correct),
+  `lower_is_better_statistics` (the per-item column names; their aggregate keys are in the
+  report card of §2.3 — `ged` → `ged_macro`, `under_decomposition` →
+  `under_decomposition_rate`), so a program never has to read prose to learn the direction;
+  and the run note's table has a `better` column plus a sentence saying which rows read the
+  other way, with each significant verdict annotated `yes (favours a|b)`.
+- **McNemar** (`_mcnemar`, `_mcnemar_exact_p`) for the five binary metrics `exact_match`,
+  `hop_count_exact_match`, `break_exact_match`, `over_decomposition` and
+  `under_decomposition` (the last two added with the §2.3 suite, so the ADR 0017 asymmetry
+  can be significance-tested at all): with b = the discordant items whose indicator is 1 for
+  a and 0 for b (`discordant_only_in_a`) and c the reverse (`discordant_only_in_b`),
   the exact two-sided p-value is `min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5))`, computed
   with exact integer arithmetic. With no discordant pairs p = 1.0. `significant` is
-  `p < alpha`.
+  `p < alpha`. **What a 1 means follows the row's direction**, so the same two counts are
+  repeated under a direction-specific name and the name is only ever emitted where it is
+  true: on the three higher-is-better rows a 1 is a correct item, so b = #(a correct, b
+  wrong) and the pair also appears as `correct_only_in_a` / `correct_only_in_b`; on the two
+  lower-is-better rate rows a 1 is the **error occurring**, so b = #(a errs, b does not) and
+  the pair appears as `error_only_in_a` / `error_only_in_b` instead. The run note's McNemar
+  cell prints the neutral `b=` / `c=`, with the reading spelled out beneath the table.
 - **How much evidence there is, recorded next to the verdicts.** Every row carries `n` and
   `underpowered`; each McNemar row also carries `min_attainable_p_value` — the smallest p
   its discordant count m = b + c could have produced, `min(1, 2 · 0.5^m)`, reached when all
@@ -419,11 +563,11 @@ Compares two runs **on the same evaluation set**. Parameters live in
   chosen in config, not a statistical standard** — it exists so a tiny evaluation set
   cannot print a bare `significant: true`; its value is Jahid's and his supervisor's to set.
 - **Paired t-test** (`_paired_t_test`, `_paired_t_test_row`, `scipy.stats.ttest_rel`) over
-  the same per-item differences, the same pairing and the same aligned items, for the nine
+  the same per-item differences, the same pairing and the same aligned items, for the twelve
   compared metrics that **have** a per-item value: `rouge_l_f1`, `step_f1`,
-  `ordered_step_accuracy`, `sari`, `ged`, `chain_validity`, `exact_match`,
-  `hop_count_exact_match`, `break_exact_match`
-  (`T_TEST_STATISTICS`). Each row carries `t_statistic`, `degrees_of_freedom` (n − 1) and
+  `ordered_step_accuracy`, `sari`, `ged`, `chain_validity`, `decomp_mean`, `exact_match`,
+  `hop_count_exact_match`, `break_exact_match`, `over_decomposition`, `under_decomposition`
+  (`T_TEST_STATISTICS`) — i.e. every term of the §2.3 suite. Each row carries `t_statistic`, `degrees_of_freedom` (n − 1) and
   `p_value`, with `significant` = `p_value < alpha` and the same `underpowered` flag as the
   rest. `composite_score` gets **no** t-test: its reference term is a micro rate and its
   step-count term a MAE, so there is no per-item composite difference to test — only its
@@ -448,11 +592,15 @@ Compares two runs **on the same evaluation set**. Parameters live in
   run note says so too.
 - **A compared metric the inputs do not carry is skipped and named**, not silently omitted:
   `statistics_not_available_in_inputs` in the metrics JSON, plus a `NOT COMPARED` line in the
-  run note. On v2 artifacts it is empty (the §2.1 / §2.2 columns are **required** — a
-  per-item file written before them gets the existing "re-run the evaluation to regenerate
-  them" refusal). It is non-empty only for `--v1-per-item` inputs, which predate those
-  columns; computing them there from the stored steps would be a *re-score of v1 output*
-  rather than a comparison of what v1 measured.
+  run note. Two kinds of input reach it, and the note names both: a `--v1-per-item`
+  prior-work file, which predates the §2.1 / §2.2 columns (those columns are **required** of
+  a v2 file — one written before them gets the existing "re-run the evaluation to regenerate
+  them" refusal); and a **v2 file scored before the §2.3 suite existed**, which is missing
+  `over_decomposition` / `under_decomposition` / `decomp_mean` because those three are
+  computed on every run but deliberately *not* required of a compared file (ADR 0029 — nine
+  committed arms and 33 sweep cells predate them, and this is the common case until they are
+  re-scored). Either way, computing the missing columns here from the stored steps would be
+  a *re-score of that input* rather than a comparison of what it measured.
 - **v1 prior-work inputs** (`--v1-per-item`, `--v1-alignment`; ADR
   [0020](adr/0020-prior-work-re-analysis-convention.md)). `--compare` can read v1's
   bare-list per-item files — the format that predates
@@ -547,6 +695,10 @@ applied anywhere.
 .venv/bin/python scripts/musique_decompositions_evaluator.py \
     --compare <v1>/eval_typed_unguided_per_item.json <v1>/eval_raw_unguided_per_item.json \
     --v1-per-item --v1-alignment normalized_question --run-dir runs/<out>
+
+# the junk battery of §2.4 (a tool, not an experiment: no log entry, no GPU, no run.lock)
+.venv/bin/python scripts/decomposition_junk_battery.py --json <out>.json
+.venv/bin/python scripts/decomposition_junk_battery.py --limit 20   # tiny run
 ```
 
 The hand-computed checks for all of the above are in

@@ -40,6 +40,8 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures"
 GOLD_PATH = FIXTURES / "data_root" / "musique" / "dev_data" / "musique_ans_v1.0_dev_clean.jsonl"
 PREDICTIONS_FIXTURE = FIXTURES / "predictions" / "decomposer_results_musique.json"
 EVALUATOR = REPO_ROOT / "scripts" / "musique_decompositions_evaluator.py"
+JUNK_BATTERY = REPO_ROOT / "scripts" / "decomposition_junk_battery.py"
+BATTERY_CONFIG = "decomposition_junk_battery.json"
 SMOKE_PATHS_CONFIG = REPO_ROOT / "configs" / "smoke_paths.json"
 
 PLACES = 9
@@ -58,6 +60,24 @@ def _import_evaluator() -> Any:
 
 
 EVAL = _import_evaluator()
+
+
+def _import_junk_battery() -> Any:
+    """Import the junk battery, so A1-A6 are asserted on the constructions it actually runs.
+
+    It imports the evaluator by the same path and name, so ``BATTERY.EVAL`` is this module's
+    ``EVAL`` object; nothing below compares class identities across the two.
+    """
+    name = "decomposition_junk_battery"
+    spec = importlib.util.spec_from_file_location(name, JUNK_BATTERY)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BATTERY = _import_junk_battery()
 
 
 def _load_gold() -> dict[str, dict[str, Any]]:
@@ -669,12 +689,24 @@ class TestBreakMetrics(EvaluatorTestBase):
         """
         preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
         metrics, _ = self.evaluate("break_direction", preds)
-        self.assertEqual(metrics["lower_is_better_statistics"], ["ged"])
-        self.assertEqual(list(EVAL.LOWER_IS_BETTER_STATISTICS), ["ged"])
+        self.assertEqual(
+            metrics["lower_is_better_statistics"],
+            ["ged", "under_decomposition", "over_decomposition"],
+        )
+        self.assertEqual(
+            list(EVAL.LOWER_IS_BETTER_STATISTICS),
+            ["ged", "under_decomposition", "over_decomposition"],
+        )
         self.assertIn("lower_is_better_statistics", metrics["metric_definitions"])
-        # The named metric is one this file actually reports, under its '_macro' aggregate.
+        # Every named metric is one this file actually reports, under the aggregate key the
+        # report card gives for its per-item column ('ged' -> 'ged_macro',
+        # 'under_decomposition' -> 'under_decomposition_rate').
+        aggregate_of = {
+            term.per_item_column: term.aggregate_key
+            for term in EVAL.DECOMPOSITION_SUITE_TERMS
+        }
         for name in metrics["lower_is_better_statistics"]:
-            self.assertIn(f"{name}_macro", metrics)
+            self.assertIn(aggregate_of[name], metrics)
 
     def test_the_run_note_caveat_covers_all_four_new_numbers(self) -> None:
         """PR #44 review, I2: the caveat counts the numbers on the line above it correctly
@@ -882,8 +914,15 @@ class TestMcNemarPower(unittest.TestCase):
 
         rows_a = [row(1.0), row(1.0), row(1.0), row(0.0), row(0.0)]
         rows_b = [row(0.0), row(0.0), row(0.0), row(1.0), row(0.0)]
-        out = EVAL._mcnemar(rows_a, rows_b, alpha=0.05, underpowered=False)["exact_match"]
+        # Only the metric this test is about: these fabricated rows carry no length columns,
+        # and the point being pinned is the arithmetic of the test, not its metric coverage
+        # (which TestPairedTTest.test_statistics_covered pins).
+        out = EVAL._mcnemar(
+            rows_a, rows_b, alpha=0.05, underpowered=False, statistics=("exact_match",)
+        )["exact_match"]
 
+        self.assertEqual(out["discordant_only_in_a"], 3)
+        self.assertEqual(out["discordant_only_in_b"], 1)
         self.assertEqual(out["correct_only_in_a"], 3)
         self.assertEqual(out["correct_only_in_b"], 1)
         self.assertEqual(out["discordant_pairs"], 4)
@@ -893,6 +932,51 @@ class TestMcNemarPower(unittest.TestCase):
         self.assertFalse(out["significant"])
         self.assertTrue(out["underpowered"])
         self.assertEqual(out["n"], 5)
+
+    def test_the_discordant_counts_are_named_for_what_a_one_means(self) -> None:
+        """A 1 is a correct item on a score and an ERROR on the two length-error rates.
+
+        `correct_only_in_*` would therefore read backwards on `over_decomposition` /
+        `under_decomposition`, which joined `MCNEMAR_STATISTICS` with the §2.3 suite
+        (PR #48 review, Important 1). The neutral `discordant_only_in_*` pair is on every
+        row; the direction-specific pair appears only where its name is true, so a consumer
+        reading `correct_only_in_a` off an error row raises rather than reading a number
+        that means the opposite of its name.
+        """
+        def row(over: float) -> dict[str, Any]:
+            return {"exact_match": 1.0, "over_decomposition": over}
+
+        rows_a = [row(0.0), row(0.0), row(0.0), row(0.0)]
+        rows_b = [row(1.0), row(1.0), row(0.0), row(0.0)]
+        out = EVAL._mcnemar(
+            rows_a,
+            rows_b,
+            alpha=0.05,
+            underpowered=False,
+            statistics=("exact_match", "over_decomposition"),
+        )
+
+        error = out["over_decomposition"]
+        self.assertEqual(error["direction"], "lower_is_better")
+        # b over-decomposed on 2 items where a did not: b was WRONG on those two.
+        self.assertEqual(error["discordant_only_in_b"], 2)
+        self.assertEqual(error["error_only_in_b"], 2)
+        self.assertEqual(error["discordant_only_in_a"], 0)
+        self.assertEqual(error["error_only_in_a"], 0)
+        self.assertNotIn("correct_only_in_a", error)
+        self.assertNotIn("correct_only_in_b", error)
+
+        score = out["exact_match"]
+        self.assertEqual(score["direction"], "higher_is_better")
+        self.assertEqual(score["correct_only_in_a"], score["discordant_only_in_a"])
+        self.assertEqual(score["correct_only_in_b"], score["discordant_only_in_b"])
+        self.assertNotIn("error_only_in_a", score)
+
+        # The definition string states both readings where the numbers are reported.
+        definition = EVAL.COMPARISON_DEFINITIONS["mcnemar"]
+        self.assertIn("discordant_only_in_a", definition)
+        self.assertIn("error_only_in_a", definition)
+        self.assertIn("correct_only_in_a", definition)
 
     def test_six_discordant_pairs_can_reach_alpha(self) -> None:
         """m = 6 is the smallest discordant count whose min p clears 0.05: 2/2^6 = 0.03125."""
@@ -1048,23 +1132,59 @@ class TestPairedTTest(unittest.TestCase):
                     "exact_match",
                     "hop_count_exact_match",
                     "break_exact_match",
+                    # Registered with the six-term suite (ADR 0029): the two direction
+                    # columns, so the ADR 0017 asymmetry is testable, and the contingency
+                    # blend, which unlike the composite HAS a per-item value.
+                    "over_decomposition",
+                    "under_decomposition",
+                    "decomp_mean",
                 ]
             ),
         )
         # composite_score is bootstrapped but has no per-item value, so no paired difference
-        # to t-test exists.
+        # to t-test exists. It is the ONLY compared metric in that position now — every term
+        # of the reported suite takes all three tests.
         self.assertIn("composite_score", EVAL.BOOTSTRAP_STATISTICS)
         self.assertNotIn("composite_score", EVAL.T_TEST_STATISTICS)
+        self.assertEqual(
+            sorted(set(EVAL.BOOTSTRAP_STATISTICS) - set(EVAL.T_TEST_STATISTICS)),
+            ["composite_score"],
+        )
+        for term in EVAL.DECOMPOSITION_SUITE_TERMS:
+            with self.subTest(term=term.aggregate_key):
+                self.assertIn(term.per_item_column, EVAL.T_TEST_STATISTICS)
 
 
 class TestMetricDirection(unittest.TestCase):
-    """GED is a distance, so a comparison has to carry direction, not assume it."""
+    """GED is a distance and the two length rates are errors, so a comparison has to carry
+    direction rather than assume every row is a score."""
 
-    def test_ged_is_the_only_lower_is_better_statistic(self) -> None:
-        self.assertEqual(EVAL.LOWER_IS_BETTER_STATISTICS, ("ged",))
+    def test_the_lower_is_better_registry_is_ged_plus_the_two_length_rates(self) -> None:
+        """One distance and two error rates — and nothing else — point the other way.
+
+        `over_decomposition` is here as well as `under_decomposition` (which the
+        specification's §2.5 item 1 names explicitly): leaving it out would stamp its
+        comparison rows `higher_is_better` and make `favours` name the wrong system on them.
+        ADR 0017's asymmetry — over-decomposition is tolerable, under-decomposition is not —
+        is about how heavily a reader weighs the two, not about their sign, and it is carried
+        by the two rates staying split and never summed.
+        """
+        self.assertEqual(
+            EVAL.LOWER_IS_BETTER_STATISTICS,
+            ("ged", "under_decomposition", "over_decomposition"),
+        )
         self.assertIn("ged", EVAL.BOOTSTRAP_STATISTICS)
-        self.assertEqual(EVAL._direction("ged"), "lower_is_better")
-        for name in ("step_f1", "sari", "chain_validity", "break_exact_match"):
+        for name in ("ged", "under_decomposition", "over_decomposition"):
+            with self.subTest(statistic=name):
+                self.assertEqual(EVAL._direction(name), "lower_is_better")
+        for name in (
+            "step_f1",
+            "sari",
+            "chain_validity",
+            "break_exact_match",
+            "hop_count_exact_match",
+            "decomp_mean",
+        ):
             with self.subTest(statistic=name):
                 self.assertEqual(EVAL._direction(name), "higher_is_better")
 
@@ -1107,6 +1227,8 @@ class TestBootstrapChunking(unittest.TestCase):
             "sari": np.clip(base * 0.7 + offset, 0.0, 1.0),
             "ged": np.clip(1.0 - base - offset, 0.0, 2.0),
             "chain_validity": np.clip(base * 0.95 + offset, 0.0, 1.0),
+            # The contingency blend, so the chunking invariance covers it too.
+            "decomp_mean": np.clip(base * 0.6 + offset, 0.0, 1.0),
             "reference_valid_count": np.array([1, 2, 0, 3, 1, 2], dtype=float),
             "reference_total_count": np.array([2, 2, 0, 3, 2, 2], dtype=float),
             "step_count_abs_error": np.array([0, 1, 2, 0, 1, 3], dtype=float),
@@ -1239,6 +1361,8 @@ class TestPairedComparison(EvaluatorTestBase):
                 "sari",
                 "ged",
                 "chain_validity",
+                # The contingency blend, per item and so bootstrapped (ADR 0029).
+                "decomp_mean",
                 "composite_score",
             ]
         ))
@@ -1253,7 +1377,14 @@ class TestPairedComparison(EvaluatorTestBase):
                 self.assertIsNone(result["favours"])
         self.assertEqual(
             sorted(metrics["mcnemar"]),
-            ["break_exact_match", "exact_match", "hop_count_exact_match"],
+            [
+                "break_exact_match",
+                "exact_match",
+                "hop_count_exact_match",
+                # The two direction columns, so the ADR 0017 asymmetry is testable.
+                "over_decomposition",
+                "under_decomposition",
+            ],
         )
         for name, result in metrics["mcnemar"].items():
             with self.subTest(statistic=name):
@@ -1367,14 +1498,23 @@ class TestPairedComparison(EvaluatorTestBase):
         """
         issue_40_columns = {"sari", "ged", "chain_validity", "break_exact_match"}
         self.assertEqual(set(EVAL._ISSUE_40_STATISTICS), issue_40_columns)
+        # Likewise literal: the three columns the six-term suite registration added. They are
+        # deliberately OUTSIDE the required gate — nine committed arms and 33 sweep cells were
+        # scored before they existed, and requiring them would refuse every one of those files
+        # instead of comparing what they carry (ADR 0029).
+        suite_additions = {"over_decomposition", "under_decomposition", "decomp_mean"}
+        self.assertEqual(set(EVAL._SUITE_ADDITION_STATISTICS), suite_additions)
         gate = set(EVAL._NUMERIC_PER_ITEM_FIELDS)
         self.assertNotIn("item_id", gate)
         for name in issue_40_columns:
             self.assertIn(name, gate)
+        for name in suite_additions:
+            self.assertNotIn(name, gate)
         for name in EVAL.MCNEMAR_STATISTICS:
-            self.assertIn(name, gate)
+            if name not in suite_additions:
+                self.assertIn(name, gate)
         for name in EVAL.BOOTSTRAP_STATISTICS:
-            if name != "composite_score":
+            if name != "composite_score" and name not in suite_additions:
                 self.assertIn(name, gate)
         for name in EVAL._COMPOSITE_INPUT_COLUMNS:
             self.assertIn(name, gate)
@@ -1433,6 +1573,9 @@ class TestPairedComparison(EvaluatorTestBase):
                     "exact_match",
                     "hop_count_exact_match",
                     "break_exact_match",
+                    "over_decomposition",
+                    "under_decomposition",
+                    "decomp_mean",
                 ]
             ),
         )
@@ -1440,9 +1583,9 @@ class TestPairedComparison(EvaluatorTestBase):
         self.assertEqual(
             metrics["tests_reported"],
             {
-                "bootstrap": 7,
-                "mcnemar": 3,
-                "paired_t_test": 9,
+                "bootstrap": 8,
+                "mcnemar": 5,
+                "paired_t_test": 12,
                 "headline_protocol": (
                     "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)"
                 ),
@@ -1476,29 +1619,33 @@ class TestPairedComparison(EvaluatorTestBase):
     def test_every_row_states_its_direction_and_the_note_says_it_too(self) -> None:
         """No row can be read without its direction, and the run note prints the column.
 
-        The failure this guards is arithmetic-free: `ged` is the only distance in the report,
-        so a table that drops the direction turns "system a is 0.16 better" into "0.16
-        worse". Every row therefore carries `direction`, every significant row names the
-        system it `favours` with the direction already applied, and the note has a `better`
-        column plus a sentence saying which way `ged` reads.
+        The failure this guards is arithmetic-free: `ged` is a distance and the two length
+        rates are errors, so a table that drops the direction turns "system a is 0.16 better"
+        into "0.16 worse". Every row therefore carries `direction`, every significant row
+        names the system it `favours` with the direction already applied, and the note has a
+        `better` column plus a sentence saying which rows read the other way.
         """
+        lower = set(EVAL.LOWER_IS_BETTER_STATISTICS)
         run_dir, metrics = self._degraded_comparison()
         for family in ("bootstrap", "mcnemar", "t_test"):
             for name, row in metrics[family].items():
                 with self.subTest(family=family, statistic=name):
                     self.assertEqual(
                         row["direction"],
-                        "lower_is_better" if name == "ged" else "higher_is_better",
+                        "lower_is_better" if name in lower else "higher_is_better",
                     )
                     if not row["significant"]:
                         self.assertIsNone(row["favours"])
                     else:
                         difference = row["difference"]
-                        a_better = difference < 0 if name == "ged" else difference > 0
+                        a_better = difference < 0 if name in lower else difference > 0
                         self.assertEqual(
                             row["favours"], "system_a" if a_better else "system_b"
                         )
-        self.assertEqual(metrics["lower_is_better_statistics"], ["ged"])
+        self.assertEqual(
+            metrics["lower_is_better_statistics"],
+            ["ged", "under_decomposition", "over_decomposition"],
+        )
         # v2 inputs carry every compared column, so nothing is skipped.
         self.assertEqual(metrics["statistics_not_available_in_inputs"], [])
 
@@ -1572,10 +1719,10 @@ class TestV1CompareShim(EvaluatorTestBase):
     read-only, outside this repo, and a test must not depend on it existing.
     """
 
-    #: Fields a v1 per-item row cannot have: ``item_id`` (v1 had no concept of it) and every
-    #: column added by issue #40 (v1 ran years before those metrics existed). Both are
-    #: dropped when a v1 file is reconstructed here, so the shim is exercised on rows the
-    #: shape v1 actually wrote.
+    #: Fields a v1 per-item row cannot have: ``item_id`` (v1 had no concept of it), every
+    #: column added by issue #40, and the three the six-term suite registration added (v1 ran
+    #: years before any of those metrics existed). All are dropped when a v1 file is
+    #: reconstructed here, so the shim is exercised on rows the shape v1 actually wrote.
     NOT_IN_V1 = (
         "item_id",
         "break_exact_match",
@@ -1585,6 +1732,9 @@ class TestV1CompareShim(EvaluatorTestBase):
         "chain_validity",
         "chain_pred_reference_count",
         "chain_gold_reference_count",
+        "over_decomposition",
+        "under_decomposition",
+        "decomp_mean",
     )
 
     def _v1_file(self, name: str, predictions: list[dict[str, Any]]) -> Path:
@@ -1681,12 +1831,13 @@ class TestV1CompareShim(EvaluatorTestBase):
                             self.assertEqual(value, expected)
 
     def test_v1_inputs_record_the_metrics_they_cannot_carry(self) -> None:
-        """A v1 file predates sari / ged / chain_validity / break_exact_match.
+        """A v1 file predates the issue #40 columns and the suite's three additions.
 
         Requiring them would refuse every v1 file and retire the ADR 0020 path; computing
         them from a v1 file's stored steps would be a re-score of v1 output rather than a
         comparison of what v1 measured. So they are omitted, named in the metrics JSON and
-        named in the run note (ADR 0026 item 10).
+        named in the run note (ADR 0026 item 10). The same mechanism is what lets a v2 arm
+        scored before ADR 0029 still be compared on everything it does carry.
         """
         a, b = self._v1_pair()
         run_dir = self.tmp / "v1_missing_metrics"
@@ -1695,11 +1846,22 @@ class TestV1CompareShim(EvaluatorTestBase):
 
         self.assertEqual(
             metrics["statistics_not_available_in_inputs"],
-            sorted(["sari", "ged", "chain_validity", "break_exact_match"]),
+            sorted(
+                [
+                    "sari",
+                    "ged",
+                    "chain_validity",
+                    "break_exact_match",
+                    "over_decomposition",
+                    "under_decomposition",
+                    "decomp_mean",
+                ]
+            ),
         )
-        for name in ("sari", "ged", "chain_validity"):
+        for name in ("sari", "ged", "chain_validity", "decomp_mean"):
             self.assertNotIn(name, metrics["bootstrap"])
-        self.assertNotIn("break_exact_match", metrics["mcnemar"])
+        for name in ("break_exact_match", "over_decomposition", "under_decomposition"):
+            self.assertNotIn(name, metrics["mcnemar"])
         # The legacy battery is untouched: 4 bootstrap intervals, 2 McNemar, 5 t-tests.
         self.assertEqual(metrics["tests_reported"]["bootstrap"], 4)
         self.assertEqual(metrics["tests_reported"]["mcnemar"], 2)
@@ -2159,6 +2321,493 @@ class TestGedConfigKnobs(unittest.TestCase):
         for key in ("max_nodes_for_optimizer", "per_item_time_budget_seconds"):
             with self.subTest(key=key):
                 self.assertIn(f'require(cfg, "break_metrics.ged.{key}")', source)
+
+
+class TestDecompositionReportCard(EvaluatorTestBase):
+    """The reported primary is an unblended six-term suite (specification §2.1, ADR 0029).
+
+    These pin registration and reporting, which is all the suite is: every term was already
+    computed before it existed, so a value moving here means a metric changed, not a report.
+    """
+
+    def _card(self) -> tuple[dict[str, Any], dict[str, Any], Path]:
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        metrics, per_item = self.evaluate("report_card", preds)
+        return metrics, metrics["decomposition_report_card"], per_item
+
+    def test_the_suite_is_the_six_terms_the_specification_names(self) -> None:
+        """Six numbered terms in seven rows: term 6 is the over/under pair, never summed."""
+        terms = EVAL.DECOMPOSITION_SUITE_TERMS
+        self.assertEqual(
+            [(t.number, t.aggregate_key, t.per_item_column) for t in terms],
+            [
+                (1, "break_exact_match_rate", "break_exact_match"),
+                (2, "sari_macro", "sari"),
+                (3, "ged_macro", "ged"),
+                (4, "chain_validity_macro", "chain_validity"),
+                (5, "hop_count_exact_match_rate", "hop_count_exact_match"),
+                (6, "under_decomposition_rate", "under_decomposition"),
+                (6, "over_decomposition_rate", "over_decomposition"),
+            ],
+        )
+        self.assertEqual(sorted({t.number for t in terms}), [1, 2, 3, 4, 5, 6])
+
+    def test_the_report_card_carries_every_term_with_its_direction_and_denominator(self) -> None:
+        """§2.5 item 3: each term states the n it was averaged over, and its direction."""
+        metrics, card, _ = self._card()
+        self.assertEqual(len(card["terms"]), len(EVAL.DECOMPOSITION_SUITE_TERMS))
+        for row in card["terms"]:
+            with self.subTest(term=row["metric"]):
+                self.assertEqual(row["n_items"], metrics["total_evaluated"])
+                self.assertIn(row["direction"], ("higher_is_better", "lower_is_better"))
+                self.assertAlmostEqual(row["value"], metrics[row["metric"]], places=PLACES)
+        self.assertEqual(
+            [row["metric"] for row in card["terms"] if row["direction"] == "lower_is_better"],
+            ["ged_macro", "under_decomposition_rate", "over_decomposition_rate"],
+        )
+
+    def test_no_headline_term_is_a_pooled_ratio(self) -> None:
+        """The structural fix for the issue #40 defect class, checked rather than argued.
+
+        Every suite term is the plain mean of its per-item column over a denominator fixed by
+        the evaluation set. The guard runs inside the scoring path and refuses the run if it
+        is ever false; here it is re-derived from the written per-item file, so the guard and
+        the file cannot agree with each other while both being wrong.
+        """
+        metrics, card, per_item = self._card()
+        items = json.loads(per_item.read_text(encoding="utf-8"))["items"]
+        self.assertTrue(card["guards"]["every_term_is_the_macro_mean_of_its_per_item_column"])
+        for term in EVAL.DECOMPOSITION_SUITE_TERMS:
+            with self.subTest(term=term.aggregate_key):
+                expected = sum(float(r[term.per_item_column]) for r in items) / len(items)
+                self.assertAlmostEqual(metrics[term.aggregate_key], expected, places=PLACES)
+        # And the term that motivated the rule is named as excluded, with its reason.
+        self.assertIn("reference_validity_micro", card["guards"]["terms_excluded_and_why"])
+        self.assertNotIn(
+            "reference_validity_micro",
+            [term.aggregate_key for term in EVAL.DECOMPOSITION_SUITE_TERMS],
+        )
+
+    def test_the_single_number_is_a_member_of_the_suite_with_its_three_caveats(self) -> None:
+        """§2.2: where one number is required it is `ged_macro`, never a formula over six."""
+        metrics, card, _ = self._card()
+        single = card["single_number_when_one_is_required"]
+        self.assertEqual(single["metric"], "ged_macro")
+        self.assertIn(
+            single["metric"], [term.aggregate_key for term in EVAL.DECOMPOSITION_SUITE_TERMS]
+        )
+        self.assertAlmostEqual(single["value"], metrics["ged_macro"], places=PLACES)
+        self.assertEqual(single["direction"], "lower_is_better")
+        self.assertEqual(len(single["caveats"]), 3)
+        joined = " ".join(single["caveats"])
+        self.assertIn("LOWER IS BETTER", joined)
+        self.assertIn("order-BLIND", joined)
+        self.assertIn("lemmatizer", joined)
+
+    def test_the_run_note_prints_all_six_terms_and_refuses_to_adopt(self) -> None:
+        """A note quoting fewer than six is not reporting this metric (§2.1 rule 1).
+
+        The run note is what gets quoted into `experiments/log.md`, so the whole card has to
+        be readable off it — and so does the fact that adopting a thesis-primary metric is
+        issue #6 item 5, not this script's call.
+        """
+        _, card, per_item = self._card()
+        note = (per_item.parent / "eval_notes.md").read_text(encoding="utf-8")
+        self.assertIn("the reported primary", note)
+        for term in EVAL.DECOMPOSITION_SUITE_TERMS:
+            with self.subTest(term=term.aggregate_key):
+                self.assertIn(f"`{term.aggregate_key}`", note)
+        self.assertIn("never summed", note)
+        self.assertIn("issue #6 item 5", note)
+        self.assertIn("NOT ADOPTED", card["adoption"])
+
+    def test_the_composite_is_reported_as_legacy_everywhere(self) -> None:
+        """Frozen for reproducibility, not because it is correct — and it says so."""
+        metrics, card, per_item = self._card()
+        self.assertEqual(EVAL.COMPOSITE_SCORE_STATUS, "legacy")
+        self.assertEqual(metrics["composite_score_status"], "legacy")
+        self.assertEqual(card["legacy_composite"]["status"], "legacy")
+        self.assertAlmostEqual(
+            card["legacy_composite"]["value"], metrics["composite_score"], places=PLACES
+        )
+        self.assertIn("quotable", card["legacy_composite"]["why_it_is_still_computed"])
+        note = (per_item.parent / "eval_notes.md").read_text(encoding="utf-8")
+        self.assertIn("Composite score (LEGACY)", note)
+        self.assertIn(
+            "LEGACY", EVAL.METRIC_DEFINITIONS["composite_score"]
+        )
+
+    def test_the_chain_validity_free_credit_branch_is_counted(self) -> None:
+        """§2.5 item 2: the one conditional-credit branch left in the suite is visible.
+
+        0 on the fixture gold (every fixture gold decomposition chains), which is the same
+        thing measured on the pinned 600 — but a MetaQA or future gold could reintroduce free
+        credit silently, and a counter is what makes that show up in the metrics JSON instead
+        of in an analysis note two months later.
+        """
+        metrics, _, per_item = self._card()
+        self.assertEqual(metrics["chain_validity_gold_unchained_items"], 0)
+        items = json.loads(per_item.read_text(encoding="utf-8"))["items"]
+        self.assertEqual(
+            metrics["chain_validity_gold_unchained_items"],
+            sum(1 for r in items if r["chain_gold_reference_count"] == 0),
+        )
+        # It travels per gold hop depth too, like every other aggregate.
+        for block in metrics["per_gold_hop_metrics"].values():
+            self.assertIn("chain_validity_gold_unchained_items", block)
+
+    def test_the_direction_columns_are_the_per_item_form_of_the_existing_rates(self) -> None:
+        """The rates do not move; they gain a per-item column so they can be tested.
+
+        Hand computation on the 4-step prediction against the 2-step gold of 2hop__d001_a:
+        signed error +2, so `over_decomposition` is 1.0, `under_decomposition` 0.0, and the
+        two rates over that single row are 1.0 and 0.0 — the values they already had.
+        """
+        item = "2hop__d001_a"
+        steps = gold_steps(item) + ["Extra step one?", "Extra step two?"]
+        metrics, per_item = self.evaluate("direction_columns", [prediction(item, steps)])
+        row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
+        self.assertEqual(row["step_count_signed_error"], 2)
+        self.assertEqual(row["over_decomposition"], 1.0)
+        self.assertEqual(row["under_decomposition"], 0.0)
+        self.assertMetrics(
+            metrics, {"over_decomposition_rate": 1.0, "under_decomposition_rate": 0.0}
+        )
+
+    def test_decomp_mean_is_the_unweighted_mean_of_its_five_terms(self) -> None:
+        """The contingency blend, hand-computed on the identical-to-gold fixture row.
+
+        Hand computation for 2hop__d001_a predicted exactly as gold (the anchors of
+        TestBreakMetrics): break_exact_match 1, sari 1, ged 0 -> 1 - min(1, 0) = 1,
+        chain_validity 1, hop_count_exact_match 1, so decomp_mean = 5/5 = 1.0.
+        """
+        item = "2hop__d001_a"
+        metrics, per_item = self.evaluate("decomp_mean_anchor", [prediction(item, gold_steps(item))])
+        row = json.loads(per_item.read_text(encoding="utf-8"))["items"][0]
+        self.assertAlmostEqual(row["decomp_mean"], 1.0, places=PLACES)
+        self.assertAlmostEqual(metrics["decomp_mean_macro"], 1.0, places=PLACES)
+
+        # And on a row where the terms differ, against the formula applied to the columns.
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        metrics, per_item = self.evaluate("decomp_mean_formula", preds)
+        policy = metrics["decomp_mean_policy"]
+        for row in json.loads(per_item.read_text(encoding="utf-8"))["items"]:
+            with self.subTest(item=row["item_id"]):
+                expected = (
+                    row["break_exact_match"]
+                    + row["sari"]
+                    + (1.0 - min(policy["ged_clamp"], row["ged"]))
+                    + row["chain_validity"]
+                    + row["hop_count_exact_match"]
+                ) / 5
+                self.assertAlmostEqual(row["decomp_mean"], expected, places=PLACES)
+
+    def test_the_blend_is_a_contingency_and_says_so(self) -> None:
+        """It is reported beside the suite, never inside it, and it carries its junk gate."""
+        _, card, _ = self._card()
+        blend = card["contingency_blend"]
+        self.assertFalse(blend["in_the_suite"])
+        self.assertNotIn(
+            "decomp_mean_macro",
+            [term.aggregate_key for term in EVAL.DECOMPOSITION_SUITE_TERMS],
+        )
+        self.assertIn("CONTINGENCY", blend["status"])
+        self.assertIn("GATE PASSED", blend["junk_gate"])
+        self.assertEqual(
+            blend["components"],
+            ["break_exact_match", "sari", "ged", "chain_validity", "hop_count_exact_match"],
+        )
+
+    def test_the_blend_components_come_from_config_and_are_validated(self) -> None:
+        """No silent default, no unknown component, no repeated one (a hidden weighting)."""
+        base = EVAL.load_config("musique_eval.json")
+        self.assertEqual(
+            set(EVAL.DECOMP_MEAN_KNOWN_COMPONENTS),
+            set(
+                EVAL._decomp_mean_terms(
+                    {name: 0.0 for name in EVAL.DECOMP_MEAN_KNOWN_COMPONENTS}, 1.0
+                )
+            ),
+        )
+        for broken, expected in (
+            ({"components": [], "ged_clamp": 1.0}, "non-empty list"),
+            ({"components": ["not_a_column"], "ged_clamp": 1.0}, "cannot build"),
+            ({"components": ["sari", "sari"], "ged_clamp": 1.0}, "twice"),
+            ({"components": ["sari"], "ged_clamp": 0.0}, "in (0, 1]"),
+            ({"components": ["sari"], "ged_clamp": 2.0}, "in (0, 1]"),
+        ):
+            with self.subTest(config=broken):
+                cfg = copy.deepcopy(base)
+                cfg["decomposition_suite"]["decomp_mean"] = broken
+                with self.assertRaises(SystemExit) as caught:
+                    EVAL._decomp_mean_policy(cfg)
+                self.assertIn(expected, str(caught.exception))
+        cfg = copy.deepcopy(base)
+        del cfg["decomposition_suite"]
+        with self.assertRaises(SystemExit) as caught:
+            EVAL._decomp_mean_policy(cfg)
+        self.assertIn("decomposition_suite.decomp_mean.components", str(caught.exception))
+
+
+class TestJunkBattery(EvaluatorTestBase):
+    """A1-A6: the acceptance criteria of the specification's §3.3, as tests.
+
+    Break prints a trivial ``Copy`` baseline in its own results table; this is that practice
+    turned into a pass/fail gate, which is the single cheapest guard against a repeat of
+    issue #40 (junk outranking the deployable baseline under the legacy composite, unnoticed
+    for two analysis notes).
+
+    The six systems are built by ``scripts/decomposition_junk_battery.py`` — the same
+    functions the real 600-item run uses, so this file cannot pass while the battery measures
+    something else. Here they run against the fabricated fixture gold (4 items), with two
+    "real arms" that are ordinary prediction sets: the committed fixture predictions and the
+    unevenly degraded ones the comparison tests use.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cfg = EVAL.load_config("musique_eval.json")
+        battery_cfg = EVAL.load_config(str(BATTERY_CONFIG))
+        ged_policy = EVAL._ged_policy(cfg)
+        decomp_policy = EVAL._decomp_mean_policy(cfg)
+        gold = EVAL._load_gold(GOLD_PATH, 20)
+        junk_steps = battery_cfg["fixed_junk_steps"]
+
+        cls.rows = {
+            name: BATTERY._score_system(
+                BATTERY._junk_predictions(gold, system, junk_steps),
+                gold,
+                ged_policy,
+                decomp_policy,
+            )
+            for name, system in BATTERY.JUNK_SYSTEMS.items()
+        }
+        cls.real_names = ["fixture_predictions", "degraded"]
+        for name, preds in (
+            ("fixture_predictions", json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))),
+            ("degraded", degraded_predictions()),
+        ):
+            rows, _missing = EVAL._build_eval_rows(preds, gold)
+            items = [
+                EVAL.score_item(
+                    row,
+                    ged_max_nodes=ged_policy["max_nodes_for_optimizer"],
+                    ged_time_budget=ged_policy["per_item_time_budget_seconds"],
+                    decomp_mean_components=tuple(decomp_policy["components"]),
+                    ged_clamp=decomp_policy["ged_clamp"],
+                )
+                for row in rows
+            ]
+            cls.rows[name] = BATTERY._row_of(EVAL._aggregate(items), len(items))
+
+    def test_a1_the_gold_itself_scores_the_extremum_on_every_term(self) -> None:
+        """J6: EM 1, SARI 1, GED 0, chain validity 1, hop-count EM 1, both rates 0."""
+        gold = self.rows["J6_gold"]
+        for key, value in (
+            ("break_exact_match_rate", 1.0),
+            ("sari_macro", 1.0),
+            ("ged_macro", 0.0),
+            ("chain_validity_macro", 1.0),
+            ("hop_count_exact_match_rate", 1.0),
+            ("under_decomposition_rate", 0.0),
+            ("over_decomposition_rate", 0.0),
+        ):
+            with self.subTest(metric=key):
+                self.assertAlmostEqual(gold[key], value, places=PLACES)
+        self.assertAlmostEqual(gold["decomp_mean_macro"], 1.0, places=PLACES)
+
+    def test_a2_every_real_arm_beats_every_junk_baseline(self) -> None:
+        """On ged_macro, chain_validity_macro and break_exact_match_rate — the assertion the
+        legacy composite fails and the one that matters."""
+        for term in BATTERY.A2_TERMS:
+            for junk in BATTERY.JUNK_BASELINES:
+                for arm in self.real_names:
+                    with self.subTest(metric=term, junk=junk, arm=arm):
+                        self.assertTrue(
+                            BATTERY._beats(term, self.rows[arm][term], self.rows[junk][term]),
+                            f"{arm} {self.rows[arm][term]:.4f} does not beat "
+                            f"{junk} {self.rows[junk][term]:.4f} on {term}",
+                        )
+
+    def test_a3_sari_is_exempt_from_a2_and_its_margin_is_recorded(self) -> None:
+        """SARI's junk floor is high by construction, so the ordering is recorded, not asserted.
+
+        Break's own published `Copy` row scores SARI 0.431 against its best model's 0.748, and
+        on this repo's data an empty prediction measured 0.2911. So SARI does separate junk,
+        but from a high floor and by a small margin — which is exactly why A2 excludes it and
+        why an additive blend containing it needs its own gate (A4).
+        """
+        self.assertNotIn("sari_macro", BATTERY.A2_TERMS)
+        junk_max = max(self.rows[j]["sari_macro"] for j in BATTERY.JUNK_BASELINES)
+        real_min = min(self.rows[a]["sari_macro"] for a in self.real_names)
+        # The margin is the thing worth seeing: it is far smaller than on any A2 term.
+        self.assertGreater(real_min, junk_max)
+        for term in BATTERY.A2_TERMS:
+            if term == "break_exact_match_rate":
+                continue
+            with self.subTest(metric=term):
+                self.assertGreater(
+                    abs(
+                        min(self.rows[a][term] for a in self.real_names)
+                        - max(self.rows[j][term] for j in BATTERY.JUNK_BASELINES)
+                    ),
+                    real_min - junk_max,
+                )
+
+    def test_a3_ordering_is_gated_by_the_exit_code_like_every_other_verdict(self) -> None:
+        """Exempt from A2's ASSERTION is not exempt from the exit code (PR #48 review, nit 1).
+
+        The battery exits non-zero when any verdict fails, and A3 now carries a `passed` like
+        the rest — so a future arm whose SARI falls below the junk floor is caught rather than
+        reported. Checked by pushing one real arm's `sari_macro` under the junk maximum.
+        """
+        verdicts = BATTERY._verdicts(self.rows, self.real_names)
+        for name, verdict in verdicts.items():
+            with self.subTest(verdict=name):
+                self.assertIn("passed", verdict)
+        self.assertTrue(verdicts["A3_sari_exempt"]["passed"])
+        self.assertEqual(verdicts["A3_sari_exempt"]["failures"], [])
+
+        junk_max = max(self.rows[j]["sari_macro"] for j in BATTERY.JUNK_BASELINES)
+        broken = copy.deepcopy(self.rows)
+        broken[self.real_names[0]]["sari_macro"] = junk_max - 0.01
+        a3 = BATTERY._verdicts(broken, self.real_names)["A3_sari_exempt"]
+        self.assertFalse(a3["ordering_holds"])
+        self.assertFalse(a3["passed"])
+        self.assertTrue(a3["failures"])
+        # The exemption itself is untouched: SARI is still out of A2's terms.
+        self.assertTrue(a3["exempt_from_a2"])
+        self.assertNotIn("sari_macro", BATTERY.A2_TERMS)
+
+    def test_a4_the_blend_ranks_every_junk_baseline_below_every_real_arm(self) -> None:
+        """The HARD GATE on `decomp_mean`. Failing it disqualifies the blend.
+
+        It is not a prompt to re-tune weights: the legacy composite's weights were never the
+        disease, its free-credit term was, and a weight tweak would have hidden that.
+        """
+        for junk in BATTERY.JUNK_BASELINES:
+            for arm in self.real_names:
+                with self.subTest(junk=junk, arm=arm):
+                    self.assertGreater(
+                        self.rows[arm]["decomp_mean_macro"],
+                        self.rows[junk]["decomp_mean_macro"],
+                    )
+
+    def test_a5_order_sensitivity_survives_and_ged_does_not_carry_it(self) -> None:
+        """J5 (gold reversed) is caught by Break EM and ordered accuracy, NOT by GED.
+
+        Measured on the pinned 600, the reversed gold scores GED 0.2875 — better than every
+        real arm — because GED is order-light and on a 2-step plan order-blind. That is why
+        terms 1, 5 and 6 stay in the suite and why the single-number caveat is not optional.
+        """
+        reversed_gold = self.rows["J5_gold_reversed"]
+        self.assertEqual(reversed_gold["break_exact_match_rate"], 0.0)
+        for arm in self.real_names:
+            with self.subTest(arm=arm):
+                self.assertLess(
+                    reversed_gold["ordered_step_accuracy_macro"],
+                    self.rows[arm]["ordered_step_accuracy_macro"],
+                )
+        # GED is NOT allowed to carry this: on the fixture it ranks the reversed gold ahead
+        # of the degraded arm, which is the blindness the assertion above works around.
+        self.assertLess(reversed_gold["ged_macro"], self.rows["degraded"]["ged_macro"])
+
+    def test_a6_no_pre_existing_metric_moved(self) -> None:
+        """The frozen numbers: the legacy composite and its inputs, on the fixture.
+
+        These are the same golden values the `musique_eval` smoke stage asserts, restated
+        here because A6 is an acceptance criterion of the suite and not only of the smoke
+        test: whatever the suite added, nothing that existed before it may move — that is
+        what keeps nine committed arms and exp-010's 33 sweep cells quotable.
+        """
+        preds = json.loads(PREDICTIONS_FIXTURE.read_text(encoding="utf-8"))
+        metrics, _ = self.evaluate("a6_frozen", preds)
+        self.assertMetrics(
+            metrics,
+            {
+                "exact_match_rate": 3 / 4,
+                "step_f1_macro": 11 / 12,
+                "ordered_step_accuracy_macro": 11 / 12,
+                "rouge_l_f1_macro": 51 / 55,
+                "reference_validity_macro": 1.0,
+                "reference_validity_micro": 1.0,
+                "composite_score": 113 / 120,
+                "step_count_exact_rate": 1.0,
+            },
+        )
+        # And the regex behind reference_validity is FROZEN, bracketed form and all: the
+        # specification's §5 verdict is freeze-don't-fix, because even a corrected regex
+        # leaves a micro-pooled rate with a model-dependent denominator inside an
+        # aggregate-of-aggregates. Repairing it here would move every committed number.
+        self.assertEqual(EVAL._REF_RX.pattern, r"\[#(\d+)\]")
+
+    def test_the_junk_constructions_are_defined_not_described(self) -> None:
+        """Each junk system's steps are fixed by the code, so a printed row is reproducible."""
+        question = "Who leads the union that organised the Marlow Bay strike?"
+        gold = ["Which union organised the Marlow Bay strike?", "Who leads [#1]?"]
+        junk = ["one", "two", "three", "four"]
+        self.assertEqual(BATTERY.JUNK_SYSTEMS["J1_empty"](question, gold, junk), [])
+        self.assertEqual(
+            BATTERY.JUNK_SYSTEMS["J2_question_echo"](question, gold, junk), [question]
+        )
+        self.assertEqual(BATTERY.JUNK_SYSTEMS["J3_one_fixed_step"](question, gold, junk), ["one"])
+        self.assertEqual(
+            BATTERY.JUNK_SYSTEMS["J4_three_fixed_steps"](question, gold, junk),
+            ["one", "two", "three"],
+        )
+        self.assertEqual(
+            BATTERY.JUNK_SYSTEMS["J5_gold_reversed"](question, gold, junk), list(reversed(gold))
+        )
+        self.assertEqual(BATTERY.JUNK_SYSTEMS["J6_gold"](question, gold, junk), gold)
+        # The fixed steps carry no reference: a junk system that chained would score nonzero
+        # chain_validity and blunt the very assertion A2 makes on that term.
+        for step in EVAL.load_config(str(BATTERY_CONFIG))["fixed_junk_steps"]:
+            with self.subTest(step=step):
+                self.assertEqual(EVAL._BARE_REF_RX.findall(step), [])
+
+    def test_the_battery_cli_runs_end_to_end_on_the_fixture(self) -> None:
+        """The tiny mode ADR 0027 asks for: the full path, at 4 items, before it earns 600."""
+        out = self.tmp / "junk_battery.json"
+        env = os.environ.copy()
+        env["QAV2_PATHS_CONFIG"] = str(SMOKE_PATHS_CONFIG)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(JUNK_BATTERY),
+                "--eval-set",
+                "all-gold",
+                "--no-real-arms",
+                "--json",
+                str(out),
+            ],
+            cwd=str(REPO_ROOT),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, f"{proc.stdout}\n{proc.stderr}")
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(payload["n_items"], 4)
+        self.assertEqual(sorted(payload["rows"]), sorted(BATTERY.JUNK_SYSTEMS))
+        # No real arms were read, so every junk-versus-arm verdict is reported as not
+        # evaluated rather than as a pass.
+        self.assertIsNone(payload["verdicts"])
+        self.assertIn("NOT EVALUATED", proc.stdout)
+
+    def test_a_real_arm_on_a_different_evaluation_set_is_refused(self) -> None:
+        """A junk row over one set and an arm row over another is not a comparison."""
+        with self.assertRaises(SystemExit) as caught:
+            BATTERY._assert_same_eval_set(
+                {"a question", "another question"},
+                "an_arm",
+                [{"question": "a question"}],
+                Path("somewhere/eval_per_item.json"),
+            )
+        message = str(caught.exception)
+        self.assertIn("not evaluated on the same set", message)
+        # Item text does not go into an error message.
+        self.assertNotIn("a question", message)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ Scoring techniques (all string-level, no model in the loop):
 - Step count error, signed (over- vs under-decomposition) and absolute
 - Reference validity for [#k] chains
 - ROUGE-L precision/recall/F1 (LCS-based)
-- A composite score whose weights come from the config
+- A composite score whose weights come from the config. It is **legacy** (see below)
 - The official Break leaderboard trio, ported from ``allenai/break-evaluator`` (issue #40):
   exact match, SARI and normalized graph edit distance (GED, **lower is better**). Break's
   fourth metric, norm_EM, is deliberately not ported — its normalizer is
@@ -19,6 +19,21 @@ Scoring techniques (all string-level, no model in the loop):
 
 The last two blocks are **additive**: they are new columns beside the existing ones, they do
 not enter ``composite_score``, and no metric that existed before them changes value.
+
+**The reported primary is a suite, not a composite** (``decomposition_report_card``, built by
+:func:`_report_card` from the specification in
+``docs/analysis/2026-08-23-decomposition-quality-metric-specification.md`` §2.1 and recorded
+in ADR 0029). Six unblended terms, every one a macro mean over every evaluated item, every
+one carrying its direction: Break EM, SARI, GED (lower is better), ``chain_validity``,
+hop-count EM, and the over/under-decomposition pair kept split and never summed. Where one
+number is structurally required, it is ``ged_macro`` — a member of the suite, not a function
+over it — with the three caveats the report card carries. ``decomp_mean`` is the blended
+**contingency** of §2.3, computed beside the suite and never inside it.
+
+``composite_score`` and its ``_REF_RX`` are **frozen as legacy, not repaired** (§5 option 1 of
+that note): every committed number — nine arms, exp-010's 33 sweep cells, both v1
+re-analysis notes — stays valid and quotable, and the run states the status rather than
+leaving it to be inferred. Freezing is for reproducibility, not because the term is correct.
 
 Inputs:
 - predictions: JSON list (e.g. a decomposer run's results.json) of items like
@@ -73,6 +88,17 @@ from step_lines import split_step_lines  # noqa: E402
 
 _WS_RX = re.compile(r"\s+")
 _PUNCT_KEEP_HASH_RX = re.compile(r"[^\w\s#]")
+
+#: FROZEN, deliberately not repaired. It matches only the **bracketed** ``[#k]``; MuSiQue's
+#: gold writes bare ``#k``, so ``reference_validity_*`` — and through it the legacy
+#: ``composite_score`` — has never measured reference validity on this data (issue #40).
+#: The specification's §5 verdict is freeze-don't-fix, for two reasons kept together here:
+#: correcting the regex would move every committed number under an unchanged name, and even
+#: a corrected regex would still be a micro-pooled rate with a **model-dependent
+#: denominator** inside an aggregate-of-aggregates — the defect *class*, not just this
+#: instance. The replacement is per-item ``chain_validity`` (:data:`_BARE_REF_RX`), which is
+#: term 4 of the reported suite. Do not "fix" this line: doing so silently invalidates
+#: exp-010's 33 sweep cells and nine committed arms. ADR 0029.
 _REF_RX = re.compile(r"\[#(\d+)\]")
 
 #: Written into every metrics JSON. A number like "step F1 0.42" is meaningless without
@@ -200,6 +226,20 @@ METRIC_DEFINITIONS: dict[str, Any] = {
     ),
     "over_decomposition_rate": "fraction of rows with len(pred steps) > len(gold steps)",
     "under_decomposition_rate": "fraction of rows with len(pred steps) < len(gold steps)",
+    "over_decomposition": (
+        "per item: 1.0 when len(pred steps) > len(gold steps), else 0.0 — the 0/1 column "
+        "over_decomposition_rate is the mean of. It exists so the ADR 0017 asymmetry "
+        "('over-decomposition is tolerable, under-decomposition is not') can be "
+        "SIGNIFICANCE-TESTED: until this column existed the two rates were aggregate-only, "
+        "so no paired test could be run on either"
+    ),
+    "under_decomposition": (
+        "per item: 1.0 when len(pred steps) < len(gold steps), else 0.0. Both direction "
+        "columns are lower-is-better (a length error is an error either way); ADR 0017's "
+        "asymmetry is about how BADLY each is scored by a reader, not about the sign, and "
+        "the specification keeps the two rates split and never summed for exactly that "
+        "reason"
+    ),
     "step_count_exact_rate": (
         "fraction of rows with len(pred steps) == len(gold steps), i.e. exactly "
         "1 - over_decomposition_rate - under_decomposition_rate. NOT the same as "
@@ -221,11 +261,49 @@ METRIC_DEFINITIONS: dict[str, Any] = {
         "gold 'hop_count' field when present and positive, else the gold step count"
     ),
     "composite_score": (
-        "weighted sum of step_f1_macro, ordered_step_accuracy_macro, "
-        "reference_validity_micro and a step-count term "
+        "LEGACY — see composite_score_status. Weighted sum of step_f1_macro, "
+        "ordered_step_accuracy_macro, reference_validity_micro and a step-count term "
         "max(0, 1 - step_count_abs_error_mae / scale); the weights and scale are "
         "recorded alongside as composite_score_weights and "
         "composite_step_count_error_scale"
+    ),
+    "composite_score_status": (
+        "'legacy'. The composite is FROZEN, byte-identical to the form every committed "
+        "number was produced under, and it is NOT the reported primary — "
+        "decomposition_report_card is. Frozen rather than repaired because its "
+        "reference_validity_micro term is a micro-pooled rate with a MODEL-DEPENDENT "
+        "denominator inside an aggregate-of-aggregates: repairing the regex would move "
+        "every committed value under an unchanged name while leaving the defect class in "
+        "place. It is still computed and still reported so nine committed arms and "
+        "exp-010's 33 sweep cells stay quotable"
+    ),
+    "decomposition_report_card": (
+        "the reported primary: an UNBLENDED six-term suite, each term a macro mean over "
+        "every evaluated item, each carrying its direction and the n it was averaged over. "
+        "No term is a ratio pooled across items, which is the structural fix for the issue "
+        "#40 defect class, and the block is asserted to be macro at build time. Whether any "
+        "of this becomes the THESIS-primary metric is issue #6 item 5 — Jahid's with his "
+        "supervisor. This file specifies and reports; it does not adopt"
+    ),
+    "decomp_mean": (
+        "the blended CONTINGENCY of the specification's §2.3 (P3), not a member of the "
+        "suite: per item, the unweighted mean of five [0,1] higher-is-better terms — "
+        "break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity and "
+        "hop_count_exact_match. Equal weights, no weighted variant (GLUE's unweighted "
+        "average is the only weighting form with a precedent; an unequal weighting would "
+        "need a Dynascore-style unit conversion nothing here estimates). It is per item, so "
+        "unlike composite_score it takes the full paired battery. It is reported ONLY "
+        "beside the suite, never instead of it, and it shipped only because the junk "
+        "battery of scripts/decomposition_junk_battery.py measured every junk baseline "
+        "below every real arm on it"
+    ),
+    "chain_validity_gold_unchained_items": (
+        "count of evaluated items whose GOLD emits no '#k' reference at all. That is "
+        "chain_validity's one conditional-credit branch (such an item scores 1.0 for free), "
+        "and it is conditioned on the gold, so no model can trigger it. On the ADR 0007 "
+        "pinned 600 it is 0 by construction — every gold decomposition is a tree with n-1 "
+        "references — but MetaQA or any future gold could reintroduce free credit silently, "
+        "which is exactly how issue #40 happened. The count makes it visible instead"
     ),
     "lower_is_better_statistics": (
         "the per-item metric names in this report where a LOWER value is better; every "
@@ -252,10 +330,18 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
     "difference_direction": "every reported difference is system_a minus system_b",
     "metric_direction": (
         "every row carries 'direction': 'higher_is_better' for a score, 'lower_is_better' "
-        "for a distance. Exactly one compared metric is a distance today — 'ged', Break's "
-        "normalized graph edit distance — so a difference of -0.16 there means system_a is "
-        "BETTER, the opposite of what the same number means on every other row. The names "
-        "are also listed in 'lower_is_better_statistics'"
+        "for a distance or an error rate. Three compared metrics are lower-is-better today — "
+        "'ged' (Break's normalized graph edit distance) and the two length-error rates "
+        "'under_decomposition' and 'over_decomposition' — so a difference of -0.16 on one of "
+        "them means system_a is BETTER, the opposite of what the same number means on every "
+        "other row. The names are also listed in 'lower_is_better_statistics'"
+    ),
+    "over_and_under_decomposition_are_a_pair": (
+        "the two length-error rates are reported side by side and are NEVER summed: ADR 0017 "
+        "records the supervisor's judgment that over-decomposition is tolerable and "
+        "under-decomposition is not, and a single 'wrong length' figure erases exactly that. "
+        "Both are lower-is-better; the asymmetry is in how heavily a reader weighs them, not "
+        "in their sign"
     ),
     "favours": (
         "for a SIGNIFICANT row, which system the difference favours once 'direction' is "
@@ -290,8 +376,14 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
     ),
     "mcnemar": (
         "exact two-sided McNemar on the discordant pairs of a binary metric: with b = "
-        "#(a correct, b wrong) and c = #(a wrong, b correct), p = min(1, 2 * "
-        "BinomialCDF(min(b, c); b + c, 0.5)). p = 1.0 when there are no discordant pairs"
+        "discordant_only_in_a (the indicator is 1 for a and 0 for b) and c = "
+        "discordant_only_in_b, p = min(1, 2 * BinomialCDF(min(b, c); b + c, 0.5)). "
+        "p = 1.0 when there are no discordant pairs. WHAT A 1 MEANS depends on the row's "
+        "direction, so the counts are also emitted under a direction-specific name: on a "
+        "higher_is_better row 1 is a correct item, so b = #(a correct, b wrong) and the "
+        "pair is repeated as correct_only_in_a / correct_only_in_b; on a lower_is_better "
+        "row (the over/under-decomposition rates) 1 is the ERROR occurring, so b = #(a "
+        "errs, b does not) and the pair is repeated as error_only_in_a / error_only_in_b"
     ),
     "mcnemar_significance": "significant = p_value < alpha",
     "mcnemar_min_attainable_p_value": (
@@ -318,8 +410,14 @@ COMPARISON_DEFINITIONS: dict[str, Any] = {
         "composite_score, plus the McNemar metrics. composite_score has no per-item "
         "value (its reference term is a micro rate and its step-count term a MAE), so no "
         "paired difference exists to t-test and only its bootstrap CI is reported. This is "
-        "the asymmetry issue #40 turns on: the additive per-item metrics (sari, ged, "
-        "chain_validity, break_exact_match) take all three tests, the composite one"
+        "the asymmetry issue #40 turns on: every term of the reported suite (break_exact_match, "
+        "sari, ged, chain_validity, hop_count_exact_match, over/under_decomposition) takes all "
+        "three tests, the LEGACY composite one"
+    ),
+    "composite_score_status": (
+        "'legacy'. It is still compared, unchanged, so a comparison against a committed "
+        "number stays possible; the reported primary is the six-term suite, whose terms are "
+        "compared in the same battery on the rows above"
     ),
     "t_test_degenerate_rows": (
         "a row carries t_statistic = null, p_value = null, significant = false and a "
@@ -450,7 +548,15 @@ def _load_gold(path: Path, max_reported_mismatches: int) -> dict[str, dict[str, 
         else:
             # No usable field: the two denominators are the same number by construction.
             hop_count = len(steps)
-        out[_normalize_question(question)] = {"steps": steps, "hop_count": hop_count}
+        # 'question' is the RAW text; the key is its normalized form. Scoring reads only
+        # 'steps' and 'hop_count', so this is an additive field — it exists so a caller that
+        # builds predictions out of the gold (the junk battery) can use the question the
+        # dataset actually wrote rather than the lowercased key.
+        out[_normalize_question(question)] = {
+            "question": question,
+            "steps": steps,
+            "hop_count": hop_count,
+        }
 
     if mismatches:
         shown = mismatches[:max_reported_mismatches]
@@ -1059,6 +1165,91 @@ def _build_eval_rows(
     return rows, missing_gold
 
 
+def score_item(
+    row: EvalRow,
+    ged_max_nodes: int,
+    ged_time_budget: float,
+    decomp_mean_components: tuple[str, ...],
+    ged_clamp: float,
+) -> dict[str, Any]:
+    """Every per-item column for one evaluation row.
+
+    Lifted out of ``main()`` unchanged so that the junk battery
+    (``scripts/decomposition_junk_battery.py``) scores its baselines with **this** code and
+    not a second copy of the metric — the same reason the GED benchmark imports its metric
+    functions from here. Nothing in the extraction changes a value: the body is the loop that
+    was inline, plus the three columns the suite registration added.
+    """
+    step_p, step_r, step_f1 = _step_prf(row.pred_steps, row.gold_steps)
+    rouge_lp, rouge_lr, rouge_lf = _rouge_l(
+        _join_steps(row.pred_steps), _join_steps(row.gold_steps)
+    )
+    ref_rate, ref_ok, ref_total = _reference_validity(row.pred_steps)
+    chain_valid, chain_pred_refs, chain_gold_refs = _chain_validity(
+        row.pred_steps, row.gold_steps
+    )
+    pred_break = _break_steps(row.pred_steps)
+    gold_break = _break_steps(row.gold_steps)
+    pred_break_string = _break_string(pred_break)
+    gold_break_string = _break_string(gold_break)
+    ged, ged_fallback, ged_fallback_seconds = _normalized_ged(
+        _decomposition_graph(pred_break),
+        _decomposition_graph(gold_break),
+        max_nodes_for_optimizer=ged_max_nodes,
+        time_budget_seconds=ged_time_budget,
+    )
+    pred_hops = len(row.pred_steps)
+    gold_hops = row.gold_hop_count
+    signed = len(row.pred_steps) - len(row.gold_steps)
+
+    item_row = {
+        "item_id": row.item_id,
+        "question": row.question,
+        "pred_steps": row.pred_steps,
+        "gold_steps": row.gold_steps,
+        "pred_step_count": len(row.pred_steps),
+        "gold_step_count": len(row.gold_steps),
+        "exact_match": _exact_decomposition_match(row.pred_steps, row.gold_steps),
+        "step_precision": step_p,
+        "step_recall": step_r,
+        "step_f1": step_f1,
+        "ordered_step_accuracy": _ordered_step_accuracy(row.pred_steps, row.gold_steps),
+        "rouge_l_precision": rouge_lp,
+        "rouge_l_recall": rouge_lr,
+        "rouge_l_f1": rouge_lf,
+        "reference_validity_rate": ref_rate,
+        "reference_valid_count": ref_ok,
+        "reference_total_count": ref_total,
+        # The issue #40 additions. chain_validity is the repaired house term; the other
+        # three are the official Break leaderboard metrics (EM / SARI / GED).
+        "chain_validity": chain_valid,
+        "chain_pred_reference_count": chain_pred_refs,
+        "chain_gold_reference_count": chain_gold_refs,
+        "break_exact_match": _break_exact_match(pred_break_string, gold_break_string),
+        "sari": _sari(row.question, pred_break_string, gold_break_string),
+        "ged": ged,
+        "ged_fallback": ged_fallback,
+        # Null except where the time budget stopped the optimizer, which is the one
+        # machine-dependent path: the elapsed seconds are recorded so a reader can see
+        # how far past the budget that item ran (the deadline is only tested between
+        # approximations, so it can overshoot).
+        "ged_fallback_seconds": ged_fallback_seconds,
+        "step_count_signed_error": signed,
+        "step_count_abs_error": abs(signed),
+        # The two direction columns the suite registration added: the 0/1 per-item form of
+        # the rates that were aggregate-only, so the ADR 0017 asymmetry can be tested.
+        "over_decomposition": 1.0 if signed > 0 else 0.0,
+        "under_decomposition": 1.0 if signed < 0 else 0.0,
+        "predicted_hop_count": pred_hops,
+        "gold_hop_count": gold_hops,
+        "hop_count_abs_error": abs(pred_hops - gold_hops),
+        "hop_count_exact_match": 1.0 if pred_hops == gold_hops else 0.0,
+    }
+    # Last, because it is a function of the columns above it.
+    item_row["decomp_mean"] = decomp_mean(item_row, decomp_mean_components, ged_clamp)
+    return item_row
+
+
 _EMPTY_AGGREGATE = {
     "num_rows": 0,
     "exact_match_rate": 0.0,
@@ -1072,6 +1263,8 @@ _EMPTY_AGGREGATE = {
     "reference_validity_macro": 0.0,
     "reference_validity_micro": 1.0,
     "chain_validity_macro": 0.0,
+    "chain_validity_gold_unchained_items": 0,
+    "decomp_mean_macro": 0.0,
     "break_exact_match_rate": 0.0,
     "sari_macro": 0.0,
     # 0.0 like every other placeholder in this block, even though a GED of 0.0 would read as
@@ -1131,6 +1324,15 @@ def _aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
         # The additive metrics of issue #40. All four are per-item values, so all four are
         # plain macro averages and all four are in the paired battery.
         "chain_validity_macro": mean("chain_validity"),
+        # chain_validity's one conditional-credit branch, counted rather than argued: an item
+        # whose GOLD emits no reference scores 1.0 for free. 0 on the pinned 600 by
+        # construction, but a future gold could reintroduce free credit silently, which is
+        # exactly how issue #40 happened (specification §2.5 item 2).
+        "chain_validity_gold_unchained_items": sum(
+            1 for it in items if int(it["chain_gold_reference_count"]) == 0
+        ),
+        # The blended CONTINGENCY, beside the suite and not inside it.
+        "decomp_mean_macro": mean("decomp_mean"),
         "break_exact_match_rate": mean("break_exact_match"),
         "sari_macro": mean("sari"),
         "ged_macro": mean("ged"),
@@ -1172,11 +1374,22 @@ BOOTSTRAP_STATISTICS = (
     "sari",
     "ged",
     "chain_validity",
+    # The blended contingency (§2.3). Per item, so unlike composite_score it takes all
+    # three tests; reported beside the suite, never as the suite.
+    "decomp_mean",
     "composite_score",
 )
 
-#: Binary per-item metrics compared with McNemar.
-MCNEMAR_STATISTICS = ("exact_match", "hop_count_exact_match", "break_exact_match")
+#: Binary per-item metrics compared with McNemar. The two direction columns joined it with
+#: the suite registration: the ADR 0017 asymmetry could not be significance-tested while the
+#: over/under rates were aggregate-only (specification §2.5 item 1).
+MCNEMAR_STATISTICS = (
+    "exact_match",
+    "hop_count_exact_match",
+    "break_exact_match",
+    "over_decomposition",
+    "under_decomposition",
+)
 
 #: Compared statistics that are a plain mean of a per-item column. Everything in
 #: :data:`BOOTSTRAP_STATISTICS` except ``composite_score``, which is built from aggregates.
@@ -1195,7 +1408,16 @@ _COMPOSITE_INPUT_COLUMNS = (
 #: higher-is-better, so a reader who does not know which is which can invert a verdict: a
 #: difference of -0.16 on ``ged`` means system_a is BETTER. Every reported row therefore
 #: carries ``direction``, and every significant row names the system it ``favours``.
-LOWER_IS_BETTER_STATISTICS = ("ged",)
+#:
+#: ``ged`` is a distance. The two direction columns are here because a length error is an
+#: error in either direction — the specification's §2.1 prints the pair as "under ↓, over ↓
+#: but tolerated". §2.5 item 1 names only ``under_decomposition``; ``over_decomposition`` is
+#: registered with it because the alternative is worse: left out, every comparison row would
+#: be stamped ``higher_is_better`` and ``favours`` would name the wrong system on it. The
+#: ADR 0017 asymmetry (over is tolerable, under is not) is about how heavily a reader should
+#: weigh the two, not about their sign, and it is carried by keeping the two rates split and
+#: never summed — never by calling more over-decomposition better.
+LOWER_IS_BETTER_STATISTICS = ("ged", "under_decomposition", "over_decomposition")
 
 #: Per-item metrics this script gained with issue #40. They are required of a v2 per-item
 #: file (they are computed by default) but cannot exist in a v1 prior-work file, which
@@ -1203,14 +1425,467 @@ LOWER_IS_BETTER_STATISTICS = ("ged",)
 #: records which ones it could not compute.
 _ISSUE_40_STATISTICS = ("sari", "ged", "chain_validity", "break_exact_match")
 
+#: Per-item columns this script gained with the six-term suite registration (ADR 0029).
+#: They are computed on every scoring run — there is no switch — but they are **not**
+#: required of a per-item file being compared, for the same reason the issue #40 columns are
+#: not required of a v1 file: nine committed arms and exp-010's 33 sweep cells were scored
+#: before these columns existed, and requiring them would refuse those files outright rather
+#: than comparing what they do carry. What is missing is named in the output
+#: (``statistics_not_available_in_inputs``), never silently dropped.
+_SUITE_ADDITION_STATISTICS = ("over_decomposition", "under_decomposition", "decomp_mean")
+
 #: Statistics a paired t-test is reported on, added alongside the two families above per
 #: ADR 0017 item 4 / issue #30 (never as a replacement). It is every compared metric that
 #: HAS a per-item value: the bootstrap statistics minus ``composite_score``, whose
 #: reference term is a micro rate and step-count term a MAE, so no per-item difference to
-#: t-test exists, plus the two binary McNemar metrics (which do have one).
+#: t-test exists, plus the binary McNemar metrics (which do have one). Every term of the
+#: reported suite has a per-item value, so every one of them is in here — the asymmetry
+#: issue #40 turns on is now the composite's alone.
 T_TEST_STATISTICS = (
     tuple(name for name in BOOTSTRAP_STATISTICS if name != "composite_score") + MCNEMAR_STATISTICS
 )
+
+
+# --------------------------------------------------------------------------------------
+# The reported primary: the six-term suite (specification §2.1; ADR 0029)
+# --------------------------------------------------------------------------------------
+# Registration, not new metric mathematics: all six terms were already computed at the
+# commit the specification was written against. What this block adds is that they are named
+# as one reported object, in one order, each with its direction, its range, its per-item
+# column and the n it was averaged over — so a note or a table cannot quote three of them
+# and call that the metric.
+
+
+@dataclass(frozen=True)
+class SuiteTerm:
+    """One reported term of ``decomposition_report_card``."""
+
+    #: 1-6. Term 6 is a PAIR of members (over/under), which is why this is not the index.
+    number: int
+    #: The key in the metrics JSON.
+    aggregate_key: str
+    #: The per-item column the aggregate is the plain mean of.
+    per_item_column: str
+    #: ``[0,1]``, ``{0,1}`` or ``[0,inf)`` — GED is a distance and is not bounded above.
+    value_range: str
+    #: What the term prices, in the specification's words.
+    prices: str
+    #: ``literature`` (Break's own metric set) or ``house`` (a repair or a house term).
+    provenance: str
+
+
+#: The six terms, in the specification's order. All six are ALWAYS reported together: a
+#: report that quotes fewer than six is not reporting this metric (§2.1 reporting rule 1).
+DECOMPOSITION_SUITE_TERMS: tuple[SuiteTerm, ...] = (
+    SuiteTerm(
+        1,
+        "break_exact_match_rate",
+        "break_exact_match",
+        "{0,1}",
+        "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+        "literature: Break official get_exact_match",
+    ),
+    SuiteTerm(
+        2,
+        "sari_macro",
+        "sari",
+        "[0,1]",
+        "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+        "literature: Break / Xu et al. (TACL 2016)",
+    ),
+    SuiteTerm(
+        3,
+        "ged_macro",
+        "ged",
+        "[0,inf)",
+        "one distance over wording (node substitution), chaining (edges) and step count "
+        "(node insertion/deletion)",
+        "literature: Break official normalized graph edit distance",
+    ),
+    SuiteTerm(
+        4,
+        "chain_validity_macro",
+        "chain_validity",
+        "[0,1]",
+        "did the plan chain where the gold requires chaining, and do its '#k' resolve "
+        "backwards",
+        "house repair, not a published metric (PR #44 / ADR 0026)",
+    ),
+    SuiteTerm(
+        5,
+        "hop_count_exact_match_rate",
+        "hop_count_exact_match",
+        "{0,1}",
+        "granularity: the right number of steps",
+        "house",
+    ),
+    SuiteTerm(
+        6,
+        "under_decomposition_rate",
+        "under_decomposition",
+        "{0,1}",
+        "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+        "house, required by ADR 0017",
+    ),
+    SuiteTerm(
+        6,
+        "over_decomposition_rate",
+        "over_decomposition",
+        "{0,1}",
+        "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+        "house, required by ADR 0017",
+    ),
+)
+
+#: The one term the specification's §2.2 names where a single ordering number is
+#: structurally required (ranking the 33-cell sweep, model selection, an abstract sentence).
+#: It is a MEMBER of the suite, never a function over it.
+SUITE_SINGLE_NUMBER = "ged_macro"
+
+#: The three caveats that travel with :data:`SUITE_SINGLE_NUMBER` every time it is quoted.
+#: They are emitted with the number, not kept in a doc, because the number is what gets
+#: pasted into a table.
+SUITE_SINGLE_NUMBER_CAVEATS = (
+    "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only "
+    "other lower-is-better terms are the two length-error rates of term 6.",
+    "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better "
+    "than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+    "Absolute values are NOT comparable to published Break GED: this port has no spaCy "
+    "lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against "
+    "MuSiQue gold rather than QDMR annotations.",
+)
+
+#: What the junk battery measured about ``decomp_mean``, emitted with the number. The blend
+#: ships **only** because this gate passed: an additive blend containing SARI hands junk a
+#: nonzero floor, which is the same failure family as issue #40, so a junk baseline ranking
+#: above a real arm disqualifies the blend rather than prompting a weight tweak.
+#: Re-derive with ``scripts/decomposition_junk_battery.py`` (ADR 0027, ADR 0029).
+DECOMP_MEAN_JUNK_GATE = (
+    "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best "
+    "junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst "
+    "of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of "
+    "J1-J4 ranked below every one of the nine committed arms. Re-derive with "
+    "scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+)
+
+#: ``composite_score``'s status, emitted beside it in every metrics JSON. See the
+#: ``composite_score_status`` entry of :data:`METRIC_DEFINITIONS` for the reasoning and
+#: :data:`_REF_RX` for the thing that is frozen.
+COMPOSITE_SCORE_STATUS = "legacy"
+
+#: Terms forbidden from the reported suite, with the reason. ``reference_validity_micro`` is
+#: the instance that motivated the rule (issue #40); the rule is the general one — no
+#: headline term may be a ratio whose DENOMINATOR is produced by the model, because an item
+#: that emits nothing then vanishes from the denominator instead of scoring badly.
+_FORBIDDEN_IN_SUITE = {
+    "reference_validity_micro": (
+        "a ratio pooled across items whose denominator is produced by the model: on five of "
+        "seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 "
+        "of 600 items owned the whole denominator (issue #40)"
+    ),
+    "composite_score": (
+        "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in "
+        "the ADR 0009 battery; it is frozen as legacy and reported separately"
+    ),
+}
+
+
+#: The component names :func:`_decomp_mean_terms` can build. Declared beside it so the
+#: config validation and the function cannot drift; a test pins that they agree.
+DECOMP_MEAN_KNOWN_COMPONENTS = (
+    "break_exact_match",
+    "sari",
+    "ged",
+    "chain_validity",
+    "hop_count_exact_match",
+)
+
+
+def _decomp_mean_terms(item: dict[str, Any], ged_clamp: float) -> dict[str, float]:
+    """The [0,1] higher-is-better terms ``decomp_mean`` averages, per item.
+
+    One entry per component name the config may list. GED is the only one that needs work:
+    it is a distance, it is unbounded above (measured above 1.0 for junk), so it is clamped
+    and flipped. The clamp is a judgment call with no source — recorded as such in ADR 0029
+    and in the config's note — which is one reason this blend is a contingency and not a
+    member of the suite.
+    """
+    return {
+        "break_exact_match": float(item["break_exact_match"]),
+        "sari": float(item["sari"]),
+        "ged": 1.0 - min(ged_clamp, float(item["ged"])),
+        "chain_validity": float(item["chain_validity"]),
+        "hop_count_exact_match": float(item["hop_count_exact_match"]),
+    }
+
+
+def decomp_mean(item: dict[str, Any], components: tuple[str, ...], ged_clamp: float) -> float:
+    """The specification's §2.3 blend: the UNWEIGHTED mean of ``components``, per item.
+
+    Equal weights, no weighted variant: GLUE's unweighted average is the only weighting form
+    this survey found a precedent for, and an unequal weighting would need a Dynascore-style
+    unit conversion that nothing in this repo estimates.
+    """
+    available = _decomp_mean_terms(item, ged_clamp)
+    return sum(available[name] for name in components) / len(components)
+
+
+def _decomp_mean_policy(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Read the blend's component list and GED clamp from config, and validate them loudly.
+
+    Both live in the config rather than in this file so a run's snapshot records the blend it
+    was scored under — exactly as the legacy composite's weights do.
+    """
+    raw_components = require(cfg, "decomposition_suite.decomp_mean.components")
+    clamp = require(cfg, "decomposition_suite.decomp_mean.ged_clamp")
+
+    known = DECOMP_MEAN_KNOWN_COMPONENTS
+    if (
+        not isinstance(raw_components, list)
+        or not raw_components
+        or any(not isinstance(c, str) for c in raw_components)
+    ):
+        raise SystemExit(
+            "decomposition_suite.decomp_mean.components must be a non-empty list of per-item "
+            f"column names, got {raw_components!r}"
+        )
+    unknown = [c for c in raw_components if c not in known]
+    if unknown:
+        raise SystemExit(
+            f"decomposition_suite.decomp_mean.components names column(s) this blend cannot "
+            f"build: {unknown}. Known components: {sorted(known)}. Every component must be a "
+            f"per-item value in [0,1] and higher-is-better; adding one means adding its "
+            f"conversion to _decomp_mean_terms, not just a name to the config."
+        )
+    if len(set(raw_components)) != len(raw_components):
+        raise SystemExit(
+            f"decomposition_suite.decomp_mean.components lists a component twice: "
+            f"{raw_components}. A repeated component is an unequal weighting written as an "
+            f"equal one, and this blend has no weighted variant."
+        )
+    if (
+        isinstance(clamp, bool)
+        or not isinstance(clamp, (int, float))
+        or not (0.0 < float(clamp) <= 1.0)
+    ):
+        raise SystemExit(
+            f"decomposition_suite.decomp_mean.ged_clamp must be a number in (0, 1], got "
+            f"{clamp!r}. GED is unbounded above, so the blend clamps it before flipping "
+            f"direction (1 - min(clamp, ged)); a clamp above 1 would make the term negative "
+            f"and take the blend out of [0,1]."
+        )
+    return {
+        "components": list(raw_components),
+        "ged_clamp": float(clamp),
+        "formula": (
+            "per item, the unweighted mean over the components of: break_exact_match, sari, "
+            "1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match"
+        ),
+        "weights": "all equal by construction; there is no weighted variant",
+        "status": (
+            "CONTINGENCY, not part of the reported suite. Offered only against a requirement "
+            "for one blended number, reported beside the suite and never instead of it"
+        ),
+        "junk_gate": DECOMP_MEAN_JUNK_GATE,
+    }
+
+
+#: The five reporting rules of the specification's §2.1 that are part of the metric rather
+#: than decoration. Emitted with the numbers so a table built from this file carries them.
+_SUITE_REPORTING_RULES = (
+    "All six terms are always reported together, with their direction. A note or table that "
+    "quotes fewer than six is not reporting this metric.",
+    "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired "
+    "t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, "
+    "so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+    "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole "
+    "block).",
+    "Report a junk-baseline block beside the arms — Break prints its own 'Copy' baseline in "
+    "its results table. The battery is scripts/decomposition_junk_battery.py, and its "
+    "acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+    "Composite terms with model-dependent denominators are forbidden in the headline; "
+    "reference_validity_micro is the instance that motivated the rule.",
+)
+
+#: Term 6 is a pair, and the pair is the point: ADR 0017 records the supervisor's judgment
+#: that over-decomposition is tolerable and under-decomposition is not. No metric in the
+#: survey expresses that asymmetry, so it is carried by reporting the two rates separately.
+_SUITE_PAIR_RULE = (
+    "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a "
+    "PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and "
+    "under-decomposition is not, and summing them would erase exactly that. "
+    "step_count_exact_rate is 1 - the two of them and is reported separately."
+)
+
+
+#: How far a suite aggregate may sit from the mean of its column before the run is refused.
+#: It exists only to absorb float summation order; the two are computed from the same values.
+_SUITE_MACRO_TOLERANCE = 1e-12
+
+
+def _assert_suite_terms_are_macro_means(
+    overall: dict[str, Any], per_item: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Refuse to report a suite term that is not the plain mean of its per-item column.
+
+    The structural guard behind the whole specification: the issue #40 defect was a headline
+    term pooled across items with a model-produced denominator, and "every term is a macro
+    mean over the evaluation set" is the property that makes it impossible. Argued, that
+    property is a claim; checked here against the columns actually written, it is auditable.
+    """
+    tolerance = _SUITE_MACRO_TOLERANCE
+    n = len(per_item)
+    checked: dict[str, int] = {}
+    broken: list[str] = []
+    for term in DECOMPOSITION_SUITE_TERMS:
+        column = [float(row[term.per_item_column]) for row in per_item]
+        expected = sum(column) / n if n else 0.0
+        actual = float(overall[term.aggregate_key])
+        checked[term.aggregate_key] = n
+        if abs(actual - expected) > tolerance:
+            broken.append(
+                f"{term.aggregate_key} = {actual!r} but the mean of its per-item column "
+                f"'{term.per_item_column}' over {n} items is {expected!r}"
+            )
+    if broken:
+        raise SystemExit(
+            "a reported suite term is not the macro mean of its per-item column:\n  "
+            + "\n  ".join(broken)
+            + "\nEvery term of decomposition_report_card must be averaged over a "
+            "denominator fixed by the EVALUATION SET, not by what the model emitted "
+            "(specification §3.1). A term that is not is the issue #40 defect class."
+        )
+    for name in _FORBIDDEN_IN_SUITE:
+        if any(term.aggregate_key == name for term in DECOMPOSITION_SUITE_TERMS):
+            raise SystemExit(
+                f"{name!r} is registered as a suite term, and it must not be: "
+                f"{_FORBIDDEN_IN_SUITE[name]}"
+            )
+    return {
+        "every_term_is_the_macro_mean_of_its_per_item_column": True,
+        "items_per_term": checked,
+        "tolerance": tolerance,
+        "terms_excluded_and_why": dict(_FORBIDDEN_IN_SUITE),
+    }
+
+
+def _report_card(
+    overall: dict[str, Any],
+    per_item: list[dict[str, Any]],
+    decomp_mean_policy: dict[str, Any],
+    composite_score: float,
+) -> dict[str, Any]:
+    """Build ``decomposition_report_card``: the reported primary, as one object.
+
+    Registration and reporting, not new mathematics — every value here is read out of
+    ``overall``, which computed it exactly as it did before this block existed.
+    """
+    n = len(per_item)
+    return {
+        "name": "decomposition_report_card",
+        "specification": (
+            "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md §2.1; "
+            "ADR 0029"
+        ),
+        "shape": "an UNBLENDED suite of six terms — there is no composite over them",
+        "n_items": n,
+        "denominator": (
+            "every term is a macro mean over the evaluated items; no term is a ratio pooled "
+            "across items, and no denominator depends on what the model emitted"
+        ),
+        "terms": [
+            {
+                "term": term.number,
+                "metric": term.aggregate_key,
+                "per_item_column": term.per_item_column,
+                "value": float(overall[term.aggregate_key]),
+                "direction": _direction(term.per_item_column),
+                "range": term.value_range,
+                "prices": term.prices,
+                "provenance": term.provenance,
+                "n_items": n,
+            }
+            for term in DECOMPOSITION_SUITE_TERMS
+        ],
+        "paired_terms_rule": _SUITE_PAIR_RULE,
+        "reporting_rules": list(_SUITE_REPORTING_RULES),
+        "single_number_when_one_is_required": {
+            "metric": SUITE_SINGLE_NUMBER,
+            "value": float(overall[SUITE_SINGLE_NUMBER]),
+            "direction": _direction("ged"),
+            "why_a_member_and_not_a_formula": (
+                "the field's own precedent for a single number is one member of the family "
+                "made stricter (Break/QDMR's NormEM) or one strict column selected on "
+                "(EntailmentBank), never a blend over the family"
+            ),
+            "caveats": list(SUITE_SINGLE_NUMBER_CAVEATS),
+        },
+        "contingency_blend": {
+            "metric": "decomp_mean_macro",
+            "per_item_column": "decomp_mean",
+            "value": float(overall["decomp_mean_macro"]),
+            "direction": _direction("decomp_mean"),
+            "in_the_suite": False,
+            **decomp_mean_policy,
+        },
+        "guards": _assert_suite_terms_are_macro_means(overall, per_item),
+        "adoption": (
+            "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the "
+            "THESIS-primary metric is issue #6 item 5 — Jahid's decision with his "
+            "supervisor. This script specifies and reports; it does not adopt"
+        ),
+        "legacy_composite": {
+            "metric": "composite_score",
+            "status": COMPOSITE_SCORE_STATUS,
+            "value": float(composite_score),
+            "why_it_is_still_computed": (
+                "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and "
+                "both v1 re-analysis notes stay valid and quotable — for reproducibility, "
+                "not because the term is correct"
+            ),
+        },
+    }
+
+
+def _report_card_note_lines(report_card: dict[str, Any]) -> list[str]:
+    """The report card as the run note prints it — all six terms, with their directions.
+
+    The run note is what gets quoted into ``experiments/log.md``, so the whole suite has to
+    be readable off it: a note that carries three of the six is not reporting this metric
+    (§2.1 reporting rule 1), and the ⇑/⇓ column is Break's own convention.
+    """
+    numbered = len({term["term"] for term in report_card["terms"]})
+    lines = [
+        f"### Decomposition report card — the reported primary "
+        f"({numbered} terms in {len(report_card['terms'])} rows — term 6 is a pair — "
+        f"over n = {report_card['n_items']} items)",
+        "",
+        "| # | term | value | better | range | provenance |",
+        "|---|---|---|---|---|---|",
+    ]
+    for term in report_card["terms"]:
+        better = "lower ⇓" if term["direction"] == "lower_is_better" else "higher ⇑"
+        lines.append(
+            f"| {term['term']} | `{term['metric']}` | {term['value']:.4f} | {better} | "
+            f"{term['range']} | {term['provenance']} |"
+        )
+    single = report_card["single_number_when_one_is_required"]
+    blend = report_card["contingency_blend"]
+    lines += [
+        "",
+        f"- **Unblended by design.** There is no composite over these six; "
+        f"{report_card['denominator']}.",
+        f"- {report_card['paired_terms_rule']}",
+        f"- Where ONE number is structurally required: `{single['metric']}` = "
+        f"{single['value']:.4f} ({single['direction']}). Caveats that travel with it: "
+        + " ".join(single["caveats"]),
+        f"- Contingency blend (NOT part of the suite): `{blend['metric']}` = "
+        f"{blend['value']:.4f}, the unweighted mean of {len(blend['components'])} per-item "
+        f"terms {blend['components']} with GED clamped at {blend['ged_clamp']}. "
+        f"{blend['junk_gate']}",
+        f"- {report_card['adoption']} (issue #6 item 5).",
+    ]
+    return lines
 
 #: Top-level shape of ``<prefix>_per_item.json``. It is an object rather than a bare list
 #: because the composite-score weights the rows were scored under have to travel with them:
@@ -1228,7 +1903,7 @@ _REQUIRED_PER_ITEM_FIELDS = (
     "reference_valid_count",
     "reference_total_count",
     "step_count_abs_error",
-    *MCNEMAR_STATISTICS,
+    *(n for n in MCNEMAR_STATISTICS if n not in _SUITE_ADDITION_STATISTICS),
     *(n for n in _ISSUE_40_STATISTICS if n not in MCNEMAR_STATISTICS),
 )
 
@@ -1907,12 +2582,26 @@ def _mcnemar(
         n = len(a_vals)
         difference = (sum(a_vals) - sum(b_vals)) / n
         significant = bool(p_value < alpha)
+        # The two discordant counts are named for what a 1 MEANS on this row, which the
+        # row's direction decides: on a higher-is-better metric a 1 is a correct item, on
+        # the over/under-decomposition rates a 1 is the error occurring. One pair of names
+        # cannot be right for both, so `discordant_only_in_*` (always correct, and what the
+        # run note prints) is emitted on every row and the direction-specific pair beside
+        # it. `correct_only_in_*` therefore still appears on exactly the rows it has always
+        # been true of, and a consumer that reads it off an error row gets a KeyError
+        # rather than a number that means the opposite of its name.
+        named_counts = (
+            {"error_only_in_a": only_a, "error_only_in_b": only_b}
+            if _direction(name) == "lower_is_better"
+            else {"correct_only_in_a": only_a, "correct_only_in_b": only_b}
+        )
         out[name] = {
             "system_a_rate": sum(a_vals) / n,
             "system_b_rate": sum(b_vals) / n,
             "difference": difference,
-            "correct_only_in_a": only_a,
-            "correct_only_in_b": only_b,
+            "discordant_only_in_a": only_a,
+            "discordant_only_in_b": only_b,
+            **named_counts,
             "discordant_pairs": only_a + only_b,
             "p_value": p_value,
             "significant": significant,
@@ -1920,8 +2609,8 @@ def _mcnemar(
             "min_attainable_p_value": min_p,
             "min_attainable_p_reaches_alpha": bool(min_p < alpha),
             "underpowered": bool(underpowered or min_p >= alpha),
-            # Every McNemar metric here is higher-is-better, but the field is written
-            # anyway so a consumer reads direction off the row rather than off a name.
+            # Written on every row so a consumer reads the direction off the row rather
+            # than off a name: two of these metrics are lower-is-better error rates.
             "direction": _direction(name),
             "favours": _favours(name, difference, significant),
         }
@@ -2199,6 +2888,7 @@ def _compare(
         "v1_format_inputs": v1_inputs,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "composite_score_status": COMPOSITE_SCORE_STATUS,
         "per_item_composite_score_weights": per_item_weights,
         "per_item_composite_step_count_error_scale": per_item_scale,
         "config_weights_match_per_item_files": weights_match_config,
@@ -2273,8 +2963,9 @@ def _compare(
     for name, r in mcnemar.items():
         note_lines.append(
             f"| {name} | {better(name)} | {r['system_a_rate']:.4f} | {r['system_b_rate']:.4f} | "
-            f"{r['difference']:+.4f} | p={r['p_value']:.4g} (b={r['correct_only_in_a']}, "
-            f"c={r['correct_only_in_b']}, min attainable p={r['min_attainable_p_value']:.4g}) | "
+            f"{r['difference']:+.4f} | p={r['p_value']:.4g} "
+            f"(b={r['discordant_only_in_a']}, c={r['discordant_only_in_b']}, "
+            f"min attainable p={r['min_attainable_p_value']:.4g}) | "
             f"McNemar | {verdict(r)} | "
             f"{'yes' if r['underpowered'] else 'no'} |"
         )
@@ -2299,16 +2990,32 @@ def _compare(
         )
     note_lines.append("")
     note_lines.append(
-        "- The `better` column is the metric's direction: `ged` is a graph edit **distance**, "
-        "so a negative `a - b` on that row means system a is better; every other row is a "
-        "score, where positive means system a is better. Each significant row also names the "
-        "system it favours, and the metrics JSON carries `direction` / `favours` per row."
+        "- The `better` column is the metric's direction. Three rows are lower-is-better: "
+        "`ged` (a graph edit **distance**) and the two length-error rates "
+        "(`under_decomposition`, `over_decomposition`), so a negative `a - b` on those means "
+        "system a is better; every other row is a score, where positive means system a is "
+        "better. Each significant row also names the system it favours, and the metrics JSON "
+        "carries `direction` / `favours` per row."
+    )
+    note_lines.append(
+        "- `b` and `c` in a McNemar cell are the discordant counts (`discordant_only_in_a` "
+        "/ `discordant_only_in_b` in the metrics JSON): the items where the metric's "
+        "indicator is 1 for one system and 0 for the other. What a 1 means follows the "
+        "`better` column — a correct item on a higher-is-better row, the error occurring on "
+        "the two length-error rate rows."
+    )
+    note_lines.append(
+        "- The over/under rows are a PAIR and are never summed: ADR 0017 records that "
+        "over-decomposition is tolerable and under-decomposition is not, so read the two "
+        "verdicts separately rather than as one 'wrong length' result."
     )
     if unavailable:
         note_lines.append(
             f"- NOT COMPARED (the inputs do not carry these per-item columns): "
-            f"{', '.join(unavailable)}. A v1 prior-work per-item file predates them; "
-            f"computing them here would be a re-score of v1 outputs, not a comparison."
+            f"{', '.join(unavailable)}. An input scored before those columns existed does "
+            f"not carry them — either a v1 prior-work per-item file, or a v2 file scored "
+            f"before ADR 0029 added the suite columns. Computing them here from the stored "
+            f"steps would be a re-score of that input, not a comparison of what it measured."
         )
     note_lines.append(
         f"- n = {n}; the reporting floor is min_items_for_significance_claim = {min_items} "
@@ -2427,6 +3134,11 @@ def main() -> None:
     ged_policy = _ged_policy(cfg)
     ged_max_nodes = ged_policy["max_nodes_for_optimizer"]
     ged_time_budget = ged_policy["per_item_time_budget_seconds"]
+    # The contingency blend's component list and GED clamp, from config for the same reason
+    # the composite's weights are: a run's snapshot must state the blend it was scored under.
+    decomp_mean_policy = _decomp_mean_policy(cfg)
+    decomp_mean_components = tuple(decomp_mean_policy["components"])
+    ged_clamp = decomp_mean_policy["ged_clamp"]
 
     gold_path = (
         args.gold
@@ -2461,70 +3173,22 @@ def main() -> None:
     gold_hop_distribution: dict[str, int] = {}
 
     for row in rows:
-        step_p, step_r, step_f1 = _step_prf(row.pred_steps, row.gold_steps)
-        rouge_lp, rouge_lr, rouge_lf = _rouge_l(_join_steps(row.pred_steps), _join_steps(row.gold_steps))
-        ref_rate, ref_ok, ref_total = _reference_validity(row.pred_steps)
-        chain_valid, chain_pred_refs, chain_gold_refs = _chain_validity(
-            row.pred_steps, row.gold_steps
+        item_row = score_item(
+            row,
+            ged_max_nodes=ged_max_nodes,
+            ged_time_budget=ged_time_budget,
+            decomp_mean_components=decomp_mean_components,
+            ged_clamp=ged_clamp,
         )
-        pred_break = _break_steps(row.pred_steps)
-        gold_break = _break_steps(row.gold_steps)
-        pred_break_string = _break_string(pred_break)
-        gold_break_string = _break_string(gold_break)
-        ged, ged_fallback, ged_fallback_seconds = _normalized_ged(
-            _decomposition_graph(pred_break),
-            _decomposition_graph(gold_break),
-            max_nodes_for_optimizer=ged_max_nodes,
-            time_budget_seconds=ged_time_budget,
-        )
-        pred_hops = len(row.pred_steps)
-        gold_hops = row.gold_hop_count
-
-        item_row = {
-            "item_id": row.item_id,
-            "question": row.question,
-            "pred_steps": row.pred_steps,
-            "gold_steps": row.gold_steps,
-            "pred_step_count": len(row.pred_steps),
-            "gold_step_count": len(row.gold_steps),
-            "exact_match": _exact_decomposition_match(row.pred_steps, row.gold_steps),
-            "step_precision": step_p,
-            "step_recall": step_r,
-            "step_f1": step_f1,
-            "ordered_step_accuracy": _ordered_step_accuracy(row.pred_steps, row.gold_steps),
-            "rouge_l_precision": rouge_lp,
-            "rouge_l_recall": rouge_lr,
-            "rouge_l_f1": rouge_lf,
-            "reference_validity_rate": ref_rate,
-            "reference_valid_count": ref_ok,
-            "reference_total_count": ref_total,
-            # The issue #40 additions. chain_validity is the repaired house term; the other
-            # three are the official Break leaderboard metrics (EM / SARI / GED).
-            "chain_validity": chain_valid,
-            "chain_pred_reference_count": chain_pred_refs,
-            "chain_gold_reference_count": chain_gold_refs,
-            "break_exact_match": _break_exact_match(pred_break_string, gold_break_string),
-            "sari": _sari(row.question, pred_break_string, gold_break_string),
-            "ged": ged,
-            "ged_fallback": ged_fallback,
-            # Null except where the time budget stopped the optimizer, which is the one
-            # machine-dependent path: the elapsed seconds are recorded so a reader can see
-            # how far past the budget that item ran (the deadline is only tested between
-            # approximations, so it can overshoot).
-            "ged_fallback_seconds": ged_fallback_seconds,
-            "step_count_signed_error": len(row.pred_steps) - len(row.gold_steps),
-            "step_count_abs_error": abs(len(row.pred_steps) - len(row.gold_steps)),
-            "predicted_hop_count": pred_hops,
-            "gold_hop_count": gold_hops,
-            "hop_count_abs_error": abs(pred_hops - gold_hops),
-            "hop_count_exact_match": 1.0 if pred_hops == gold_hops else 0.0,
-        }
         per_item.append(item_row)
+        gold_hops = int(item_row["gold_hop_count"])
         per_hop_rows.setdefault(gold_hops, []).append(item_row)
         gold_hop_distribution[str(gold_hops)] = gold_hop_distribution.get(str(gold_hops), 0) + 1
 
     overall = _aggregate(per_item)
     n = len(per_item)
+    composite = _composite_score(overall, weights, scale)
+    report_card = _report_card(overall, per_item, decomp_mean_policy, composite)
 
     metrics = {
         "script": Path(__file__).name,
@@ -2541,10 +3205,15 @@ def main() -> None:
         "per_gold_hop_metrics": {
             str(h): _aggregate(items) for h, items in sorted(per_hop_rows.items(), key=lambda kv: kv[0])
         },
-        "composite_score": _composite_score(overall, weights, scale),
+        # THE REPORTED PRIMARY. It is placed above composite_score deliberately: the
+        # composite below it is legacy, kept so committed numbers stay quotable.
+        "decomposition_report_card": report_card,
+        "composite_score": composite,
+        "composite_score_status": COMPOSITE_SCORE_STATUS,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
         "ged_policy": ged_policy,
+        "decomp_mean_policy": decomp_mean_policy,
         # Metric direction, discoverable by a machine reader of this file rather than only
         # by a human reader of the prose (PR #44 review, nit 6). A comparison's metrics JSON
         # has carried this key since the metrics landed; a scoring run's did not, so a
@@ -2582,7 +3251,9 @@ def main() -> None:
         "out_prefix": out_prefix,
         "composite_score_weights": weights,
         "composite_step_count_error_scale": scale,
+        "composite_score_status": COMPOSITE_SCORE_STATUS,
         "ged_policy": ged_policy,
+        "decomp_mean_policy": decomp_mean_policy,
     }
     fallbacks = metrics["ged_fallback_counts"]
     write_run_artifacts(
@@ -2594,6 +3265,11 @@ def main() -> None:
             f"- Predictions: `{args.predictions}`",
             f"- Gold: `{gold_path}`",
             f"- Evaluated rows: {n} (missing gold matches: {missing_gold})",
+            "",
+            *_report_card_note_lines(report_card),
+            "",
+            "### The rest of the report (not the primary)",
+            "",
             f"- Exact match: {metrics['exact_match_rate']:.4f}",
             f"- Step F1 (macro): {metrics['step_f1_macro']:.4f}",
             f"- Ordered step accuracy: {metrics['ordered_step_accuracy_macro']:.4f}",
@@ -2603,7 +3279,11 @@ def main() -> None:
             f"(over {metrics['over_decomposition_rate']:.4f} / "
             f"under {metrics['under_decomposition_rate']:.4f} / "
             f"exact {metrics['step_count_exact_rate']:.4f})",
-            f"- Composite score: {metrics['composite_score']:.4f}",
+            f"- Composite score ({COMPOSITE_SCORE_STATUS.upper()}): "
+            f"{metrics['composite_score']:.4f} — frozen byte-identical so committed numbers "
+            f"stay quotable, NOT the reported primary and not repaired; its "
+            f"`reference_validity_micro` term is a micro-pooled rate with a model-dependent "
+            f"denominator (issue #40, ADR 0029).",
             # The issue #40 additions, reported beside the house metrics and not folded into
             # any of them. GED is a distance, so its direction is stated on the line.
             f"- Break EM: {metrics['break_exact_match_rate']:.4f} / SARI: "
@@ -2638,6 +3318,13 @@ def main() -> None:
                 else "none (every value is the optimizer's own, so nothing here is "
                 "machine-dependent)"
             ),
+            # The one conditional-credit branch left in the suite, counted so a future gold
+            # cannot reintroduce free credit silently (specification §2.5 item 2).
+            f"- Guard — `chain_validity` free-credit branch: "
+            f"{metrics['chain_validity_gold_unchained_items']} of {n} evaluated items have a "
+            f"GOLD that emits no `#k` and therefore score 1.0 on that term for free. It is "
+            f"conditioned on the gold, so no model can trigger it; a non-zero count here "
+            f"means the term is measuring less than it appears to.",
             f"- Per-item: `{per_item_path}`",
         ],
         prefix=f"{out_prefix}_",
