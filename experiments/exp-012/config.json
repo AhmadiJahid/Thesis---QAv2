@@ -1,0 +1,65 @@
+{
+  "_note": "Config snapshot for exp-012 (issue #27 / issue #46 S1 / ADR 0024): few-shot-prompted router + router_guided decomposer arm, compared against exp-004's already-committed unguided/oracle_guided arms (re-scored at this run's commit), on the ADR 0007 pinned 600. Driven end to end by runs/exp-012/run_all.sh (committed run script, no manual steps); this file embeds that script's stage invocations plus the per-stage config values read off the on-box artifacts. No pipeline code or config was edited to produce this run.",
+  "run_script": "runs/exp-012/run_all.sh",
+  "run_all_rc": 0,
+  "wall_clock": "2026-08-23T03:38:08+03:00 -> 2026-08-23T04:33:11+03:00 (~55 min)",
+  "launch_commit": "7314004d6921e993c4c9bfa3d3827003242630c4",
+  "artifact_stamped_commit": "c69ef5f34db07483cf486cf33baca2a71faaf72d",
+  "commit_note": "run_all.sh logs the launch commit (7314004, the exp-012 pre-run log entry itself) at start; every stage's own metrics/config JSON instead stamps HEAD at the moment that stage wrote its output (git rev-parse HEAD called per-script). Three unrelated commits landed on main during the run's ~55 min window (7067e55, a6353d9, 6679fef, febe394, a6ab324, 222862f, 174920c, c69ef5f -- exp-013's pre-run entry, exp-014's S2 CPU-half work, and ADR/analysis docs from a concurrent lane) -- `git diff --stat 7314004 c69ef5f -- components/ configs/ scripts/ src/` is EMPTY, so none of them touched shared pipeline code. The issue #27 drift-check comment (id 5383430711) separately names the router_guided generation commit as c1369a9 (an intermediate point in that same no-op range); `git diff --stat c1369a9 c69ef5f -- components/ configs/ scripts/ src/` is also empty. This row records c69ef5f, the commit every on-box artifact of this run actually stamps.",
+  "stages": {
+    "1_router": {
+      "invocation": ".venv/bin/python components/router/run_router.py --model mistral_7b_instruct --config router_musique.json --output-root runs/exp-012/router",
+      "run_dir": "runs/exp-012/router/20260823_003810",
+      "rc": 0,
+      "config_unedited": "configs/router_musique.json",
+      "retrieval_input_key": "musique_few_shot_top5_pinned600",
+      "retrieval_input_resolved": "/cta/users/fyilmaz/thesis-qav2-data/musique/sample_extracts/sim_dev_sample600_top20_rerankTop5.jsonl",
+      "retrieval_input_sha256": "e5c418a9b25f5ef290a78dd3a99642e4b0c5d7b6fbe6b5e2785a1424239ae70d",
+      "git_commit_at_write": "c69ef5f34db07483cf486cf33baca2a71faaf72d"
+    },
+    "2_decomposer_router_guided": {
+      "invocation": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition router_guided --hop-predictions <router predictions.jsonl> --output-root runs/exp-012/decomposer/router_guided",
+      "run_dir": "runs/exp-012/decomposer/router_guided/20260823_010750",
+      "rc": 0,
+      "config_unedited": "configs/decomposer_musique.json",
+      "hop_source": "predictions (query_id/predicted_hop join against runs/exp-012/router/20260823_003810/predictions.jsonl, sha256 104a69bb8b435904d9b4a79e9c3a8a44a9acc2fb69b4ddb045235d698c0ab850)",
+      "hop_join": {"rows_joined": 600, "predictions_unused": 0, "rows_agreeing_with_gold_hop": 230, "rows_disagreeing_with_gold_hop": 370},
+      "retrieval_input_sha256": "e5c418a9b25f5ef290a78dd3a99642e4b0c5d7b6fbe6b5e2785a1424239ae70d",
+      "generation_overrides": {"max_new_tokens": 1024},
+      "git_commit_at_write": "c69ef5f34db07483cf486cf33baca2a71faaf72d"
+    },
+    "3_eval_router_guided": {
+      "invocation": ".venv/bin/python scripts/musique_decompositions_evaluator.py --config musique_eval.json --predictions <router_guided results.json> --run-dir runs/exp-012/eval/router_guided --out-prefix eval --seed 42",
+      "run_dir": "runs/exp-012/eval/router_guided",
+      "rc": 0
+    },
+    "4_rescore_unguided": {
+      "invocation": ".venv/bin/python scripts/musique_decompositions_evaluator.py --config musique_eval.json --predictions runs/exp-004/20260821_222907/results.json --run-dir runs/exp-012/eval/unguided_rescored --out-prefix eval --seed 42",
+      "run_dir": "runs/exp-012/eval/unguided_rescored",
+      "rc": 0,
+      "note": "exp-004 unguided's predictions (results.json) are unchanged from exp-004's own commit; only the evaluator version is current-commit. exp-004 unguided was itself generated at commit 6fc4bba1b9df023625eb76a9d1d0ce6a53005858 (experiments/exp-004/config.json)."
+    },
+    "5_rescore_oracle_guided": {
+      "invocation": ".venv/bin/python scripts/musique_decompositions_evaluator.py --config musique_eval.json --predictions runs/exp-004/20260821_224805/results.json --run-dir runs/exp-012/eval/oracle_guided_rescored --out-prefix eval --seed 42",
+      "run_dir": "runs/exp-012/eval/oracle_guided_rescored",
+      "rc": 0,
+      "note": "exp-004 oracle_guided's predictions unchanged from exp-004's own commit; generated at 6fc4bba, same as unguided."
+    },
+    "6_compare_unguided_vs_router_guided": {
+      "invocation": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-012/eval/unguided_rescored/eval_per_item.json runs/exp-012/eval/router_guided/eval_per_item.json --run-dir runs/exp-012/compare_unguided_vs_router_guided --out-prefix compare",
+      "run_dir": "runs/exp-012/compare_unguided_vs_router_guided",
+      "rc": 0
+    },
+    "7_compare_oracle_guided_vs_router_guided": {
+      "invocation": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-012/eval/oracle_guided_rescored/eval_per_item.json runs/exp-012/eval/router_guided/eval_per_item.json --run-dir runs/exp-012/compare_oracle_guided_vs_router_guided --out-prefix compare",
+      "run_dir": "runs/exp-012/compare_oracle_guided_vs_router_guided",
+      "rc": 0
+    }
+  },
+  "significance_protocol": "ADR 0009 (paired bootstrap 95% CI + exact McNemar, headline) amended by ADR 0017/issue #30 (paired t-test, additive); ADR 0011 conventions (min_items_for_significance_claim=30, versioned per-item artifact, weight-mismatch warn-and-record).",
+  "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop); verified per stage: rows_loaded_total 600, rows_loaded_per_hop {2:200,3:200,4:200}, ids_missing_count 0, ids_unexpected_count 0, distinct_query_ids 600.",
+  "model": "mistralai/Mistral-7B-Instruct-v0.3 (router and decomposer both; router parameter_count 7248023552 asserted under an 8B ceiling)",
+  "seed": 42,
+  "gpu_used": true,
+  "run_lock": "held for the duration of this run under runs/exp-012's own execution; released before this log/artifact commit. Not the lock this experiment-runner session acquired -- this session read committed artifacts only, took no lock, and did not disturb exp-013's current lock."
+}

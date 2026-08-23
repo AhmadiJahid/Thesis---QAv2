@@ -1,0 +1,121 @@
+{
+  "_note": "Metrics for exp-012 (issue #27 / issue #46 S1 / ADR 0024). Numbers below are transcribed as-is from runs/exp-012/{router/20260823_003810/metrics.json, eval/router_guided/eval_metrics.json, eval/unguided_rescored/eval_metrics.json, eval/oracle_guided_rescored/eval_metrics.json, compare_unguided_vs_router_guided/compare_metrics.json, compare_oracle_guided_vs_router_guided/compare_metrics.json}. No number here is derived or invented beyond simple arithmetic explicitly labelled as such. composite_score is recorded throughout but is NOT headlined (issue #40 caveat, same as exp-010/exp-011). No keep/drop recommendation is made from any of this (ADR 0028 item 2, issue #46 section 4.2) -- that is Jahid + supervisor's call.",
+  "router": {
+    "source": "runs/exp-012/router/20260823_003810/metrics.json",
+    "overall_accuracy": 0.38333333333333336,
+    "correct_predictions": 230,
+    "total_questions": 600,
+    "chance_baseline_3class": 0.3333333333333333,
+    "chance_baseline_note": "3 classes (hop 2/3/4), 200 rows each -- uninformed guessing would score ~0.333 overall. Measured 0.3833 is only ~0.05 above that.",
+    "per_hop_accuracy_within_gold_class_recall_not_precision": {
+      "hop_2": {"accuracy": 0.875, "total": 200, "correct": 175},
+      "hop_3": {"accuracy": 0.175, "total": 200, "correct": 35},
+      "hop_4": {"accuracy": 0.1, "total": 200, "correct": 20}
+    },
+    "unparsed_response_rows": 394,
+    "unparsed_response_rows_per_gold_hop": {"2": 123, "3": 133, "4": 138},
+    "default_hop": 2,
+    "unparsed_caveat": "ADR 0024 item 1a: an unparsed response is scored AS IF it predicted default_hop (2), counted in the accuracies, not dropped. Of hop=2's 175 correct rows, 123 are unparsed-defaulted (i.e. the model's response carried no readable hop count and was scored correct only because default_hop happens to equal the gold class); only 52 of the 175 came from a parsed response, out of 77 hop=2 rows the model actually answered (52/77 = 0.675 among parsed hop=2 responses -- simple arithmetic on the two counts above, not a separately computed metric). hop=3/hop=4's near-floor accuracy (0.175/0.100) is consistent with default_hop=2 giving them no free credit.",
+    "model": "mistralai/Mistral-7B-Instruct-v0.3",
+    "parameter_count": 7248023552,
+    "run_dir": "runs/exp-012/router/20260823_003810"
+  },
+  "arms": {
+    "router_guided": {
+      "run_dir": "runs/exp-012/decomposer/router_guided/20260823_010750",
+      "eval_dir": "runs/exp-012/eval/router_guided",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.058333333333333334,
+      "step_f1_macro": 0.20352392977392977,
+      "ordered_step_accuracy_macro": 0.18533730158730158,
+      "rouge_l_f1_macro": 0.5483760440128246,
+      "sari_macro": 0.5850805398593029,
+      "ged_macro": 0.47206782391747015,
+      "ged_fallback_counts": {},
+      "chain_validity_macro": 0.9625277777777778,
+      "break_exact_match_rate": 0.05333333333333334,
+      "hop_count_exact_match_rate": 0.49166666666666664,
+      "composite_score": 0.21495520683020683
+    },
+    "unguided_rescored": {
+      "source": "exp-004 unguided, predictions unchanged (runs/exp-004/20260821_222907/results.json), generated at commit 6fc4bba1b9df023625eb76a9d1d0ce6a53005858, re-scored here at this run's commit",
+      "eval_dir": "runs/exp-012/eval/unguided_rescored",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.06166666666666667,
+      "step_f1_macro": 0.20389277389277388,
+      "ordered_step_accuracy_macro": 0.18041269841269839,
+      "rouge_l_f1_macro": 0.5428578299361506,
+      "sari_macro": 0.5850214958002862,
+      "ged_macro": 0.47146829197361756,
+      "ged_fallback_counts": {"node_cap": 1},
+      "chain_validity_macro": 0.9685833333333332,
+      "break_exact_match_rate": 0.05333333333333334,
+      "hop_count_exact_match_rate": 0.5083333333333333,
+      "composite_score": 0.20984758574758572
+    },
+    "oracle_guided_rescored": {
+      "source": "exp-004 oracle_guided, predictions unchanged (runs/exp-004/20260821_224805/results.json), generated at commit 6fc4bba1b9df023625eb76a9d1d0ce6a53005858, re-scored here at this run's commit",
+      "eval_dir": "runs/exp-012/eval/oracle_guided_rescored",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "exact_match_rate": 0.056666666666666664,
+      "step_f1_macro": 0.20612650312650313,
+      "ordered_step_accuracy_macro": 0.1852440476190476,
+      "rouge_l_f1_macro": 0.5512783287203075,
+      "sari_macro": 0.5890158290869147,
+      "ged_macro": 0.4414326364080897,
+      "ged_fallback_counts": {},
+      "chain_validity_macro": 0.9711626984126983,
+      "break_exact_match_rate": 0.05,
+      "hop_count_exact_match_rate": 0.59,
+      "composite_score": 0.4196904822029822
+    }
+  },
+  "ged_fallback_bound_caveat": "docs/METRICS.md: the node_cap substituted bound is NOT tight -- measured at up to +0.0588 above the optimizer's own value on the star shape at the cap boundary (ADR 0026's table). Since ged is lower-is-better, a fallback item is penalised, so unguided_rescored's single node_cap row carries a small systematic upward (worse) bias on its ged_macro relative to router_guided/oracle_guided_rescored, which have none. At 1/600 the effect on the macro average is negligible.",
+  "compare_unguided_vs_router_guided": {
+    "source": "runs/exp-012/compare_unguided_vs_router_guided/compare_metrics.json",
+    "system_a": "unguided_rescored",
+    "system_b": "router_guided",
+    "num_aligned_items": 600,
+    "headline": "every one of the 7 bootstrap metrics and 3 McNemar metrics is non-significant",
+    "bootstrap": {
+      "rouge_l_f1": {"a": 0.5428578299361506, "b": 0.5483760440128246, "diff": -0.005518214076673966, "ci": [-0.01439179009855602, 0.0032367375885753546], "significant": false},
+      "step_f1": {"a": 0.20389277389277388, "b": 0.20352392977392977, "diff": 0.0003688441188441083, "ci": [-0.010317498473748493, 0.011252866809116793], "significant": false},
+      "ordered_step_accuracy": {"a": 0.18041269841269839, "b": 0.18533730158730155, "diff": -0.004924603174603165, "ci": [-0.01597222222222222, 0.006023908730158694], "significant": false},
+      "sari": {"a": 0.5850214958002863, "b": 0.5850805398593029, "diff": -5.90440590165775e-05, "ci": [-0.007744488405984229, 0.007509521592475423], "significant": false},
+      "ged": {"a": 0.47146829197361756, "b": 0.47206782391747015, "diff": -0.0005995319438525937, "ci": [-0.01629836234191053, 0.0151526426738117], "significant": false, "direction": "lower_is_better"},
+      "chain_validity": {"a": 0.9685833333333332, "b": 0.9625277777777778, "diff": 0.006055555555555481, "ci": [-0.009377281746031682, 0.021921130952381032], "significant": false},
+      "composite_score": {"a": 0.20984758574758572, "b": 0.21495520683020683, "diff": -0.005107621082621111, "ci": [-0.21079678774928778, 0.003273645451770442], "significant": false, "headlined": false}
+    },
+    "mcnemar": {
+      "exact_match": {"a_rate": 0.06166666666666667, "b_rate": 0.058333333333333334, "b_discordant": 7, "c_discordant": 5, "p_value": 0.7744140625, "significant": false},
+      "hop_count_exact_match": {"a_rate": 0.5083333333333333, "b_rate": 0.49166666666666664, "b_discordant": 94, "c_discordant": 84, "p_value": 0.500054606001611, "p_rounded": 0.500, "significant": false},
+      "break_exact_match": {"a_rate": 0.05333333333333334, "b_rate": 0.05333333333333334, "b_discordant": 5, "c_discordant": 5, "p_value": 1.0, "significant": false}
+    }
+  },
+  "compare_oracle_guided_vs_router_guided": {
+    "source": "runs/exp-012/compare_oracle_guided_vs_router_guided/compare_metrics.json",
+    "system_a": "oracle_guided_rescored",
+    "system_b": "router_guided",
+    "num_aligned_items": 600,
+    "headline": "hop_count_exact_match and ged are significant, favouring oracle; step_f1, ordered_step_accuracy, sari and chain_validity are all non-significant",
+    "bootstrap": {
+      "rouge_l_f1": {"a": 0.5512783287203075, "b": 0.5483760440128246, "diff": 0.002902284707482883, "ci": [-0.004315195726985912, 0.010243186356118927], "significant": false},
+      "step_f1": {"a": 0.20612650312650313, "b": 0.20352392977392977, "diff": 0.0026025733525733563, "ci": [-0.004980991462241457, 0.010242607623857628], "significant": false},
+      "ordered_step_accuracy": {"a": 0.18524404761904759, "b": 0.18533730158730155, "diff": -9.325396825396459e-05, "ci": [-0.0074544642857142665, 0.007279811507936529], "significant": false},
+      "sari": {"a": 0.5890158290869149, "b": 0.5850805398593029, "diff": 0.003935289227611993, "ci": [-0.002218961435344863, 0.01003278615184471], "significant": false},
+      "ged": {"a": 0.4414326364080897, "b": 0.47206782391747015, "diff": -0.030635187509380435, "ci": [-0.04397336548132691, -0.017654805944839237], "significant": true, "favours": "oracle_guided_rescored", "direction": "lower_is_better"},
+      "chain_validity": {"a": 0.9711626984126983, "b": 0.9625277777777778, "diff": 0.008634920634920551, "ci": [-0.004277876984126921, 0.02235009920634907], "significant": false},
+      "composite_score": {"a": 0.4196904822029822, "b": 0.21495520683020683, "diff": 0.2047352753727754, "ci": [0.00010935410654160935, 0.21027287788600288], "significant": true, "favours": "oracle_guided_rescored", "headlined": false, "not_headlined_reason": "issue #40 reference_validity defect + this pair's CI barely excludes zero at the lower bound ([+0.0001, +0.2103]), a concrete instance of the bimodal/asymmetric composite shape issue #40 documents"}
+    },
+    "mcnemar": {
+      "exact_match": {"a_rate": 0.056666666666666664, "b_rate": 0.058333333333333334, "b_discordant": 3, "c_discordant": 4, "p_value": 1.0, "significant": false},
+      "hop_count_exact_match": {"a_rate": 0.59, "b_rate": 0.49166666666666664, "b_discordant": 117, "c_discordant": 58, "p_value": 9.687504605972159e-06, "p_rounded": "9.69e-06", "significant": true, "favours": "oracle_guided_rescored"},
+      "break_exact_match": {"a_rate": 0.05, "b_rate": 0.05333333333333334, "b_discordant": 2, "c_discordant": 4, "p_value": 0.6875, "significant": false}
+    }
+  },
+  "significance_protocol": "ADR 0009 (paired bootstrap 95% CI + exact McNemar = headline) amended by ADR 0017/issue #30 (paired t-test, additive, not restated here -- see runs/exp-012/compare_*/compare_metrics.json t_test blocks for the full battery); ADR 0011 (min_items_for_significance_claim=30; both comparisons at n=600 are not underpowered on any row).",
+  "observation_not_a_recommendation": "Hop guidance from a PERFECT oracle (oracle_guided vs router_guided) moves only hop_count_exact_match and ged significantly; step_f1/ordered_step_accuracy/sari/chain_validity are flat. An imperfect, prompted router (unguided vs router_guided, router overall accuracy 0.3833 vs ~0.333 chance) moves NOTHING significantly, including hop_count_exact_match itself. No keep/drop conclusion is drawn here (ADR 0028 item 2, issue #46 section 4.2 -- Jahid + supervisor's call)."
+}
