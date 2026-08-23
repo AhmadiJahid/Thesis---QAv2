@@ -1,6 +1,6 @@
 # 0010. Keep the Router, as a Hop-Count Regressor; Prioritize Fine-Tuning
 
-- **Status**: Accepted
+- **Status**: Accepted — **superseded for the critical path on 2026-08-23 by [0030](./0030-remove-the-router-from-the-decomposition-critical-path.md)**, on exp-012's evidence: an oracle's entire ceiling is +0.082 `hop_count_exact_match` with no movement in step content, while fine-tuning moves that same metric by +0.202 and every content metric with it. The regressor design here is not refuted — it is untested and bounded by that ceiling. See 0030 for the scope limits and the parse-rate caveat (issue #47).
 - **Date**: 2026-08-18
 
 Amends [0006](./0006-drop-the-jury-fix-dataset-roles-and-the-few-shot-method.md) (resolves its open item 6).
