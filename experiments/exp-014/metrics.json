@@ -1,0 +1,1094 @@
+{
+  "_note": "Config/metrics for exp-014 (Issue #46 S2 CPU half, Refs #46). Two deliverables: (1) --compare significance on exp-011's existing per-item files (four Break-faithful columns + pre-existing columns) for 8 same-eval-set pairs, headline = exp004_unguided vs exp008_full_train; (2) a retrieval-artifact build for the S2 GPU cell's input (not a logged experiment per ADR 0027 point 5 -- provenance recorded here). No new decomposition/inference, no GPU used anywhere in this run.",
+  "deliverable_1_compare": {
+    "protocol": "ADR 0009 (paired bootstrap 10000 resamples, seed 42, alpha 0.05) + exact McNemar for exact_match/hop_count_exact_match/break_exact_match, plus ADR 0017 item 4 paired t-test alongside. min_items_for_significance_claim=30 (ADR 0011 item 1). All 8 pairs read exp-011's already-committed runs/exp-011/<arm>/eval_per_item.json files verbatim -- no new generation, no re-scoring.",
+    "headline_pair": "exp004_unguided_vs_exp008_full_train",
+    "pairs": {
+      "exp004_unguided_vs_exp008_full_train": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.585,
+            "b": 0.6823,
+            "diff_a_minus_b": -0.0973,
+            "ci": [
+              -0.1114,
+              -0.0832
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4715,
+            "b": 0.3094,
+            "diff_a_minus_b": 0.1621,
+            "ci": [
+              0.1422,
+              0.1821
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.9686,
+            "b": 0.9942,
+            "diff_a_minus_b": -0.0256,
+            "ci": [
+              -0.0387,
+              -0.0133
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2039,
+            "b": 0.3411,
+            "diff_a_minus_b": -0.1372,
+            "ci": [
+              -0.1601,
+              -0.115
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1804,
+            "b": 0.3237,
+            "diff_a_minus_b": -0.1433,
+            "ci": [
+              -0.1666,
+              -0.1205
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5429,
+            "b": 0.6647,
+            "diff_a_minus_b": -0.1218,
+            "ci": [
+              -0.1369,
+              -0.1065
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.2098,
+            "b": 0.5236,
+            "diff_a_minus_b": -0.3137,
+            "ci": [
+              -0.3307,
+              -0.1055
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.1083,
+            "diff_a_minus_b": -0.0467,
+            "b_discordant_a_only": 13,
+            "c_discordant_b_only": 41,
+            "p_value": 0.00017512673440589488,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.5083,
+            "b_rate": 0.71,
+            "diff_a_minus_b": -0.2017,
+            "b_discordant_a_only": 57,
+            "c_discordant_b_only": 178,
+            "p_value": 1.1150804444624943e-15,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.0533,
+            "b_rate": 0.1017,
+            "diff_a_minus_b": -0.0483,
+            "b_discordant_a_only": 12,
+            "c_discordant_b_only": 41,
+            "p_value": 8.171334999262925e-05,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          }
+        },
+        "ged_fallback_counts": {
+          "exp004_unguided": "1/600",
+          "exp008_full_train": "0/600"
+        }
+      },
+      "exp004_unguided_vs_exp004_oracle_guided": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.585,
+            "b": 0.589,
+            "diff_a_minus_b": -0.004,
+            "ci": [
+              -0.0116,
+              0.0036
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4715,
+            "b": 0.4414,
+            "diff_a_minus_b": 0.03,
+            "ci": [
+              0.0167,
+              0.0437
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.9686,
+            "b": 0.9712,
+            "diff_a_minus_b": -0.0026,
+            "ci": [
+              -0.017,
+              0.0112
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2039,
+            "b": 0.2061,
+            "diff_a_minus_b": -0.0022,
+            "ci": [
+              -0.0129,
+              0.0085
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1804,
+            "b": 0.1852,
+            "diff_a_minus_b": -0.0048,
+            "ci": [
+              -0.0155,
+              0.0061
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5429,
+            "b": 0.5513,
+            "diff_a_minus_b": -0.0084,
+            "ci": [
+              -0.0165,
+              -0.0004
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.2098,
+            "b": 0.4197,
+            "diff_a_minus_b": -0.2098,
+            "ci": [
+              -0.2189,
+              -0.0058
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.0567,
+            "diff_a_minus_b": 0.005,
+            "b_discordant_a_only": 8,
+            "c_discordant_b_only": 5,
+            "p_value": 0.5810546875,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.5083,
+            "b_rate": 0.59,
+            "diff_a_minus_b": -0.0817,
+            "b_discordant_a_only": 62,
+            "c_discordant_b_only": 111,
+            "p_value": 0.0002409895368955425,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.0533,
+            "b_rate": 0.05,
+            "diff_a_minus_b": 0.0033,
+            "b_discordant_a_only": 7,
+            "c_discordant_b_only": 5,
+            "p_value": 0.7744140625,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          }
+        },
+        "ged_fallback_counts": {
+          "exp004_unguided": "1/600",
+          "exp004_oracle_guided": "0/600"
+        }
+      },
+      "exp004_unguided_vs_exp004_unguided_capped": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.585,
+            "b": 0.5849,
+            "diff_a_minus_b": 0.0001,
+            "ci": [
+              -0.0001,
+              0.0004
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4715,
+            "b": 0.4708,
+            "diff_a_minus_b": 0.0007,
+            "ci": [
+              0.0002,
+              0.0014
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.9686,
+            "b": 0.9686,
+            "diff_a_minus_b": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2039,
+            "b": 0.204,
+            "diff_a_minus_b": -0.0001,
+            "ci": [
+              -0.0002,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1804,
+            "b": 0.1805,
+            "diff_a_minus_b": -0.0001,
+            "ci": [
+              -0.0003,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5429,
+            "b": 0.5436,
+            "diff_a_minus_b": -0.0007,
+            "ci": [
+              -0.0016,
+              -0.0001
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.2098,
+            "b": 0.2128,
+            "diff_a_minus_b": -0.003,
+            "ci": [
+              -0.0072,
+              -0.0004
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.0617,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.5083,
+            "b_rate": 0.5083,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          },
+          "break_exact_match": {
+            "a_rate": 0.0533,
+            "b_rate": 0.0533,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          }
+        },
+        "ged_fallback_counts": {
+          "exp004_unguided": "1/600",
+          "exp004_unguided_capped": "0/600"
+        }
+      },
+      "exp004_oracle_guided_vs_exp004_unguided_capped": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.589,
+            "b": 0.5849,
+            "diff_a_minus_b": 0.0041,
+            "ci": [
+              -0.0035,
+              0.0117
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4414,
+            "b": 0.4708,
+            "diff_a_minus_b": -0.0294,
+            "ci": [
+              -0.0429,
+              -0.016
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.9712,
+            "b": 0.9686,
+            "diff_a_minus_b": 0.0026,
+            "ci": [
+              -0.0112,
+              0.017
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2061,
+            "b": 0.204,
+            "diff_a_minus_b": 0.0022,
+            "ci": [
+              -0.0086,
+              0.0128
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1852,
+            "b": 0.1805,
+            "diff_a_minus_b": 0.0047,
+            "ci": [
+              -0.0061,
+              0.0154
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5513,
+            "b": 0.5436,
+            "diff_a_minus_b": 0.0077,
+            "ci": [
+              -0.0001,
+              0.0155
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.4197,
+            "b": 0.2128,
+            "diff_a_minus_b": 0.2068,
+            "ci": [
+              0.0033,
+              0.2146
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0567,
+            "b_rate": 0.0617,
+            "diff_a_minus_b": -0.005,
+            "b_discordant_a_only": 5,
+            "c_discordant_b_only": 8,
+            "p_value": 0.5810546875,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.59,
+            "b_rate": 0.5083,
+            "diff_a_minus_b": 0.0817,
+            "b_discordant_a_only": 111,
+            "c_discordant_b_only": 62,
+            "p_value": 0.0002409895368955425,
+            "significant": true,
+            "favours": "system_a",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.05,
+            "b_rate": 0.0533,
+            "diff_a_minus_b": -0.0033,
+            "b_discordant_a_only": 5,
+            "c_discordant_b_only": 7,
+            "p_value": 0.7744140625,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          }
+        },
+        "ged_fallback_counts": {
+          "exp004_oracle_guided": "0/600",
+          "exp004_unguided_capped": "0/600"
+        }
+      },
+      "exp005_unguided_vs_exp005_oracle_guided": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.5979,
+            "b": 0.6033,
+            "diff_a_minus_b": -0.0054,
+            "ci": [
+              -0.0133,
+              0.0022
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.491,
+            "b": 0.4241,
+            "diff_a_minus_b": 0.067,
+            "ci": [
+              0.051,
+              0.0832
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.8605,
+            "b": 0.8697,
+            "diff_a_minus_b": -0.0092,
+            "ci": [
+              -0.0375,
+              0.0184
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2131,
+            "b": 0.2368,
+            "diff_a_minus_b": -0.0237,
+            "ci": [
+              -0.0351,
+              -0.0123
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1911,
+            "b": 0.2205,
+            "diff_a_minus_b": -0.0293,
+            "ci": [
+              -0.0403,
+              -0.0188
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5589,
+            "b": 0.571,
+            "diff_a_minus_b": -0.0122,
+            "ci": [
+              -0.0214,
+              -0.0032
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.4212,
+            "b": 0.4429,
+            "diff_a_minus_b": -0.0217,
+            "ci": [
+              -0.0348,
+              -0.007
+            ],
+            "significant": true,
+            "favours": "system_b",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.0733,
+            "diff_a_minus_b": -0.0117,
+            "b_discordant_a_only": 1,
+            "c_discordant_b_only": 8,
+            "p_value": 0.0390625,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.52,
+            "b_rate": 0.8733,
+            "diff_a_minus_b": -0.3533,
+            "b_discordant_a_only": 18,
+            "c_discordant_b_only": 230,
+            "p_value": 5.011457255912804e-48,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.0517,
+            "b_rate": 0.06,
+            "diff_a_minus_b": -0.0083,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 5,
+            "p_value": 0.0625,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          }
+        },
+        "ged_fallback_counts": {
+          "exp005_unguided": "0/600",
+          "exp005_oracle_guided": "6/600"
+        }
+      },
+      "exp005_unguided_vs_exp005_unguided_capped": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.5979,
+            "b": 0.5978,
+            "diff_a_minus_b": 0.0,
+            "ci": [
+              -0.0,
+              0.0001
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.491,
+            "b": 0.4909,
+            "diff_a_minus_b": 0.0001,
+            "ci": [
+              0.0,
+              0.0003
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.8605,
+            "b": 0.8605,
+            "diff_a_minus_b": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2131,
+            "b": 0.2131,
+            "diff_a_minus_b": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1911,
+            "b": 0.1911,
+            "diff_a_minus_b": 0.0,
+            "ci": [
+              0.0,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5589,
+            "b": 0.5589,
+            "diff_a_minus_b": -0.0001,
+            "ci": [
+              -0.0002,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.4212,
+            "b": 0.4215,
+            "diff_a_minus_b": -0.0003,
+            "ci": [
+              -0.0007,
+              0.0
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.0617,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.52,
+            "b_rate": 0.52,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          },
+          "break_exact_match": {
+            "a_rate": 0.0517,
+            "b_rate": 0.0517,
+            "diff_a_minus_b": 0.0,
+            "b_discordant_a_only": 0,
+            "c_discordant_b_only": 0,
+            "p_value": 1.0,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          }
+        },
+        "ged_fallback_counts": {
+          "exp005_unguided": "0/600",
+          "exp005_unguided_capped": "0/600"
+        }
+      },
+      "exp005_oracle_guided_vs_exp005_unguided_capped": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.6033,
+            "b": 0.5978,
+            "diff_a_minus_b": 0.0055,
+            "ci": [
+              -0.0022,
+              0.0133
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4241,
+            "b": 0.4909,
+            "diff_a_minus_b": -0.0669,
+            "ci": [
+              -0.0831,
+              -0.0509
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.8697,
+            "b": 0.8605,
+            "diff_a_minus_b": 0.0092,
+            "ci": [
+              -0.0184,
+              0.0375
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2368,
+            "b": 0.2131,
+            "diff_a_minus_b": 0.0237,
+            "ci": [
+              0.0123,
+              0.0351
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.2205,
+            "b": 0.1911,
+            "diff_a_minus_b": 0.0293,
+            "ci": [
+              0.0188,
+              0.0403
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.571,
+            "b": 0.5589,
+            "diff_a_minus_b": 0.0121,
+            "ci": [
+              0.0031,
+              0.0213
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.4429,
+            "b": 0.4215,
+            "diff_a_minus_b": 0.0215,
+            "ci": [
+              0.0067,
+              0.0345
+            ],
+            "significant": true,
+            "favours": "system_a",
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0733,
+            "b_rate": 0.0617,
+            "diff_a_minus_b": 0.0117,
+            "b_discordant_a_only": 8,
+            "c_discordant_b_only": 1,
+            "p_value": 0.0390625,
+            "significant": true,
+            "favours": "system_a",
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.8733,
+            "b_rate": 0.52,
+            "diff_a_minus_b": 0.3533,
+            "b_discordant_a_only": 230,
+            "c_discordant_b_only": 18,
+            "p_value": 5.011457255912804e-48,
+            "significant": true,
+            "favours": "system_a",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.06,
+            "b_rate": 0.0517,
+            "diff_a_minus_b": 0.0083,
+            "b_discordant_a_only": 5,
+            "c_discordant_b_only": 0,
+            "p_value": 0.0625,
+            "significant": false,
+            "favours": null,
+            "underpowered": true
+          }
+        },
+        "ged_fallback_counts": {
+          "exp005_oracle_guided": "6/600",
+          "exp005_unguided_capped": "0/600"
+        }
+      },
+      "exp009_mixed_vs_exp009_oracle_hop_matched": {
+        "n": 600,
+        "bootstrap": {
+          "sari": {
+            "a": 0.5851,
+            "b": 0.5879,
+            "diff_a_minus_b": -0.0028,
+            "ci": [
+              -0.0136,
+              0.0077
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ged": {
+            "a": 0.4713,
+            "b": 0.454,
+            "diff_a_minus_b": 0.0173,
+            "ci": [
+              -0.0003,
+              0.0351
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "lower_is_better"
+          },
+          "chain_validity": {
+            "a": 0.9686,
+            "b": 0.9686,
+            "diff_a_minus_b": -0.0,
+            "ci": [
+              -0.0144,
+              0.0143
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "step_f1": {
+            "a": 0.2035,
+            "b": 0.1931,
+            "diff_a_minus_b": 0.0104,
+            "ci": [
+              -0.0064,
+              0.0273
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "ordered_step_accuracy": {
+            "a": 0.1804,
+            "b": 0.1799,
+            "diff_a_minus_b": 0.0005,
+            "ci": [
+              -0.0157,
+              0.0168
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "rouge_l_f1": {
+            "a": 0.5432,
+            "b": 0.547,
+            "diff_a_minus_b": -0.0038,
+            "ci": [
+              -0.0159,
+              0.0079
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          },
+          "composite_score": {
+            "a": 0.2099,
+            "b": 0.2633,
+            "diff_a_minus_b": -0.0534,
+            "ci": [
+              -0.1974,
+              0.1856
+            ],
+            "significant": false,
+            "favours": null,
+            "direction": "higher_is_better"
+          }
+        },
+        "mcnemar": {
+          "exact_match": {
+            "a_rate": 0.0617,
+            "b_rate": 0.0567,
+            "diff_a_minus_b": 0.005,
+            "b_discordant_a_only": 12,
+            "c_discordant_b_only": 9,
+            "p_value": 0.6636238098144531,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          },
+          "hop_count_exact_match": {
+            "a_rate": 0.515,
+            "b_rate": 0.6,
+            "diff_a_minus_b": -0.085,
+            "b_discordant_a_only": 82,
+            "c_discordant_b_only": 133,
+            "p_value": 0.0006163886676232679,
+            "significant": true,
+            "favours": "system_b",
+            "underpowered": false
+          },
+          "break_exact_match": {
+            "a_rate": 0.0533,
+            "b_rate": 0.0483,
+            "diff_a_minus_b": 0.005,
+            "b_discordant_a_only": 11,
+            "c_discordant_b_only": 8,
+            "p_value": 0.6476058959960938,
+            "significant": false,
+            "favours": null,
+            "underpowered": false
+          }
+        },
+        "ged_fallback_counts": {
+          "exp009_mixed": "1/600",
+          "exp009_oracle_hop_matched": "1/600"
+        }
+      }
+    },
+    "full_per_pair_compare_artifacts": "runs/exp-014/compare/<a>_vs_<b>/{compare_config.json,compare_metrics.json,compare_notes.md} (gitignored, on-box; full 7-bootstrap + 3-McNemar + 9-t-test battery, this summary extracts the four new Break-faithful columns plus step_f1/ordered_step_accuracy/rouge_l_f1/composite_score/exact_match/hop_count_exact_match for readability)",
+    "composite_score_caveat": "composite_score is recorded (present in every pair's bootstrap block) but NOT headlined: issue #40 documents its 0.2-weight reference_validity term is decided by a regex/bare-vs-bracketed-#k mismatch on 2/600 items; a literature-grounded replacement (ADR 0028 item 3) is being implemented in a parallel lane. step_f1/ordered_step_accuracy/hop_count_exact_match plus the four new Break-faithful columns are the metrics this row treats as load-bearing."
+  },
+  "deliverable_2_retrieval_artifact": {
+    "purpose": "Input for the S2 GPU cell (ADR 0023 item 2.3's 'best pool' = size2000_imbalanced per ADR 0028 item 1): a top-5 CE-reranked retrieval artifact for the ADR 0007 pinned 600 over the adopted size2000_imbalanced pool, exp-007's exact recipe. NOT a logged experiment (ADR 0027 point 5: building an artifact scores no system) -- provenance recorded here so the GPU run can cite it.",
+    "not_a_logged_run": true,
+    "gpu_used": false,
+    "device": "cpu (explicit --device cpu on both stages, matching exp-006/exp-007 precedent: configs/similarity.json's own device key defaults to cpu, and CPU is the only verified-reproducible path per ADR 0021 item 7)",
+    "pool": {
+      "path": "runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "sha256_expected_per_adr0028_and_feasibility_note": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "sha256_match": true,
+      "rows": 2000,
+      "not_rebuilt": true,
+      "construction": "ADR 0028 item 1 -- size2000_imbalanced, the lead's delegated pool choice (status quo + describability; balanced excluded, clustered the fallback)"
+    },
+    "self_exclusion_integrity_reverified_this_session": {
+      "pool_id_count": 2000,
+      "pinned_600_id_count": 600,
+      "overlap": 0
+    },
+    "recipe": {
+      "step_1_similarity": {
+        "script": "MusiQue/scripts/check_question_similarity.py",
+        "args": "--pool-file runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl --query-glob musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl --n 200 --mode typed --top-k 20 --device cpu --seed 42 --no-hop-match --out runs/exp-014/retrieval/s2_pinned600_top20.jsonl --run-dir runs/exp-014/retrieval/similarity",
+        "embed_model": "intfloat/e5-small-v2 (33,360,000 params)",
+        "ner_model_for_on_the_fly_masking": "Jean-Baptiste/roberta-large-ner-english (dev sample lacks question_masked_typed field, masked on the fly per the script's documented fallback)",
+        "output_path": "runs/exp-014/retrieval/s2_pinned600_top20.jsonl",
+        "output_sha256": "493360b4d4e43e0badbdce1162834979dfe80964a0dcc1f0ff71797df4b5f4c4",
+        "rows": 600,
+        "hop_split": {
+          "2": 200,
+          "3": 200,
+          "4": 200
+        }
+      },
+      "step_2_rerank": {
+        "script": "MusiQue/scripts/rerank_similarity_results.py",
+        "args": "--input runs/exp-014/retrieval/s2_pinned600_top20.jsonl --out runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --rerank-k 5 --device cpu --seed 42 --run-dir runs/exp-014/retrieval/rerank",
+        "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2 (33,360,385 params)",
+        "output_path": "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+        "output_sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+        "rows": 600,
+        "hop_split": {
+          "2": 200,
+          "3": 200,
+          "4": 200
+        },
+        "top_k_per_row": 5
+      }
+    },
+    "wall_clock": "similarity stage ~62.5s real (26m37s user, CPU-parallel), rerank stage ~51.5s real (22m56s user) -- well under the note's cost estimate ('a fraction of' exp-006's 13.7 min for 3 strategies x 750 queries incl. pool build)",
+    "for_the_gpu_runner": "components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --retrieval-input runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --output-root runs/<next-exp-id> (exp-009's exact shape per the feasibility note step 2). Must NOT change: pinned-600 ids + 200/hop assertion; gold musique_ans_v1.0_dev_clean.jsonl + configs/musique_eval.json byte-identical; quantization 'none'; max_new_tokens 1024, greedy, temp 0.0, top_p 1.0; condition unguided, prompt_unguided.md (sha e9fef279e7c2...); few_shot.k 3, retrieval.mode typed, retrieval.k 5, self-exclusion on; seed 42. Then evaluate and --compare against runs/exp-011/exp008_full_train/eval_per_item.json (or a fresh full_train re-eval at that commit) as the fine-tuned side -- exp-008 needs no re-run (no_few_shot: true, pool choice cannot touch it)."
+  },
+  "git": {
+    "commit_at_launch": "7067e55"
+  },
+  "seed": 42,
+  "gpu_used_anywhere_in_this_run": false,
+  "run_lock_taken": false,
+  "run_lock_state_observed_throughout": "held by exp-012 (2026-08-23T03:37:39+03:00) at start, mid, and end of this run; never touched or waited on by this lane"
+}

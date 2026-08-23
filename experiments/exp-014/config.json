@@ -1,0 +1,58 @@
+{
+  "_note": "Config snapshot for exp-014 (Issue #46 S2 CPU half, Refs #46), per docs/analysis/2026-08-23-s2-feasibility-prompting-vs-finetuned.md (commit 6679fef). Deliverable 1: --compare on scripts/musique_decompositions_evaluator.py over exp-011's already-committed per-item files, no config edited. Deliverable 2: a retrieval-artifact build (not a logged experiment, ADR 0027 point 5), provenance in this row.",
+  "deliverable_1_invocation_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-011/<a>/eval_per_item.json runs/exp-011/<b>/eval_per_item.json --run-dir runs/exp-014/compare/<a>_vs_<b> --out-prefix compare --seed 42",
+  "deliverable_1_pairs": [
+    [
+      "exp004_unguided",
+      "exp008_full_train"
+    ],
+    [
+      "exp004_unguided",
+      "exp004_oracle_guided"
+    ],
+    [
+      "exp004_unguided",
+      "exp004_unguided_capped"
+    ],
+    [
+      "exp004_oracle_guided",
+      "exp004_unguided_capped"
+    ],
+    [
+      "exp005_unguided",
+      "exp005_oracle_guided"
+    ],
+    [
+      "exp005_unguided",
+      "exp005_unguided_capped"
+    ],
+    [
+      "exp005_oracle_guided",
+      "exp005_unguided_capped"
+    ],
+    [
+      "exp009_mixed",
+      "exp009_oracle_hop_matched"
+    ]
+  ],
+  "musique_eval_config": "configs/musique_eval.json, unedited (byte-identical to the version exp-011's per-item files were scored under -- config_weights_match_per_item_files verified true in every pair's compare_metrics.json)",
+  "deliverable_2_commands": [
+    "MusiQue/scripts/check_question_similarity.py --pool-file runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl --query-glob musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl --n 200 --mode typed --top-k 20 --device cpu --seed 42 --no-hop-match --out runs/exp-014/retrieval/s2_pinned600_top20.jsonl --run-dir runs/exp-014/retrieval/similarity",
+    "MusiQue/scripts/rerank_similarity_results.py --input runs/exp-014/retrieval/s2_pinned600_top20.jsonl --out runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --rerank-k 5 --device cpu --seed 42 --run-dir runs/exp-014/retrieval/rerank"
+  ],
+  "pool_choice": "size2000_imbalanced per ADR 0028 item 1 -- the only axis that moves per ADR 0023 item 2.3's own wording ('best configuration (best pool)'); everything else held at exp-004/exp-008's shape per the feasibility note's Section 3 checklist",
+  "preflight_checked": {
+    "pool_sha256_matches_adr0028": true,
+    "pool_pinned600_id_overlap": 0,
+    "run_lock_holder_at_launch": "exp-012 (router evaluation, GPU) -- not touched",
+    "gpu_touched": false
+  },
+  "git": {
+    "commit_at_launch": "7067e55",
+    "branch": "main",
+    "dirty": false
+  },
+  "no_pipeline_code_or_config_changed": true,
+  "no_new_decomposition_or_inference_run": true,
+  "gpu_used": false
+}
