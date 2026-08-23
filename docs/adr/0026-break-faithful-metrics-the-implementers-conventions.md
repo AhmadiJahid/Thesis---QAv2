@@ -2,6 +2,12 @@
 
 - **Status**: Accepted (implementer design, pending Jahid)
 - **Date**: 2026-08-22
+- **Amended 2026-08-23 by [0029](./0029-the-decomposition-quality-suite-the-implementers-registration.md)**:
+  the four columns this record landed as *additive* — Break EM, SARI, GED and
+  `chain_validity` — are now four of the six terms of the **reported primary**
+  (`decomposition_report_card`), and the legacy `composite_score` they were kept out of is
+  marked `legacy` and frozen. **How any metric here is computed does not change**, and every
+  convention below still binds; what changed is which numbers lead the report.
 
 ## Context
 

@@ -56,7 +56,7 @@ When **not** to write one:
 | [0026](./0026-break-faithful-metrics-the-implementers-conventions.md) | Break-Faithful Metrics (EM / SARI / GED) and the Repaired Chain Validity: The Implementer's Conventions | Accepted (implementer design, pending Jahid) |
 | [0027](./0027-a-number-that-justifies-a-constant-is-a-committed-script.md) | A Number That Justifies a Config Constant Is a Committed Script, Not Prose | Accepted (implementer convention, pending Jahid) |
 | [0028](./0028-jahid-2026-08-23-delegations-pool-choice-router-call-composite-authorized.md) | Jahid's 2026-08-23 Delegations: Pool Choice and the Router Call Move to the Lead; the Composite Replacement Is Authorized to Implement | Accepted (Jahid, 2026-08-23) |
-| 0029 | *(reserved — decomposition-metric-suite ADR, in flight on `feature/40-decomposition-metric-suite`)* | pending |
+| [0029](./0029-the-decomposition-quality-suite-the-implementers-registration.md) | The Decomposition-Quality Suite: Six Unblended Terms as the Reported Primary, and the Composite Frozen as Legacy | Accepted (implementer registration, pending Jahid and his supervisor) |
 | [0030](./0030-remove-the-router-from-the-decomposition-critical-path.md) | Remove the Router from the Decomposition Pipeline's Critical Path | Accepted (lead, 2026-08-23; supervisor may overturn) |
 
 ---

@@ -1,0 +1,35 @@
+{
+  "_note": "Config for scripts/decomposition_junk_battery.py, the junk battery behind the acceptance criteria of the decomposition report card (docs/analysis/2026-08-23-decomposition-quality-metric-specification.md section 3.3, ADR 0029). It is a TOOL, not an experiment: it scores no system of the thesis, takes no experiments/log.md entry, needs no GPU and takes no runs/run.lock. The junk systems are baselines built out of the gold column, in the same sense as the 'Copy' row Break prints in its own results table. The metric's parameters (the GED cost guards, the decomp_mean component list and its GED clamp) are deliberately NOT duplicated here - they are read from evaluator_config, so this battery gates the metric the pipeline actually runs rather than a second copy of it.",
+
+  "seed": 42,
+  "evaluator_config": "musique_eval.json",
+  "gold_key": "musique_dev_gold_clean",
+
+  "_eval_set_note": "The junk baselines are scored on the ADR 0007 pinned evaluation set (200 questions per hop depth), because that is the set every committed arm was scored on and A2/A4/A5 are all junk-versus-arm comparisons - a junk row over the full 2411-row dev gold and an arm row over the pinned 600 would not be a comparison at all (CLAUDE.md, evidence discipline). The gold file supplies the decompositions; these files supply which items. The script additionally CHECKS that each real arm's per-item file covers exactly the scored set and refuses otherwise. --eval-set all-gold scores every gold row instead and is not comparable to any arm.",
+  "eval_set": {
+    "questions_key": "musique_eval_questions_template",
+    "hops": [2, 3, 4]
+  },
+
+  "_fixed_junk_steps_note": "The constant step texts J3 and J4 predict for EVERY item. They are here rather than in the script because they are parameters of the measurement and a run's numbers cannot be reproduced without them, and they are deliberately REFERENCE-FREE: a junk system that emitted '#k' would score nonzero chain_validity and blunt the A2 assertion that measures precisely the opposite. They are also deliberately unrelated to any MuSiQue gold text. J3 takes the first, J4 takes the first three. Changing them changes every junk number below, so change them only with the ADR 0029 table.",
+  "fixed_junk_steps": [
+    "What is the first fact?",
+    "What is the second fact?",
+    "What is the third fact?"
+  ],
+
+  "_real_arms_note": "The committed arms the junk baselines are compared against, by their per-item files under the (gitignored) runs root. These are the nine arms exp-011 re-scored under the Break-faithful columns at commit a99b573 - the only committed artifacts that carry every column this battery needs on the ADR 0007 pinned 600. Nothing here is re-scored: the files are read and aggregated, and decomp_mean plus the two direction columns are DERIVED from the columns already in them by the evaluator's own functions. On a machine without runs/, pass --no-real-arms to run the junk half only (A2/A4/A5 are then reported as not evaluated, because each of them is a statement about junk versus a real arm).",
+  "real_arms": [
+    { "name": "exp004_unguided", "per_item": "exp-011/exp004_unguided/eval_per_item.json" },
+    { "name": "exp004_oracle_guided", "per_item": "exp-011/exp004_oracle_guided/eval_per_item.json" },
+    { "name": "exp004_unguided_capped", "per_item": "exp-011/exp004_unguided_capped/eval_per_item.json" },
+    { "name": "exp005_unguided", "per_item": "exp-011/exp005_unguided/eval_per_item.json" },
+    { "name": "exp005_oracle_guided", "per_item": "exp-011/exp005_oracle_guided/eval_per_item.json" },
+    { "name": "exp005_unguided_capped", "per_item": "exp-011/exp005_unguided_capped/eval_per_item.json" },
+    { "name": "exp008_full_train", "per_item": "exp-011/exp008_full_train/eval_per_item.json" },
+    { "name": "exp009_mixed", "per_item": "exp-011/exp009_mixed/eval_per_item.json" },
+    { "name": "exp009_oracle_hop_matched", "per_item": "exp-011/exp009_oracle_hop_matched/eval_per_item.json" }
+  ],
+
+  "paths_config": "paths.json"
+}
