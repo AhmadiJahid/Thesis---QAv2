@@ -1,0 +1,2217 @@
+{
+  "_note": "exp-016: twelve-arm decomposition_report_card coverage re-score (Refs #40). Additive-only re-score from each arm's already-committed results.json against ADR 0007's pinned 600. No new generation. CPU-only, no GPU, no runs/run.lock taken.",
+  "evaluator_script": "scripts/musique_decompositions_evaluator.py",
+  "evaluator_config": "configs/musique_eval.json",
+  "evaluator_git_commit": "e3725c778b5c9869ac3f0b53a9430a40b675dba8",
+  "seed": 42,
+  "gold_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+  "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop), verified per-arm via each arm's own generation-time metrics.json.evaluation_set (pinned=true, ids_missing_count=0, ids_unexpected_count=0, rows_loaded_per_hop={2:200,3:200,4:200}) on all 12 arms",
+  "arms_re_scored": 12,
+  "arms_excluded": 0,
+  "additive_reproduction_check": {
+    "method": "every arm's pre-existing metric keys (step_f1_macro, ordered_step_accuracy_macro, hop_count_exact_match_rate, composite_score, exact_match_rate, rouge_l_f1_macro, plus the PR#44 Break-faithful columns break_exact_match_rate/sari_macro/ged_macro/chain_validity_macro and the PR#48 over/under-decomposition rates where the prior file already had them) compared byte-for-byte against the arm's most recent prior committed eval_metrics.json (exp-011 for the 9 exp-004/005/008/009 arms, exp-012's own eval/{router_guided,unguided_rescored,oracle_guided_rescored} for the 3 exp-012 arms)",
+    "all_12_arms_reproduce_exactly": true,
+    "new_columns_added_by_this_run": [
+      "decomposition_report_card",
+      "composite_score_status",
+      "decomp_mean_macro (for the 3 exp-012 arms, which predate PR#48; the 9 exp-011 arms already had decomp_mean_macro since exp-011 postdates PR#44 but predates PR#48's naming/status stamp)"
+    ]
+  },
+  "note_on_exp012_reused_predictions": "exp012_unguided_rescored and exp012_oracle_guided_rescored score the EXACT SAME results.json files as exp004_unguided and exp004_oracle_guided (exp-012's own row: 'reuses exp-004's already-committed unguided and oracle_guided arms'). Their report-card values are therefore expected to be, and are, byte-identical to exp004_unguided / exp004_oracle_guided. This is coverage bookkeeping (exp-012's per-item files, scored at c69ef5f before the suite existed, now carry it too), not a new measurement.",
+  "arms": {
+    "exp004_unguided": {
+      "source_experiment": "exp-004",
+      "source_condition": "unguided",
+      "predictions_path": "runs/exp-004/20260821_222907/results.json",
+      "predictions_sha256": "49f805b1067e6ef9f9a8aae5613aa9278269cb7b229eab5d803694f95126b2e8",
+      "run_dir": "runs/exp-016/exp004_unguided",
+      "prior_eval_metrics_path": "runs/exp-011/exp004_unguided/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05333333333333334,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5850214958002862,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.47146829197361756,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9685833333333332,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.5083333333333333,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.20166666666666666,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.29,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.47146829197361756,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5287633742900243,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.20984758574758572,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {
+        "node_cap": 1
+      },
+      "decomp_mean_macro": 0.5287633742900243,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.20984758574758572,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp004_unguided/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp004_oracle_guided": {
+      "source_experiment": "exp-004",
+      "source_condition": "oracle_guided",
+      "predictions_path": "runs/exp-004/20260821_224805/results.json",
+      "predictions_sha256": "d675e0e31030440db88af67da6c85e320e49dcf046bab744fced24ba38fbe7a2",
+      "run_dir": "runs/exp-016/exp004_oracle_guided",
+      "prior_eval_metrics_path": "runs/exp-011/exp004_oracle_guided/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5890158290869147,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.4414326364080897,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9711626984126983,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.59,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.06166666666666667,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.34833333333333333,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.4414326364080897,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5517491782183047,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.4196904822029822,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.5517491782183047,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.4196904822029822,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp004_oracle_guided/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp004_unguided_capped": {
+      "source_experiment": "exp-004",
+      "source_condition": "unguided_capped",
+      "predictions_path": "runs/exp-004/20260821_231641/results.json",
+      "predictions_sha256": "5003fdd58ae98c71426f30aaada605133c104d81a371c73c0246a41315cc4681",
+      "run_dir": "runs/exp-016/exp004_unguided_capped",
+      "prior_eval_metrics_path": "runs/exp-011/exp004_unguided_capped/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05333333333333334,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5849054289130184,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.47078973771048843,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9685833333333332,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.5083333333333333,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.20166666666666666,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.29,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.47078973771048843,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.528873138240506,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.21284958513708518,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.528873138240506,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.21284958513708518,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp004_unguided_capped/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp005_unguided": {
+      "source_experiment": "exp-005",
+      "source_condition": "unguided",
+      "predictions_path": "runs/exp-005/20260821_233524/results.json",
+      "predictions_sha256": "5f6e3f5805041d1d502c80d8aec9f7a52d4db8593663766c4514112b45d9d767",
+      "run_dir": "runs/exp-016/exp005_unguided",
+      "prior_eval_metrics_path": "runs/exp-011/exp005_unguided/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.051666666666666666,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5978849941440952,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.4910246714300584,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.8604503968253969,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.52,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.115,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.365,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.4910246714300584,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5084660897609404,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.42119004329004334,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.5084660897609404,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.42119004329004334,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp005_unguided/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp005_oracle_guided": {
+      "source_experiment": "exp-005",
+      "source_condition": "oracle_guided",
+      "predictions_path": "runs/exp-005/20260822_000025/results.json",
+      "predictions_sha256": "7193b169e5fec668b19252d95f840191b1ae3f2d1aa02ad140a0bd347632ed7e",
+      "run_dir": "runs/exp-016/exp005_oracle_guided",
+      "prior_eval_metrics_path": "runs/exp-011/exp005_oracle_guided/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.06,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.6033040021246149,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.424063207363603,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.8696666666666666,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.8733333333333333,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.03333333333333333,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.09333333333333334,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.424063207363603,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5965211580899602,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.44293320105820105,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {
+        "node_cap": 6
+      },
+      "decomp_mean_macro": 0.5965211580899602,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.44293320105820105,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp005_oracle_guided/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp005_unguided_capped": {
+      "source_experiment": "exp-005",
+      "source_condition": "unguided_capped",
+      "predictions_path": "runs/exp-005/20260822_003156/results.json",
+      "predictions_sha256": "827dcbacadfe3a45f3241ade7eefbce5435e4d044eab2c9b60f0bc08aa53b14a",
+      "run_dir": "runs/exp-016/exp005_unguided_capped",
+      "prior_eval_metrics_path": "runs/exp-011/exp005_unguided_capped/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.051666666666666666,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5978428116242105,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.4909397845247381,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.8604503968253969,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.52,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.115,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.365,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.4909397845247381,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5084746306380277,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.4214678210678211,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.5084746306380277,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.4214678210678211,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp005_unguided_capped/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp008_full_train": {
+      "source_experiment": "exp-008",
+      "source_condition": "full_train",
+      "predictions_path": "runs/exp-008/20260822_100745/results.json",
+      "predictions_sha256": "1fab440867f627026c315bdcc75beb8e988e8020bfff153b83c469b5465888d6",
+      "run_dir": "runs/exp-016/exp008_full_train",
+      "prior_eval_metrics_path": "runs/exp-011/exp008_full_train/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.10166666666666667,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.6822884470647773,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.30939302184449674,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9941666666666666,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.71,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.25666666666666665,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.03333333333333333,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.30939302184449674,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.6357457517107228,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.5235695767195767,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.6357457517107228,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.5235695767195767,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp008_full_train/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp009_mixed": {
+      "source_experiment": "exp-009",
+      "source_condition": "mixed",
+      "predictions_path": "runs/exp-009/mixed/20260822_103146/results.json",
+      "predictions_sha256": "b92ce8779c91c0d8cb262739b625572872431b59388cd3f75b6af72526f938b0",
+      "run_dir": "runs/exp-016/exp009_mixed",
+      "prior_eval_metrics_path": "runs/exp-011/exp009_mixed/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05333333333333334,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5851267341525592,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.4713093891249925,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9685833333333332,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.515,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.2,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.285,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.4713093891249925,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5301495358635372,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.2098661042661043,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {
+        "node_cap": 1
+      },
+      "decomp_mean_macro": 0.5301495358635372,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.2098661042661043,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp009_mixed/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp009_oracle_hop_matched": {
+      "source_experiment": "exp-009",
+      "source_condition": "oracle_hop_matched",
+      "predictions_path": "runs/exp-009/oracle/20260822_105045/results.json",
+      "predictions_sha256": "e2ae1df8539fe0a98f03fd9d6efd59ca197b94d443546424329f791a788574c7",
+      "run_dir": "runs/exp-016/exp009_oracle_hop_matched",
+      "prior_eval_metrics_path": "runs/exp-011/exp009_oracle_hop_matched/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.04833333333333333,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5879490119685962,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.45400674999225743,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.968593253968254,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.6,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.13,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.27,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.45400674999225743,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5502541371864641,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.2633149318274318,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {
+        "node_cap": 1
+      },
+      "decomp_mean_macro": 0.5502541371864641,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.2633149318274318,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-011/exp009_oracle_hop_matched/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp012_router_guided": {
+      "source_experiment": "exp-012",
+      "source_condition": "router_guided",
+      "predictions_path": "runs/exp-012/decomposer/router_guided/20260823_010750/results.json",
+      "predictions_sha256": "4b04a59571f3c026ee25d892caa9cc59d91070db6d1baa227a30a8ccec5dc77b",
+      "run_dir": "runs/exp-016/exp012_router_guided",
+      "prior_eval_metrics_path": "runs/exp-012/eval/router_guided/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05333333333333334,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5850805398593029,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.47206782391747015,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9625277777777778,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.49166666666666664,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.2916666666666667,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.21666666666666667,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.47206782391747015,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5241080987439221,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.21495520683020683,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.5241080987439221,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.21495520683020683,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-012/eval/router_guided/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp012_unguided_rescored": {
+      "source_experiment": "exp-012",
+      "source_condition": "unguided_rescored (= exp-004 unguided predictions, reused)",
+      "predictions_path": "runs/exp-004/20260821_222907/results.json",
+      "predictions_sha256": "49f805b1067e6ef9f9a8aae5613aa9278269cb7b229eab5d803694f95126b2e8",
+      "run_dir": "runs/exp-016/exp012_unguided_rescored",
+      "prior_eval_metrics_path": "runs/exp-012/eval/unguided_rescored/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05333333333333334,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5850214958002862,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.47146829197361756,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9685833333333332,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.5083333333333333,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.20166666666666666,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.29,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.47146829197361756,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5287633742900243,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.20984758574758572,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {
+        "node_cap": 1
+      },
+      "decomp_mean_macro": 0.5287633742900243,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.20984758574758572,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-012/eval/unguided_rescored/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    },
+    "exp012_oracle_guided_rescored": {
+      "source_experiment": "exp-012",
+      "source_condition": "oracle_guided_rescored (= exp-004 oracle_guided predictions, reused)",
+      "predictions_path": "runs/exp-004/20260821_224805/results.json",
+      "predictions_sha256": "d675e0e31030440db88af67da6c85e320e49dcf046bab744fced24ba38fbe7a2",
+      "run_dir": "runs/exp-016/exp012_oracle_guided_rescored",
+      "prior_eval_metrics_path": "runs/exp-012/eval/oracle_guided_rescored/eval_metrics.json",
+      "total_evaluated": 600,
+      "missing_gold_count": 0,
+      "decomposition_report_card": {
+        "name": "decomposition_report_card",
+        "specification": "docs/analysis/2026-08-23-decomposition-quality-metric-specification.md \u00a72.1; ADR 0029",
+        "shape": "an UNBLENDED suite of six terms \u2014 there is no composite over them",
+        "n_items": 600,
+        "denominator": "every term is a macro mean over the evaluated items; no term is a ratio pooled across items, and no denominator depends on what the model emitted",
+        "terms": [
+          {
+            "term": 1,
+            "metric": "break_exact_match_rate",
+            "per_item_column": "break_exact_match",
+            "value": 0.05,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "whole-plan verbatim identity of the '@@SEP@@'-joined string, lowercased",
+            "provenance": "literature: Break official get_exact_match",
+            "n_items": 600
+          },
+          {
+            "term": 2,
+            "metric": "sari_macro",
+            "per_item_column": "sari",
+            "value": 0.5890158290869147,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "n-gram edit quality vs the question: kept-F1, added-F1, deleted-precision, n = 1..4",
+            "provenance": "literature: Break / Xu et al. (TACL 2016)",
+            "n_items": 600
+          },
+          {
+            "term": 3,
+            "metric": "ged_macro",
+            "per_item_column": "ged",
+            "value": 0.4414326364080897,
+            "direction": "lower_is_better",
+            "range": "[0,inf)",
+            "prices": "one distance over wording (node substitution), chaining (edges) and step count (node insertion/deletion)",
+            "provenance": "literature: Break official normalized graph edit distance",
+            "n_items": 600
+          },
+          {
+            "term": 4,
+            "metric": "chain_validity_macro",
+            "per_item_column": "chain_validity",
+            "value": 0.9711626984126983,
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "prices": "did the plan chain where the gold requires chaining, and do its '#k' resolve backwards",
+            "provenance": "house repair, not a published metric (PR #44 / ADR 0026)",
+            "n_items": 600
+          },
+          {
+            "term": 5,
+            "metric": "hop_count_exact_match_rate",
+            "per_item_column": "hop_count_exact_match",
+            "value": 0.59,
+            "direction": "higher_is_better",
+            "range": "{0,1}",
+            "prices": "granularity: the right number of steps",
+            "provenance": "house",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "under_decomposition_rate",
+            "per_item_column": "under_decomposition",
+            "value": 0.06166666666666667,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged NOT tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          },
+          {
+            "term": 6,
+            "metric": "over_decomposition_rate",
+            "per_item_column": "over_decomposition",
+            "value": 0.34833333333333333,
+            "direction": "lower_is_better",
+            "range": "{0,1}",
+            "prices": "a length error in the direction the supervisor judged tolerable (ADR 0017)",
+            "provenance": "house, required by ADR 0017",
+            "n_items": 600
+          }
+        ],
+        "paired_terms_rule": "Terms 6a and 6b (under_decomposition_rate, over_decomposition_rate) are reported as a PAIR and never summed: ADR 0017 records that over-decomposition is tolerable and under-decomposition is not, and summing them would erase exactly that. step_count_exact_rate is 1 - the two of them and is reported separately.",
+        "reporting_rules": [
+          "All six terms are always reported together, with their direction. A note or table that quotes fewer than six is not reporting this metric.",
+          "Every comparison carries the ADR 0009 battery PER TERM (paired bootstrap CI, paired t-test, and McNemar for the binary terms 1, 5 and 6). Every term has a per-item value, so the legacy composite's 1-of-3-tests weakness does not apply to any of them.",
+          "Report per gold hop depth as well as overall (per_gold_hop_metrics carries the whole block).",
+          "Report a junk-baseline block beside the arms \u2014 Break prints its own 'Copy' baseline in its results table. The battery is scripts/decomposition_junk_battery.py, and its acceptance criteria are tests in tests/test_decomposition_metrics.py.",
+          "Composite terms with model-dependent denominators are forbidden in the headline; reference_validity_micro is the instance that motivated the rule."
+        ],
+        "single_number_when_one_is_required": {
+          "metric": "ged_macro",
+          "value": 0.4414326364080897,
+          "direction": "lower_is_better",
+          "why_a_member_and_not_a_formula": "the field's own precedent for a single number is one member of the family made stricter (Break/QDMR's NormEM) or one strict column selected on (EntailmentBank), never a blend over the family",
+          "caveats": [
+            "LOWER IS BETTER - it is a distance, where terms 1, 2, 4 and 5 are scores; the only other lower-is-better terms are the two length-error rates of term 6.",
+            "It is order-light, and on a 2-step plan order-BLIND (a reversed gold can score better than a real arm), which is why terms 1, 5 and 6 must stay reported beside it.",
+            "Absolute values are NOT comparable to published Break GED: this port has no spaCy lemmatizer in the node substitution cost (ADR 0026 item 3), and it scores against MuSiQue gold rather than QDMR annotations."
+          ]
+        },
+        "contingency_blend": {
+          "metric": "decomp_mean_macro",
+          "per_item_column": "decomp_mean",
+          "value": 0.5517491782183047,
+          "direction": "higher_is_better",
+          "in_the_suite": false,
+          "components": [
+            "break_exact_match",
+            "sari",
+            "ged",
+            "chain_validity",
+            "hop_count_exact_match"
+          ],
+          "ged_clamp": 1.0,
+          "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+          "weights": "all equal by construction; there is no weighted variant",
+          "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+          "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+        },
+        "guards": {
+          "every_term_is_the_macro_mean_of_its_per_item_column": true,
+          "items_per_term": {
+            "break_exact_match_rate": 600,
+            "sari_macro": 600,
+            "ged_macro": 600,
+            "chain_validity_macro": 600,
+            "hop_count_exact_match_rate": 600,
+            "under_decomposition_rate": 600,
+            "over_decomposition_rate": 600
+          },
+          "tolerance": 1e-12,
+          "terms_excluded_and_why": {
+            "reference_validity_micro": "a ratio pooled across items whose denominator is produced by the model: on five of seven committed arms it was empty and scored 1.0 by rule, and on the other two, 2 of 600 items owned the whole denominator (issue #40)",
+            "composite_score": "an aggregate-of-aggregates with no per-item value, so it takes 1 of the 3 tests in the ADR 0009 battery; it is frozen as legacy and reported separately"
+          }
+        },
+        "adoption": "NOT ADOPTED HERE. Whether this suite (or any part of it) becomes the THESIS-primary metric is issue #6 item 5 \u2014 Jahid's decision with his supervisor. This script specifies and reports; it does not adopt",
+        "legacy_composite": {
+          "metric": "composite_score",
+          "status": "legacy",
+          "value": 0.4196904822029822,
+          "why_it_is_still_computed": "frozen byte-identical so nine committed arms, exp-010's 33 sweep cells and both v1 re-analysis notes stay valid and quotable \u2014 for reproducibility, not because the term is correct"
+        }
+      },
+      "ged_fallback_counts": {},
+      "decomp_mean_macro": 0.5517491782183047,
+      "chain_validity_gold_unchained_items": 0,
+      "composite_score": 0.4196904822029822,
+      "composite_score_status": "legacy",
+      "reproduction_check": {
+        "compared_against": "runs/exp-012/eval/oracle_guided_rescored/eval_metrics.json",
+        "keys_checked": [
+          "step_f1_macro",
+          "ordered_step_accuracy_macro",
+          "hop_count_exact_match_rate",
+          "composite_score",
+          "exact_match_rate",
+          "rouge_l_f1_macro",
+          "break_exact_match_rate",
+          "sari_macro",
+          "ged_macro",
+          "chain_validity_macro",
+          "over_decomposition_rate",
+          "under_decomposition_rate"
+        ],
+        "all_match": true,
+        "diffs": {}
+      }
+    }
+  }
+}

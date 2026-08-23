@@ -1,0 +1,85 @@
+{
+  "_note": "Config snapshot for exp-016 (Refs #40): twelve-arm coverage re-score of exp-004/exp-005/exp-008/exp-009/exp-012's existing predictions so decomposition_report_card (PR #48, ADR 0029) exists and is logged for every one of them. configs/musique_eval.json is unedited; this snapshot embeds it verbatim plus the exact CLI invocation run per arm and the arm-to-predictions-file mapping.",
+  "invocation_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --config musique_eval.json --predictions <predictions_path> --run-dir runs/exp-016/<arm> --out-prefix eval --seed 42",
+  "arms_predictions": {
+    "exp004_unguided": "runs/exp-004/20260821_222907/results.json",
+    "exp004_oracle_guided": "runs/exp-004/20260821_224805/results.json",
+    "exp004_unguided_capped": "runs/exp-004/20260821_231641/results.json",
+    "exp005_unguided": "runs/exp-005/20260821_233524/results.json",
+    "exp005_oracle_guided": "runs/exp-005/20260822_000025/results.json",
+    "exp005_unguided_capped": "runs/exp-005/20260822_003156/results.json",
+    "exp008_full_train": "runs/exp-008/20260822_100745/results.json",
+    "exp009_mixed": "runs/exp-009/mixed/20260822_103146/results.json",
+    "exp009_oracle_hop_matched": "runs/exp-009/oracle/20260822_105045/results.json",
+    "exp012_router_guided": "runs/exp-012/decomposer/router_guided/20260823_010750/results.json",
+    "exp012_unguided_rescored": "runs/exp-004/20260821_222907/results.json (reused, per exp-012's own row: identical to exp004_unguided's predictions)",
+    "exp012_oracle_guided_rescored": "runs/exp-004/20260821_224805/results.json (reused, per exp-012's own row: identical to exp004_oracle_guided's predictions)"
+  },
+  "gold": "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl (gold_key musique_dev_gold_clean, from configs/musique_eval.json, unedited)",
+  "musique_eval_config": {
+    "_note": "Config for scripts/musique_decompositions_evaluator.py. The composite-score weights and the step-count error scale were hard-coded literals in v1 (0.4/0.3/0.2/0.1 and /3.0); they are parameters of the metric, so they live here where a run's config snapshot records them.",
+    "seed": 42,
+    "gold_key": "musique_dev_gold_clean",
+    "run_subdir": "musique_decomposition_eval",
+    "out_prefix": "eval",
+    "limit": null,
+    "_composite_score_status_note": "LEGACY. composite_score and the [#k]-only _REF_RX behind its reference_validity_micro term are FROZEN, byte-identical to the form every committed number was produced under (nine arms, exp-010's 33 sweep cells, both v1 re-analysis notes). It is NOT the reported primary - the six-term decomposition_report_card is - and it is deliberately NOT repaired: correcting the regex would move every committed value under an unchanged name while leaving the actual defect in place, because even a corrected reference-validity term is a micro-pooled rate with a MODEL-DEPENDENT denominator inside an aggregate-of-aggregates (issue #40, docs/analysis/2026-08-23-decomposition-quality-metric-specification.md section 5 option 1, ADR 0029). Do not change these weights or that regex to 'fix' the metric; the replacement is the suite. Whether the composite is retired outright is issue #6 item 5, Jahid's with his supervisor.",
+    "composite_score_weights": {
+      "step_f1_macro": 0.4,
+      "ordered_step_accuracy_macro": 0.3,
+      "reference_validity_micro": 0.2,
+      "step_count_error": 0.1
+    },
+    "composite_step_count_error_scale": 3.0,
+    "break_metrics": {
+      "_note": "Knobs of the additive metrics from docs/analysis/2026-08-22-metric-candidates.md (issue #40): the official Break leaderboard trio (EM / SARI / GED, ported from allenai/break-evaluator) and the repaired per-item chain validity. They are ADDITIVE columns and always computed - there is no switch to turn them off, because a metric nobody computes is a metric nobody can check, and none of them enters composite_score, so no published number changes value. Only GED needs parameters, because it is the one expensive metric: the survey measured a single 39-step runaway prediction costing ~115 s of optimizer time on its own. max_nodes_for_optimizer is the ONLY guard that bounds that cost: it is checked before any search starts, and above it the search is skipped and a search-free upper bound (pair nodes in id order, substitute each pair, delete/insert the surplus, keep the edges whose endpoints are both paired, delete/insert the rest) is reported instead - so the value does not depend on how busy the machine was. per_item_time_budget_seconds is only a backstop: the deadline is tested BETWEEN the optimizer's successive approximations, so it cannot interrupt one (including the first), it keeps the last approximation, and the value it produces IS machine-dependent - which is why each firing is counted in ged_fallback_counts, carries its elapsed seconds in the per-item ged_fallback_seconds, and is named in the run note. Break's own evaluator instead DROPS an item that times out, which would break the paired battery (a dropped item has no pair) - see ADR 0026. THE MEASURED COST RECORD lives in ONE place and is generated, not typed: run scripts/ged_cost_benchmark.py (configs/ged_cost_benchmark.json) and it prints the table that docs/adr/0026-break-faithful-metrics-the-implementers-conventions.md carries, with the commit it was measured at. The table is not repeated here, because two prose copies of a measurement drift (PR #44 review, nit 5). What the cap is for, in one line: the optimizer's cost rises with the prediction's step labels tying with EACH OTHER, times the prediction carrying '#k' references at all, times the gold's depth - not with the edge count, and NOT with resemblance to the gold's own text (a label sharing no word with the gold costs the same as one copied from it, once ties and references are held fixed; the earlier claim that gold similarity drove it was falsified by the PR #45 review and withdrawn). 16 nodes is twice the capped decomposer arm's 8-step budget and four times the deepest MuSiQue gold, with the worst case measured at the cap ~1.0 s against a 20 s budget.",
+      "ged": {
+        "max_nodes_for_optimizer": 16,
+        "per_item_time_budget_seconds": 20.0
+      }
+    },
+    "decomposition_suite": {
+      "_note": "The reported primary is an UNBLENDED six-term suite (decomposition_report_card): Break EM, SARI, GED (lower is better), chain_validity, hop-count EM, and the over/under-decomposition pair kept split and never summed. All six were already computed before this block existed; the suite is registration, direction metadata, guards and reporting, not new metric mathematics, so no committed number moves. The suite's MEMBERSHIP is deliberately not a knob: it is a metric definition and lives in the script (DECOMPOSITION_SUITE_TERMS), next to the code that computes each term. What lives here is the one thing that is a parameter - the contingency blend. See docs/METRICS.md section 2.3 and ADR 0029.",
+      "decomp_mean": {
+        "_note": "The BLENDED CONTINGENCY of the specification's section 2.3 (P3), reported beside the suite and never as the suite. It exists for the case where one blended number is required; the recommendation remains the suite plus ged_macro. Equal weights by construction and there is NO weighted variant: GLUE's unweighted average is the only weighting form the survey found a precedent for, and any unequal weighting would need a Dynascore-style unit conversion that nothing in this repo estimates. ged_clamp is a JUDGMENT CALL with no source: GED is a distance, unbounded above (measured above 1.0 for junk predictions), so an additive blend has to clamp it before flipping direction - the term is 1 - min(ged_clamp, ged). Alternatives considered and not taken: 1/(1+ged), exp(-ged), or leaving GED out of the blend (ADR 0029). The blend SHIPS only because scripts/decomposition_junk_battery.py measured every junk baseline below every real arm on it; an additive blend containing SARI hands junk a nonzero floor, which is the same failure family as issue #40, and a junk baseline outranking a real arm disqualifies the blend rather than prompting a weight tweak. Changing components or ged_clamp means re-running that battery.",
+        "components": [
+          "break_exact_match",
+          "sari",
+          "ged",
+          "chain_validity",
+          "hop_count_exact_match"
+        ],
+        "ged_clamp": 1.0
+      }
+    },
+    "gold_validation": {
+      "_note": "The gold rows carry two step-count denominators: the 'hop_count' field (used by the hop-count metrics) and len(question_decomposition) (used by the directional step-count metrics). They must agree or the two families measure different things under one report, so the loader aborts on a disagreement; this caps how many offending ids the error message lists.",
+      "max_reported_mismatches": 20
+    },
+    "paired_comparison": {
+      "_note": "Parameters for --compare (paired significance between two per-item files). The bootstrap is resampled from the top-level 'seed' (or --seed), so a comparison is reproducible; iterations, alpha and the mismatch-report cap are parameters of the test, so they live here and land in the run's config snapshot instead of being literals in the script. bootstrap_chunk_size only bounds peak memory (resample indices are drawn this many rows at a time); a fixed seed gives identical results for any chunk size. min_items_for_significance_claim is a REPORTING GUARD, not a statistical standard: below it, every 'significant' flag is additionally marked underpowered, because a handful of items cannot carry a significance claim (McNemar with 3 discordant pairs cannot reach p < 0.05 at all). Jahid and his supervisor own its value.",
+      "bootstrap_iterations": 10000,
+      "bootstrap_chunk_size": 1000,
+      "alpha": 0.05,
+      "min_items_for_significance_claim": 30,
+      "max_reported_id_mismatches": 20,
+      "out_prefix": "compare",
+      "v1_compat": {
+        "_note": "Parameters of the --v1-per-item shim, which lets --compare read v1 prior-work per-item files (the bare-list format with no item_id that predates musique_decomposition_per_item/1) under ADR 0020. default_alignment is how the two files are paired when --v1-alignment is not passed: 'normalized_question' is the alignment docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.md states for its Task A, and it is the default so that note's numbers reproduce from committed code; 'position' pairs the files row by row and exists for v1 artifacts whose question texts are not unique (that note's Task B). read_only_prior_work_root is the v1 repo, which nothing in this pipeline may write into (ADR 0020 condition 1) - the evaluator refuses a --run-dir inside it.",
+        "default_alignment": "normalized_question",
+        "read_only_prior_work_root": "/cta/users/fyilmaz/Thesis---QA"
+      }
+    },
+    "paths_config": "paths.json"
+  },
+  "git": {
+    "commit": "e3725c778b5c9869ac3f0b53a9430a40b675dba8",
+    "branch": "main",
+    "dirty": false
+  },
+  "no_pipeline_code_or_config_changed": true,
+  "no_new_decomposition_or_inference_run": true,
+  "gpu_used": false,
+  "run_lock_taken": false,
+  "run_lock_held_by_other_lane_throughout": "exp-013 (2026-08-23T04:34:27+0300), untouched; exp-015's waiter armed behind it, also untouched"
+}
