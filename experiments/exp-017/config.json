@@ -1,0 +1,95 @@
+{
+  "_note": "Config snapshot for exp-017 (Issue #16 / issue #46 S4): four end-to-end MuSiQue answering cells on components/answerer/run_answerer.py, all on the ADR 0007 pinned 600 (200/hop), same reader and context policy, so they are directly comparable. configs/answer_musique.json is unedited; this snapshot embeds it verbatim (via each cell's own answer_config.json, identical shared_config block across all 4 cells) plus the exact CLI invocations run per cell, taken from runs/exp-017/run_all.sh.",
+  "shared_config": "configs/answer_musique.json",
+  "invocation_source": "runs/exp-017/run_all.sh",
+  "run_lock": {
+    "acquired": true,
+    "released": true,
+    "released_at": "2026-08-23T11:33:17+03:00 (run_all.sh EXIT trap)",
+    "lock_id": "exp-017,2026-08-23T10:06:30+03:00"
+  },
+  "shared_reader": {
+    "reader_model": "mistral_7b_instruct",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+    "parameter_count": 7248023552,
+    "parameter_ceiling": 8000000000,
+    "ceiling_asserted": true,
+    "context_policy": "all_paragraphs",
+    "expected_paragraphs_per_item": 20,
+    "generation_overrides": {
+      "max_new_tokens": 64,
+      "do_sample": false,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "seed": 42,
+    "seeded": {
+      "seed": 42,
+      "python_random": true,
+      "pythonhashseed_exported_for_subprocesses": "42",
+      "numpy": true,
+      "torch": true,
+      "torch_cuda": true
+    }
+  },
+  "cells": {
+    "oracle": {
+      "invocation": "python components/answerer/run_answerer.py --gold-decompositions --output-root runs/exp-017/oracle",
+      "mode": "gold_decompositions",
+      "decomposition_source": "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+      "note": "restricts itself to the pinned 600 by id; only gold sub-question TEXT read, never gold sub-answers, per ADR 0019",
+      "run_dir": "runs/exp-017/oracle/20260823_070959",
+      "created_utc": "2026-08-23T07:10:00.841990+00:00"
+    },
+    "full_train": {
+      "invocation": "python components/answerer/run_answerer.py --predictions runs/exp-008/20260822_100745/results.json --output-root runs/exp-017/full_train",
+      "mode": "predictions",
+      "decomposition_source": "runs/exp-008/20260822_100745/results.json",
+      "note": "identified as exp-008's real full_train run (not its sibling runs/exp-008/20260822_100736/, a 5-row dry-run fixture with the same condition:unguided label) by cross-checking runs/exp-008/20260822_100745/notes.md and runs/exp-008/arm_comparison/full_train/eval_config.json.predictions, both pointing at this exact path",
+      "run_dir": "runs/exp-017/full_train/20260823_073434",
+      "created_utc": "2026-08-23T07:34:33.765344+00:00"
+    },
+    "unguided": {
+      "invocation": "python components/answerer/run_answerer.py --predictions runs/exp-004/20260821_222907/results.json --output-root runs/exp-017/unguided",
+      "mode": "predictions",
+      "decomposition_source": "runs/exp-004/20260821_222907/results.json",
+      "note": "identified as exp-004's unguided condition (not oracle_guided or unguided_capped) from its own config.json (condition:unguided, guided:false), not from the directory name",
+      "run_dir": "runs/exp-017/unguided/20260823_075723",
+      "created_utc": "2026-08-23T07:57:22.365544+00:00"
+    },
+    "no_decomposition_control": {
+      "invocation": "python components/answerer/run_answerer.py --predictions runs/exp-017/inputs/no_decomposition_control.json --output-root runs/exp-017/no_decomposition_control",
+      "mode": "predictions",
+      "decomposition_source": "runs/exp-017/inputs/no_decomposition_control.json",
+      "note": "lead-added, not an ADR 0019 condition, pending Jahid's and his supervisor's acceptance. A 600-row predictions file built from exp-004 unguided's query_id/question/hop_count fields with decomposition set to the original question verbatim as a single step (no sub-questions), the same construction as the decomposition-quality junk battery's J2_question_echo row (scripts/decomposition_junk_battery.py), executed through the answerer's normal --predictions path with no new code and no new model. Measures reader accuracy on the full multi-hop question with the same full-paragraph context as the other 3 cells - a no-decomposition baseline, explicitly not a no-context/closed-book baseline.",
+      "run_dir": "runs/exp-017/no_decomposition_control/20260823_082452",
+      "created_utc": "2026-08-23T08:24:51.680531+00:00"
+    }
+  },
+  "evaluation_set": {
+    "expected_rows_per_hop": 200,
+    "expected_hops": [2, 3, 4],
+    "pinned": true,
+    "allow_unpinned_flag": false,
+    "id_identity_checked": true,
+    "pinned_id_files": [
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+      "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+    ],
+    "pinned_id_count": 600,
+    "verified_on_every_cell": {
+      "ids_missing_count": 0,
+      "ids_unexpected_count": 0,
+      "rows_loaded_per_hop": {"2": 200, "3": 200, "4": 200}
+    }
+  },
+  "scoring": "SQuAD official evaluation script (normalize_answer / get_tokens / compute_exact / compute_f1) as adopted by MuSiQue's metrics/answer.py, score taken as the maximum over the gold answer set (metric_max_over_ground_truths) and macro-averaged over items (AnswerMetric). Verified against upstream StonyBrookNLP/musique @ main and by a 20,000-pair differential test against the official SQuAD script, 0 mismatches; see src/answer_metrics.py",
+  "git": {
+    "commit": "24c11dcdb190953e8012523b268991d870952622",
+    "branch": "main",
+    "dirty": false,
+    "dirty_file_count": 0,
+    "dirty_files": []
+  }
+}

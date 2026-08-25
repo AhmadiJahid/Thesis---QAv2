@@ -1,0 +1,114 @@
+{
+  "_note": "Machine-readable per-cell metrics for exp-017 (Issue #16 / issue #46 S4), copied field-for-field from each cell's own runs/exp-017/<cell>/<run_id>/answer_metrics.json (verified against the source files, not re-derived). Heavy per-item prediction dumps are NOT copied here; they remain at runs/exp-017/<cell>/<run_id>/answer_per_item.json.",
+  "overall_rc": 0,
+  "run_finished_at": "2026-08-23T11:33:17+03:00",
+  "run_log": "runs/exp-017/run.log",
+  "run_lock_released": true,
+  "cells": {
+    "oracle": {
+      "run_dir": "runs/exp-017/oracle/20260823_070959",
+      "answer_em": 0.28,
+      "answer_f1": 0.37303827658123323,
+      "per_gold_hop_metrics": {
+        "2": {"num_items": 200, "answer_em": 0.4, "answer_f1": 0.4908580922001975},
+        "3": {"num_items": 200, "answer_em": 0.305, "answer_f1": 0.4229591184958832},
+        "4": {"num_items": 200, "answer_em": 0.135, "answer_f1": 0.20529761904761906}
+      },
+      "counts": {
+        "items_scored": 600,
+        "pinned_ids_requested": 600,
+        "pinned_ids_missing_from_gold_file": 0,
+        "sub_questions_prepared": 1800,
+        "sub_questions_executed": 1800,
+        "failed_generations": 0,
+        "references_resolved": 1200,
+        "references_unresolved": 0
+      },
+      "step_failure_taxonomy": {
+        "all_steps": {"steps": 1800, "steps_clean": 1800, "steps_with_any_flag": 0},
+        "final_step_only": {"steps": 600, "steps_clean": 600, "steps_with_any_flag": 0}
+      }
+    },
+    "full_train": {
+      "run_dir": "runs/exp-017/full_train/20260823_073434",
+      "answer_em": 0.24166666666666667,
+      "answer_f1": 0.32834829195858606,
+      "per_gold_hop_metrics": {
+        "2": {"num_items": 200, "answer_em": 0.34, "answer_f1": 0.4451803751803752},
+        "3": {"num_items": 200, "answer_em": 0.24, "answer_f1": 0.3416660879969704},
+        "4": {"num_items": 200, "answer_em": 0.145, "answer_f1": 0.1981984126984127}
+      },
+      "counts": {
+        "items_scored": 600,
+        "pinned_ids_requested": 600,
+        "pinned_ids_missing_from_gold_file": 0,
+        "sub_questions_prepared": 1660,
+        "sub_questions_executed": 1660,
+        "failed_generations": 0,
+        "references_resolved": 1024,
+        "references_unresolved": 4
+      },
+      "step_failure_taxonomy": {
+        "all_steps": {"steps": 1660, "steps_clean": 1656, "steps_with_any_flag": 4},
+        "final_step_only": {"steps": 600, "steps_clean": 597, "steps_with_any_flag": 3}
+      }
+    },
+    "unguided": {
+      "run_dir": "runs/exp-017/unguided/20260823_075723",
+      "answer_em": 0.21333333333333335,
+      "answer_f1": 0.295184719283984,
+      "per_gold_hop_metrics": {
+        "2": {"num_items": 200, "answer_em": 0.29, "answer_f1": 0.3763804112554113},
+        "3": {"num_items": 200, "answer_em": 0.2, "answer_f1": 0.2778488700841642},
+        "4": {"num_items": 200, "answer_em": 0.15, "answer_f1": 0.2313248765123765}
+      },
+      "counts": {
+        "items_scored": 600,
+        "pinned_ids_requested": 600,
+        "pinned_ids_missing_from_gold_file": 0,
+        "sub_questions_prepared": 2001,
+        "sub_questions_executed": 2001,
+        "failed_generations": 0,
+        "references_resolved": 1312,
+        "references_unresolved": 42
+      },
+      "step_failure_taxonomy": {
+        "all_steps": {"steps": 2001, "steps_clean": 1960, "steps_with_any_flag": 41},
+        "final_step_only": {"steps": 600, "steps_clean": 578, "steps_with_any_flag": 22}
+      }
+    },
+    "no_decomposition_control": {
+      "run_dir": "runs/exp-017/no_decomposition_control/20260823_082452",
+      "answer_em": 0.18,
+      "answer_f1": 0.27227330022918256,
+      "per_gold_hop_metrics": {
+        "2": {"num_items": 200, "answer_em": 0.215, "answer_f1": 0.3060151515151515},
+        "3": {"num_items": 200, "answer_em": 0.155, "answer_f1": 0.2426400666327137},
+        "4": {"num_items": 200, "answer_em": 0.17, "answer_f1": 0.2681646825396825}
+      },
+      "counts": {
+        "items_scored": 600,
+        "pinned_ids_requested": 600,
+        "pinned_ids_missing_from_gold_file": 0,
+        "sub_questions_prepared": 600,
+        "sub_questions_executed": 600,
+        "failed_generations": 0,
+        "references_resolved": 0,
+        "references_unresolved": 0
+      },
+      "step_failure_taxonomy": {
+        "all_steps": {"steps": 600, "steps_clean": 600, "steps_with_any_flag": 0},
+        "final_step_only": {"steps": 600, "steps_clean": 600, "steps_with_any_flag": 0}
+      }
+    }
+  },
+  "ordering": {
+    "answer_em_ascending": ["no_decomposition_control:0.18", "unguided:0.21333333333333335", "full_train:0.24166666666666667", "oracle:0.28"],
+    "answer_f1_ascending": ["no_decomposition_control:0.27227330022918256", "unguided:0.295184719283984", "full_train:0.32834829195858606", "oracle:0.37303827658123323"]
+  },
+  "git": {
+    "commit": "24c11dcdb190953e8012523b268991d870952622",
+    "branch": "main",
+    "dirty": false
+  }
+}
