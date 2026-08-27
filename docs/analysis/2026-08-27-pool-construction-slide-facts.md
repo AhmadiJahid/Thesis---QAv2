@@ -197,3 +197,134 @@ the config, not because 750 was chosen over 600 for a reason anyone recorded.
   exp-010 satisfies its "done when". The clustered arm **is** evaluated — any slide saying
   "pools built, not yet evaluated" is stale as of 2026-08-22.
 - No v2 pool-size sweep exists and none is planned; §1 is v1 evidence carried forward.
+
+---
+
+## 5. Cross-encoder rerank — "doesn't move the composite" is true and misleading
+
+**Added 2026-08-27.** The deck's ablation caption says cross-encoder rerank "doesn't move the
+composite". That is arithmetically true and it is the wrong metric to say it on — the composite is
+the metric issue [#40](https://github.com/AhmadiJahid/Thesis---QAv2/issues/40) froze as legacy.
+Asked on **any** other metric, CE does move things.
+
+### 5.1 v1 already tested this, and the deck understates it
+
+[`2026-08-20-v1-masking-and-retrieval-significance.md`](2026-08-20-v1-masking-and-retrieval-significance.md)
+§5, 15 matched pairs, n = 750 each: **+CE raises ROUGE-L F1 in 15/15 pairs**, 8 significant
+uncorrected, **5 surviving Holm** (adjusted p 0.0030–0.0302), magnitude +0.005 to +0.020. It has
+**no significant effect on exact match** (0/15 by any test, signs split 7/8). The composite is
+uninformative for the usual reason — **14 of its 15 CIs straddle 0**, widths 0.2111 to 0.4083.
+
+That note already flagged the deck's phrasing as **"not supported as stated"**: *"'cross-encoder
+rerank is not a free win on mean composite' is true of the mean composite but understates ROUGE-L,
+where +CE wins 15/15 pairs."* The correction was recorded on 2026-08-20 and never reached the slide.
+
+### 5.2 v2 had never tested it — now it has
+
+exp-010 ran both retriever variants across all 3 strategies × 3 mask modes, so **9 matched pairs**
+sit in `runs/pool_sweep/eval/`, but no CE-vs-BE comparison was ever run on them. Computed
+2026-08-27 with committed code at commit `8bc7cba`, read-only, no GPU:
+
+```
+python scripts/musique_decompositions_evaluator.py --compare \
+  runs/pool_sweep/eval/size2000_<bal>_trial0__biencoder_plus_ce__<mode>/eval_per_item.json \
+  runs/pool_sweep/eval/size2000_<bal>_trial0__biencoder_only__<mode>/eval_per_item.json --seed 42
+```
+
+Differences are **(+CE) − (bi-encoder only)**, n = 750 per pair, α = 0.05. Holm is applied within
+each 9-test metric family. Full output: the `.json` companion beside this note.
+
+| metric | sign (+/−) | CI-sig | McNemar-sig | Holm survivors | min adj p |
+|---|---|---|---|---|---|
+| **ROUGE-L F1** | **9 / 0** | 6/9 | — | **3/9** | 0.0027 |
+| **GED** *(lower is better)* | **0 / 9** (all improve) | 5/9 | — | **4/9** | 0.0115 |
+| **SARI** | **9 / 0** | 4/9 | — | 0/9 | 0.0508 |
+| step F1 | 8 / 1 | 2/9 | — | 1/9 | 0.0009 |
+| ordered step accuracy | 7 / 2 | 1/9 | — | 1/9 | 0.0004 |
+| hop-count EM | 8 / 1 | — | 2/9 | 0/9 | 0.2713 |
+| Break EM | 5 / 3 | — | 1/9 | 0/9 | 0.0592 |
+| exact match | 6 / 3 | — | 2/9 | 0/9 | 0.1121 |
+| chain validity | 4 / 5 | 1/9 | — | 0/9 | 0.2093 |
+| **composite (legacy)** | 7 / 2 | **1/9** | — | n/a | n/a — swings −0.197 to +0.209 |
+
+**The v2 result replicates v1 and extends it to the report-card metrics.** ROUGE-L is unanimous
+again (9/9, 3 Holm survivors). **GED — a member of the reported primary suite (ADR 0029) — improves
+in 9/9 pairs with 4 surviving Holm**, the strongest family in the table. SARI is unanimous 9/9 but
+none survives correction (nearest miss, adj p 0.0508). Exact match remains a null, as in v1. And the
+legacy composite behaves exactly as issue #40 predicts: it swings by up to ±0.2 on the *same* pairs
+where GED and ROUGE-L move by a stable +0.01 to +0.02 in one direction — its noise is an order of
+magnitude larger than the effect being measured.
+
+**Defensible sentence for the slide:**
+
+> Cross-encoder rerank measurably improves retrieval-sensitive decomposition quality: ROUGE-L
+> improves in **9/9** matched pairs and graph edit distance in **9/9** (3 and 4 respectively
+> surviving Holm correction, n = 750 each). It does **not** move exact match, hop-count EM or chain
+> validity. The earlier "rerank doesn't move the score" reading was measured on the legacy
+> composite, whose own CIs are ten times wider than the effect. *(v2 exp-010, re-analysed 2026-08-27;
+> v1 replication: ROUGE-L 15/15.)*
+
+**What this does not license.** These 9 pairs share one eval set and largely overlapping pools, so
+they are **not independent** — the sign counts are descriptive and no across-pair test was run.
+And "+CE helps" here means at `rerank_k = 5` over a top-20 candidate list, the working values ADR
+0017 demoted to ablatable; no other k was measured.
+
+---
+
+## 6. Correction to the current "Three construction strategies" slide
+
+The slide in circulation on 2026-08-27 has **three defects**. Each is checkable against the numbers
+above.
+
+### 6.1 It says clustered has no quality numbers. It has.
+
+The slide's row reads *"Clustered — Pool built (exp-006, k=2000, 0 empty clusters); GPU
+decomposition not yet run — no quality numbers exist."* **exp-010 ran on 2026-08-22** and evaluated
+all three strategies at size 2000 — 18 cells, 750/750 rows each, 18/18 rc=0. Clustered's headline
+cell (`biencoder_plus_ce` + `typed`): step F1 **0.1939**, ordered accuracy **0.1775**, hop-count EM
+**0.5133**, EM **0.0507**, ROUGE-L **0.5487**. See §1 of this file's parent discussion and
+`experiments/exp-010/metrics.json`.
+
+### 6.2 Its table mixes two different contrasts under one heading
+
+The columns are labelled *Imbalanced* and *Balanced* at size 2000, but the numbers are not that
+contrast. Traced against `2026-08-20-v1-pool-size-significance.json`:
+
+| slide row | slide's numbers | what those numbers actually are |
+|---|---|---|
+| Exact match | 0.0267 → 0.0507 | **size-1000 imbalanced → size-2000 imbalanced** (both imbalanced; a pool-*size* contrast) |
+| Ordered step accuracy | CI [+0.0107, +0.0387] | the **2000-vs-1000 imbalanced** CI [+0.0111, +0.0387] |
+| Exact match verdict | "McNemar p = 0.0005, t p = 0.0004" | the **2000-vs-1000 imbalanced** EM test (22/4 discordant) |
+| Hop-count EM | "McNemar 104/187 discordant" | **size-1000, biencoder_plus_ce, uniform** (rates 0.4227 / 0.5333) |
+| Step F1 · Ordered acc · Hop EM | 0.1575/0.1832 · 0.1387/0.1634 · 0.5507/0.5147 | **match no cell in the dataset** |
+
+Only 0.0267 and 0.0507 exist as stated, and **both are imbalanced pools** — at sizes 1000 and 2000.
+
+### 6.3 Its direction conclusion is backwards
+
+The slide says exact match, step F1 and ordered accuracy are *"significant, favours balanced."* The
+real balanced-vs-imbalanced contrast at size 2000, `biencoder_only`, `typed`
+(§5 of the v1 pool-size note) is:
+
+| metric | balanced | imbalanced | diff (bal − imbal) | favours |
+|---|---|---|---|---|
+| exact match | 0.0307 | **0.0507** | −0.0200 | **imbalanced** |
+| step F1 | 0.1655 | **0.1912** | −0.0257 | **imbalanced** |
+| ordered step accuracy | 0.1437 | **0.1726** | −0.0289 | **imbalanced** |
+| hop-count EM | 0.4227 | **0.4680** | −0.0453 | **imbalanced** |
+
+**Imbalanced wins all four**, and that pair survives Holm on all five metrics within its own
+five-metric family. The slide's closing line — *"the imbalanced pool … still predicts hop count
+better"* — is the one part that is right, and it is right for hop EM in **9/9** pairs (§5 of the v1
+note). But it is not the only axis on which imbalanced wins.
+
+### 6.4 And v2 does not reproduce the step-level part
+
+Worth stating on the slide, because the two datasets disagree. v1 (above) finds imbalanced beating
+balanced on step F1 and ordered accuracy at size 2000. **v2's exp-010 finds nothing there**: step
+F1, ordered accuracy, ROUGE-L and EM are **non-significant in all three pairwise strategy
+comparisons**, and only hop-count EM separates — imbalanced and clustered tied at 0.5133, balanced
+at 0.4667 (McNemar p = 0.0438 / 0.0380). Different model, different mask handling, different
+generation cap, so this is not a contradiction — but the honest slide says **the step-level
+advantage is a v1 result that v2 did not reproduce**, and only the hop-count direction is common to
+both.
