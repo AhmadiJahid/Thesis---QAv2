@@ -399,3 +399,120 @@ artifacts the deck already cites (`results_analysis/router/report.html` and
 neighbours). Internally consistent with the deck's own footnotes, but not
 independently re-scored today. All MuSiQue-side numbers above were checked against the
 v2 log and run artifacts on 2026-08-25.
+
+---
+
+# Review of `Final Slide before meeting.pdf` (45 pp, exported 2026-08-27 20:06)
+
+Full re-check against `experiments/log.md`, `experiments/exp-*/metrics.json|notes.md`,
+`docs/analysis/`, and the ADRs. All §1–§3 corrections above landed correctly except where
+noted. New findings, ranked.
+
+## A. Wrong numbers — fix before presenting
+
+### A.1 "Oracle's count gain is biggest where its pool is smallest" (exp-009 per-hop) — six table cells scrambled
+
+The step-F1 and ordered-accuracy rows are a transpose error against
+`experiments/exp-009/notes.md` (which lists per-hop *triples* step_f1/ordered/hop_EM, grouped
+by hop). Correct table:
+
+| metric | arm | hop 2 | hop 3 | hop 4 |
+|---|---|---|---|---|
+| Step F1 | mixed | 0.327 | **0.168** | 0.116 |
+| | oracle | 0.355 | **0.153** | 0.071 |
+| Ordered step acc | mixed | **0.318** | 0.138 | **0.085** |
+| | oracle | **0.345** | 0.135 | **0.060** |
+| Hop-count EM | mixed | 0.710 | 0.525 | 0.310 | 
+| | oracle | 0.845 | 0.580 | 0.375 |
+
+Bold = cells the deck has wrong. The deck's 3-hop step-F1 cells (0.318/0.345) are actually
+hop-2 ordered-acc values; its 4-hop ordered-acc cells (0.525/0.375) are hop-count-EM values —
+an ordered accuracy that *rises* from 0.168 at hop 2 to 0.525 at hop 4 is visibly impossible
+next to the previous slide's overall 0.180. Hop-count-EM row and all commentary text below the
+table are correct; only the table needs regenerating.
+
+### A.2 Pool-size slide — "1000 vs 8000 is the only pair that survives Holm" is false
+
+Per `docs/analysis/2026-08-20-v1-pool-size-significance.md` §4.3, the **1000-vs-2000** contrast
+also has Holm survivors (imbalanced/BE/typed: EM t adj-p 0.0036, EM McNemar 0.0048, step F1
+0.0096, ordered acc 0.0045). Correct claim: **"only the contrasts involving 1000 survive Holm;
+no contrast above 1000 survives on any metric."** The "(4 and 3 of 6 cells)" figures for
+1000-vs-8000 are correct. Also add the required provenance label from the slide-facts note §1:
+*"v1 prior work, re-analysed 2026-08-20; not re-run in v2"* — the slide currently carries no
+v1 marker outside the source filename.
+
+### A.3 Qwen oracle pair — "Every metric significant" overstates (three slides)
+
+`experiments/exp-014/metrics.json` → `exp005_unguided_vs_exp005_oracle_guided`: significant =
+step F1, ordered acc, ROUGE-L, GED, exact match (p=0.039), hop-count EM (p=5.0e-48). **Not**
+significant: SARI (CI [−0.0133, +0.0022]), chain validity (CI [−0.0375, +0.0184]), break-EM
+(underpowered, p=0.0625). Affected: the exp-004/005 oracle slide ("Every metric significant:"),
+limitations item 03 ("every quality metric improved significantly"), and the statistical-testing
+slide ("every metric improves"). Say "six of nine report-card metrics, including every
+content-overlap and count metric" or list them.
+
+### A.4 Oracle slide title — "Mistral only on count" omits GED and ROUGE-L
+
+Same exp-014 file, Mistral pair: **GED 0.4715 → 0.4414 and ROUGE-L 0.5429 → 0.5513 are both
+significant** alongside hop-count EM. The row text ("step F1, ordered accuracy, exact match all
+n.s.") is true but incomplete; the title overstates. "Mistral on count and structure, not step
+content" is defensible. The statistical-testing slide's Mistral row mentions GED but not
+ROUGE-L — same fix.
+
+## B. Internal contradiction — issue #49 walks into the room
+
+The "What was run" slide says the router drop rests on: *"even a perfect hop count moves only
+count accuracy, never step quality."* That is ADR 0030's ceiling argument stated **unscoped**,
+and the deck's own Qwen slide shows the opposite on Qwen3.5-9B (step F1 p=4.8e-5, ordered acc,
+ROUGE-L all significant under oracle guidance). This is precisely open issue #49 (ADR 0030's
+premise is Mistral-only). Scope the sentence: *"on the pipeline model (Mistral-7B), a perfect
+hop count moves count accuracy and graph distance, not step content; on Qwen3.5-9B the ceiling
+is higher (exp-005) — a recorded open point (issue #49)."* Related: the research-question
+slide's footnote justifies the drop by "at its measured accuracy" — but that measurement is the
+confounded exp-012 run (394/600 parse-defaulted, issue #47), which ADR 0030 explicitly records
+as *not relied upon*. Rest the footnote on the ceiling instead, as the "What was run" slide
+already does.
+
+## C. Stale v1-era slides contradicting the rest of the deck
+
+1. **"Built and thin" (project status appendix).** Three "thin" bullets are dead: guided-vs-
+   unguided IS compared (exp-004/005/012/014); the Router→Decomposer→Jury integration is no
+   longer a gap (both components de-scoped, ADR 0006/0030); and "LLM-as-judge evaluations not
+   folded into the analysis handoff" reads as a plan to use closed-model judging — rejected by
+   the supervisor and contradicted by the deck's own limitation 06. Also "eight model families"
+   → the table shows 8 runs over 6 models; the router appendix itself lists 5 families.
+2. **"Three axes, one fixed decomposer."** "Whether it returns is settled by one experiment …"
+   is future tense for an experiment that has run and a call that is made (ADR 0030). State the
+   result.
+3. **Limitations item 07.** "The composite … hand-designed and unvalidated" understates the
+   record: it is frozen as *legacy with a known-defective term* (issue #40) and superseded by
+   the junk-battery-validated report card (ADR 0029) — which the deck's own metrics slides
+   already say.
+4. **Pool-construction status.** "What was run" row says clustering is *Open — whether pool
+   construction is a contribution or just a hyperparameter*; but exp-010 evaluated the clustered
+   arm (the deck's own construction slide presents it) and the slide-facts note §4 calls this
+   phrasing stale. Decision 2 on "Three to agree on" should be a proposal-to-confirm
+   (hyperparameter, fixed at size-2000 imbalanced, ADR 0028), matching how decision 1 was
+   reframed. Issue #14 stays open as bookkeeping only.
+
+## D. Minor
+
+- Rerank slide lists 7 metric families but omits **ordered step accuracy (7/2 signs, 1 Holm
+  survivor, min adj p 0.0004)** — a survivor-bearing metric — and Break EM (5/3, 0). Add both
+  or say "7 of 10 shown".
+- Oracle slide sources cite exp-004/exp-005 only; the Mistral GED/ROUGE-L verdicts quoted live
+  in exp-014's compare block. Add exp-014.
+
+## E. Verified correct in this pass (no action)
+
+Slide-4 dataset counts; typed/uniform/raw headline and per-hop tables (incl. margins 2.1/2.3);
+step-count drift bars (sum to 200/hop; 56–62/33–58/78 over/under counts); router table
+arithmetic (all 8 rows recompute); similarity routing A/B/C; rerank slide vs slide-facts §5.2
+(all sign counts and Holm survivors match); mean-step-F1 ladder 0.170/0.182/0.184/0.190;
+exp-010 strategy slide (0.5133/0.5133/0.4667, p=0.0438/0.0380, best-cell 0.1939/0.5133/0.5487,
+405/600 overlap, both confounds); clustering diagnostics (19,938 / k=2000 / 11 iters / 0
+empty / 0 top-up / 1396/495/109); v1-disagrees box (0.1912 vs 0.1655 etc.); exp-009 headline
+table; exp-013 / exp-015 / exp-017 slides; cost figures (+19%/+51% Mistral, +13%/+26% Qwen; cap
+fired 12/600 and 4/600); exp-012 confound wording (394/600); limitations 01/05/08 rescopes.
+MetaQA KG-execution and router numbers remain v1-sourced and not independently re-scored
+(unchanged from the 08-25 note).
