@@ -52,6 +52,25 @@ each contrast moves one factor:
 | family, size held at 7B | Mistral-7B-Instruct-v0.3 vs **Qwen2.5-7B-Instruct** | model family |
 | size, family held at Qwen2.5 | Qwen2.5-7B-Instruct vs **Qwen2.5-14B-Instruct** | parameter count |
 
+**Amendment, 2026-09-14 (Gate 1 finding I-2): weight precision is a third factor, and the
+table above is incomplete without it.** Qwen2.5-14B cannot run unquantized on this box — its
+bf16 weights are 29.54 GB against the 3090's 24 GiB — so the 14B arm is necessarily 4-bit. If
+the 7B arm runs unquantized (mirroring Mistral in exp-004), then the size contrast moves
+parameter count **and** precision together, which is the exact confound the supervisor's "one
+change, and test" instruction exists to prevent, reintroduced on the axis it was meant to
+protect.
+
+**The lead's resolution, under the same delegation as item 2, pending Jahid's veto: all three
+arms run at 4-bit.** The premise that makes this free is that *no arm inherits exp-004's
+precision* — every arm in this block is a fresh run on the size-2000 imbalanced pool, which is
+not the pool exp-004 used, so the Mistral arm is being re-run regardless. Pinning all three to
+4-bit therefore holds precision constant at no extra cost, and both contrasts in the table above
+move exactly one factor as stated. What is given up is direct comparability to exp-004's
+unquantized Mistral numbers — not what this block is for, and Mistral has already run 4-bit in
+exp-010. The pinning happens in the **run config**, not in the model folders' defaults, so the
+folders keep their per-model defaults and each run records its resolved `quantization` in
+metrics.
+
 **Qwen3.5-9B does not fit either contrast.** Against Qwen2.5-7B it moves family *and* size at
 once (Qwen3.5 is a different generation from Qwen2.5), which is precisely the confound
 Ahmmad's "one change, and test" instruction exists to prevent. It is not dropped — exp-005
