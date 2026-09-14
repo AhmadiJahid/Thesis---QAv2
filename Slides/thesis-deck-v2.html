@@ -634,6 +634,79 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
   <footer><span class="src">ADR 0029 · validated against a six-system junk battery</span></footer>
 </section>
 
+<!-- ─────────────────────────────── normalisation -->
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>“After normalisation” means exactly three operations</h2>
+    <div class="ladder">
+      <div class="rung">
+        <div class="lbl"><b>as generated</b><span>raw step</span></div>
+        <div class="txt">Which well-known films did <span class="tok g">[#2]</span> direct?</div>
+      </div>
+      <div class="rung">
+        <div class="lbl"><b>1 · lower</b><span>+ strip outer space</span></div>
+        <div class="txt">which well-known films did <span class="tok g">[#2]</span> direct?</div>
+      </div>
+      <div class="rung">
+        <div class="lbl"><b>2 · delete</b><span>all but word chars, space, #</span></div>
+        <div class="txt">which wellknown films did <span class="tok g">#2</span> direct</div>
+      </div>
+      <div class="rung sel">
+        <div class="lbl"><b>3 · collapse</b><span>whitespace runs</span></div>
+        <div class="txt">which wellknown films did <span class="tok g">#2</span> direct</div>
+      </div>
+    </div>
+    <div class="callout warn">
+      Two consequences worth knowing: punctuation is <b>deleted, not spaced</b> — so
+      <span class="mono">well-known</span> becomes <span class="mono">wellknown</span> — and
+      since <span class="mono">#</span> is exempt but brackets are not, <b><span class="mono">[#2]</span>
+      and <span class="mono">#2</span> compare equal.</b> Articles, digits and Unicode are left alone.
+    </div>
+  </div>
+  <footer>
+    <span>Shared by exact match, step F1 and ordered accuracy</span>
+    <span class="src">Break EM is the exception — it lowercases only</span>
+  </footer>
+</section>
+
+<!-- ─────────────────────────────── ordered step accuracy -->
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Ordered step accuracy, when the two lengths disagree</h2>
+    <div class="split">
+      <div>
+        <p class="sub" style="margin-top:0">
+          Steps are compared <b>position against position</b> — there is no alignment step. The
+          denominator is the <b>longer</b> of the two:
+        </p>
+        <div class="callout" style="font-size:1.5cqw">
+          <span class="mono">matches at the same index</span><br>
+          <span style="color:var(--rule-2)">────────────────────</span><br>
+          <span class="mono">max(n<sub>pred</sub>, n<sub>gold</sub>)</span>
+        </div>
+      </div>
+      <div>
+        <table>
+          <tr><th>Predicted 3, gold 2</th><th></th></tr>
+          <tr><td>step 1 matches</td><td class="best">✓</td></tr>
+          <tr><td>step 2 matches</td><td class="best">✓</td></tr>
+          <tr><td>step 3 — no gold to compare</td><td class="bad">counted against</td></tr>
+          <tr class="note-row"><td><b>Score</b></td><td style="font-size:1.5cqw;color:var(--ink)">2 / 3</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="callout">
+      A surplus step is never compared, but it still enlarges the denominator — so it costs the
+      same as a wrong one. <b>The metric cannot reach 1.0 unless the lengths match</b>, which is
+      what makes it an ordering <em>and</em> length measure at once. A fully reversed 3-step plan
+      scores 1/3 while step F1 scores 1.0.
+    </div>
+  </div>
+  <footer><span>Exact string equality after normalisation — no partial credit per step</span></footer>
+</section>
+
 <!-- 15 ────────────────────────────── metric retired -->
 <section class="slide">
   <div class="eyebrow">Setup · metrics</div>

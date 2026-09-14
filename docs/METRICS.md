@@ -76,6 +76,17 @@ So `strike?` and `strike` are one token apart for ROUGE-L but identical for the 
 metrics. This asymmetry is inherited from v1 and is deliberate only in the sense that
 nobody has changed it; it is worth knowing before reading a ROUGE-L number closely.
 
+Two consequences of `_normalize_step`'s rule that the row above does not spell out, both
+verified against `scripts/musique_decompositions_evaluator.py:488-491` on 2026-09-14:
+
+- **`[#k]` and `#k` compare equal.** `#` is exempted from deletion but `[` and `]` are not, so
+  `[#2]` normalizes to `#2`. The bracketed and bare placeholder forms are therefore the same
+  string to exact match, step F1 and ordered accuracy. Note this is the *opposite* of the
+  composite score's `_REF_RX`, which required the brackets and so scored the bare form as
+  invalid — the defect behind issue #40.
+- **Punctuation is deleted, not replaced by a space.** `well-known` becomes `wellknown`, not
+  `well known`, so a hyphenated step and its spaced variant do **not** match.
+
 ## 2. The metrics
 
 Unless stated otherwise, an aggregate is the **macro average**: the metric is computed per

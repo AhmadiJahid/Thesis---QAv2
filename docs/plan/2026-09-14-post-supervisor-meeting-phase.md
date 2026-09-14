@@ -364,16 +364,23 @@ Two further calls made the same day, outside the original seven:
 
 ## 8. Items Jahid personally owes, from his own answers in the meeting
 
-- **Ordered step accuracy, when the predicted hop count differs from gold.** Asked directly at
-  [03:15](https://fathom.video/calls/801583891?timestamp=195); Jahid's answer was *"I don't have
-  anything. I will check it as well."* This is a metric definition gap sitting under a metric
-  already reported in the deck.
-- **What the exact-match normalisation actually does.** *"I will be honest, I'm not that sure,
-  but these two are definitely in there, I'm going to check it"*
-  ([02:22](https://fathom.video/calls/801583891?timestamp=142)) — and the supervisor's response
-  was that this means a dedicated slide. The implementation is in
-  `scripts/musique_decompositions_evaluator.py`; the answer has to be read off the code, not
-  recalled.
+- ~~**Ordered step accuracy, when the predicted hop count differs from gold.**~~ **ANSWERED
+  2026-09-14, read off `scripts/musique_decompositions_evaluator.py:1105-1116`.** The score is
+  `matches at the same index / max(n_pred, n_gold)` — position against position, no alignment
+  step. So the supervisor's own example (3 predicted, 2 gold, both gold steps right) scores
+  **2/3**: a surplus step is never compared but still enlarges the denominator, costing the same
+  as a wrong one. **The metric cannot reach 1.0 unless the lengths match.** Matching is exact
+  string equality after normalisation, with no partial credit per step. Now a slide in the deck.
+- ~~**What the exact-match normalisation actually does.**~~ **ANSWERED 2026-09-14**, read off
+  `:488-491`. Exactly three operations: strip and lowercase; delete every character that is not
+  a word character, whitespace or `#`; collapse whitespace runs. No article removal, no digit
+  canonicalisation, no Unicode NFKC, no stemming. Two consequences worth stating aloud, now
+  recorded in `docs/METRICS.md`: punctuation is **deleted rather than spaced**, so `well-known`
+  becomes `wellknown`; and because `#` is exempt while brackets are not, **`[#k]` and `#k`
+  compare equal** — the opposite of the composite's `_REF_RX`, which is the defect behind issue
+  #40. `break_exact_match` does **not** share this normaliser; it lowercases only. Now a slide.
+
+Still owed by Jahid himself:
 - **Whether to keep working on the pool at all.** Jahid asked this directly —
   [29:13](https://fathom.video/calls/801583891?timestamp=1753), *"Should I still be working on
   the pool itself? Because changing it did not produce that much of difference"* — and **the
