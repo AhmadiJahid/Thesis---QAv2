@@ -77,15 +77,14 @@ arose in the meeting for exactly that reason: Jahid said *"Quen was used only on
 supervisor replied *"The result you are doing is mainly following Mistral?"*
 ([53:52](https://fathom.video/calls/801583891?timestamp=3232)).
 
-**Readiness.** Mistral-7B-Instruct-v0.3 and Qwen3.5-9B are registered decomposer models
-(`components/decomposer/models/{mistral_7b_instruct,qwen3_5_9b}/config.json`) and both ship the
-`prompt_unguided.md` the unguided arms need. **Qwen2.5-7B-Instruct is not** — it exists only in
-the *router* registry (`components/router/models/qwen2_5_7b/`), so the decomposer needs a new
-model folder with a parity-guarded unguided prompt before A1 can run. All three weight sets are
-already in the local HF cache (~47 GB); nothing downloads. The size ceiling
-(`configs/model_limits.json`, `default_max_params` = 1e10, ADR 0015) admits all three.
-
-**Which "Qwen 9 billion" is ambiguous** — see §7.3.
+**Readiness.** Only Mistral-7B-Instruct-v0.3 is ready. It and Qwen3.5-9B are the two registered
+decomposer models (`components/decomposer/models/{mistral_7b_instruct,qwen3_5_9b}/config.json`)
+and the only two shipping the `prompt_unguided.md` that the unguided condition requires. The two
+Qwen arms now chosen — **Qwen2.5-7B-Instruct** and **Qwen2.5-14B-Instruct** (§7.6) — each need a
+new decomposer model folder with a parity-guarded unguided prompt before A1 can run.
+Qwen2.5-7B-Instruct is already in the local HF cache; **Qwen2.5-14B-Instruct is not** and needs
+~28 GB of download against 178 GB free. The size ceiling rises to `1.5e10` to admit it
+(`configs/model_limits.json`, ADR 0031 item 4, superseding ADR 0015's 1e10).
 
 ### A2 — A Mistral fine-tune trained on the 2,000 pool only
 
@@ -204,7 +203,8 @@ change, and test. Don't do multiple changes in one experiment, always one by one
 | # | Work | Owner | Blocks |
 |---|---|---|---|
 | P0 | Build the A4 anchor set: 45 ids (15/hop, seeded, committed) + an id-filter path through decomposer and evaluator | `ml-engineer` | every run's manual inspection |
-| P1 | Add the Qwen2.5-7B-Instruct decomposer model folder + parity-guarded `prompt_unguided.md` | `ml-engineer` | A1 |
+| P1 | Add the Qwen2.5-7B-Instruct **and** Qwen2.5-14B-Instruct decomposer model folders, each with a parity-guarded `prompt_unguided.md`, and raise `default_max_params` to 1.5e10 | `ml-engineer` | A1 |
+| P1b | Chase the supervisor's suspected bug: why the imbalanced and clustered arms produce matching numbers (issue #52) | `analyst` | #51, and the reading of exp-010 |
 | P2 | Add the few-shot ordering knob (`as_is` / `reversed` / `complexity_asc`) | `ml-engineer` | A5 |
 | P3 | A3: metric study — Jahid personally | Jahid | the next meeting |
 | P4 | Slide restructure per §9 | slide lane | sending the deck to Ahmmad |
@@ -317,48 +317,50 @@ He also asked for one specific verification, about the oracle arm:
 
 ---
 
-## 7. Decisions that gate this phase — Jahid's, with his supervisor
+## 7. Decisions that gate this phase — RESOLVED 2026-09-14
 
-The runs in §3 cannot be launched defensibly until these are settled. None is an agent's to make.
+Jahid answered these in session on 2026-09-14. Recorded in
+[ADR 0031](../adr/0031-jahid-2026-09-14-gate-decisions-for-the-supervisor-assignment.md);
+summarised on issue #50. The original seven are kept below with their answers so the reasoning
+that produced each question stays readable.
 
-1. **Which 2,000 pool.** He said "the same 2,000 pool" and never said which construction.
-   All three exist as committed artifacts (`runs/pool_sweep/pools/size2000_{imbalanced,balanced,
-   clustered}_trial0_poolseed42`). exp-010 found strategy does not move step quality and that
-   imbalanced and clustered tie on `hop_count_exact_match` (0.5133) with balanced worse
-   (0.4667) — so imbalanced or clustered are defensible and balanced is not. Issue #46 §4.1
-   treats imbalanced as the reversible status quo. **A2 additionally needs this pool pinned via
-   `train_source_path`, or the fine-tune trains on a different 2,000 than the prompting arms
-   use, and the comparison is not a comparison.**
-2. **Which evaluation set.** Not discussed in the meeting, and it decides whether these results
-   can sit on the same axis as the existing ones. The two candidates are the **ADR 0007 pinned
-   600** (used by exp-004/005/008/011/015) and the **pool_sweep dev sample of 750** (used by
-   exp-010/018). exp-018 measured their id intersection at **405/600** — they are not
-   interchangeable. Defaulting to the pinned 600 keeps continuity with the Mistral arms the new
-   models are being compared against.
-3. **Which Qwen above 7B.** He first said *"12, 14, check what is above 7 billion"*; Jahid
-   offered *"Quen 9 billion… I have used"* and he accepted with *"I'm not sure, do do QN 9
-   billion also"* ([1:02:47](https://fathom.video/calls/801583891?timestamp=3767)). Qwen3.5-9B
-   is registered, cached and admitted by ADR 0015 — but ADR 0015's status is *pending supervisor
-   confirmation*, and an instruction to run a Qwen above 7B is arguably that confirmation
-   arriving. **Whether it counts as confirmation is Jahid's to state, not the system's to
-   infer.** Qwen3-8B is also cached if a nearer-to-ceiling option is wanted.
-4. **Which prompting condition the three models run.** A1 fixes model as the only varying
-   factor, but the meeting never said whether the arm is unguided, guided, or oracle-guided.
-   Unguided is the natural read of "the method as it stands", and note that a condition
-   requiring `prompt_unguided.md` constrains which models can participate (§2, A1).
-5. **What "least complex to most complex" means** for ordering an exemplar list (A5). Hop count
-   is the obvious candidate and the repo already carries hop counts per exemplar; question
-   length or gold-chain length are others. He did not say, and picking one silently would be
-   inventing methodology.
-6. **Whether experiment data goes to GitHub** (A9). `CLAUDE.md` is categorical that data never
-   enters git, and per-item prediction dumps live in the gitignored `runs/`. What *is* already
-   committed is every `experiments/<exp-id>/metrics.json` plus the run notes, which may be all
-   he wants. If he wants the per-item outputs, that is a share-outside-git question (a Drive
-   folder, a zip) and it is Jahid's call.
-7. **Whether A5's ordering arms run on all three models or one.** "One factor at a time" implies
-   one model, but he did not say. Three models × three orderings is nine cells, not three.
+1. **Which 2,000 pool → the imbalanced one.** `runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42`.
+   Also the status quo issue #46 §4.1 was proceeding on, so nothing downstream is invalidated.
+   **A2 still needs it pinned via `train_source_path`**, or the fine-tune trains on a different
+   2,000 than the prompting arms use.
+2. **Which evaluation set → the ADR 0007 pinned 600**, decided by the lead under delegation.
+   Jahid named both candidates and handed the call back. The 750 sample intersects the pinned
+   600 at 405/600 (exp-018), so choosing it would place the new arms on an axis where no
+   existing baseline lives. Continuity wins.
+3. **Which model above 7B → see 4 and 5.**
+4. **The size ceiling is raised, 1e10 → 1.5e10**, to admit a ~14B decomposer. Pending supervisor
+   confirmation, but with his own words behind it this time ("12, 14, check what is above 7
+   billion"). `router_max_params` and `answerer_max_params` are untouched.
+5. **Which prompting condition → all arms unguided.** No hop-count guidance of any kind. This
+   constrains participation: a model must ship `prompt_unguided.md` to run the condition.
+6. **The arms, as the lead reads 1–5 — Jahid to veto if wrong.** Mistral-7B-Instruct-v0.3 vs
+   **Qwen2.5-7B-Instruct** moves family with size held; Qwen2.5-7B-Instruct vs
+   **Qwen2.5-14B-Instruct** moves size with family held. **Qwen3.5-9B fits neither contrast** —
+   against Qwen2.5-7B it moves generation and size at once, the precise confound "one change,
+   and test" exists to prevent. It stays available as a fourth, confounded point (+~25 min GPU),
+   not as the size rung.
+7. **Experiment data does not go to GitHub.** Jahid shares it with Ahmmad directly, outside the
+   repo. The `CLAUDE.md` rule is unchanged and no agent arranges the transfer.
+8. **Ordering arms — STILL OPEN.** What "least complex to most complex" means for an exemplar
+   list (A5) was never specified. Hop count is the obvious candidate; question length and
+   gold-chain length are others. Still gates A5, and picking one silently would be inventing
+   methodology.
 
----
+Two further calls made the same day, outside the original seven:
+
+- **Slides come before any GPU work**, shipping as two artifacts from one source — an HTML deck
+  and a self-contained Beamer `.tex` for Overleaf. The first pass covers the full deck, not just
+  the front half, because Jahid accepted it will be rebuilt more than once.
+- **The finer pool-size sweep is kept but deferred** — 1,000-step granularity from 2,000 to
+  8,000, tracked as issue #51, scheduled after this block. The supervisor had downgraded it to
+  "not a high priority, it's an idea"; Jahid is choosing to keep it, later.
+- **The suspected bug in §6 is now being chased** as issue #52 — CPU-only, running now precisely
+  because it needs no GPU.
 
 ## 8. Items Jahid personally owes, from his own answers in the meeting
 
