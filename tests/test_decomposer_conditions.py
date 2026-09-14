@@ -516,8 +516,15 @@ def check_prompt_selection(cfg: dict) -> None:
         str(models_with_unguided),
     )
     limits = load_config(require(cfg, "model_limits_config"))
-    ceiling = int(require(limits, "default_max_params"))
-    check("the parameter ceiling is 1.5e10 (ADR 0031)", ceiling == 15_000_000_000, str(ceiling))
+    # The decomposer has its OWN key since 2026-09-14 (issue #50 PR review, I-1), so a raise
+    # for this role cannot lift the ceiling of a role that has no ADR behind it.
+    ceiling = int(require(limits, "decomposer_max_params"))
+    check("the decomposer ceiling is 1.5e10 (ADR 0031)", ceiling == 15_000_000_000, str(ceiling))
+    check(
+        "default_max_params is back to the supervisor's standing 8e9",
+        int(require(limits, "default_max_params")) == 8_000_000_000,
+        str(require(limits, "default_max_params")),
+    )
     check(
         "qwen3_5_9b's own config records the ADR 0015 admission",
         "ADR 0015"
@@ -528,10 +535,29 @@ def check_prompt_selection(cfg: dict) -> None:
         "ADR 0031"
         in load_config(models_dir / "qwen2_5_14b_instruct" / "config.json").get("notes", ""),
     )
+    # Name-level coverage, not just a count: a note that says "FOUR" and then lists the wrong
+    # four folders would have passed the count check (issue #50 PR review, N-1).
+    runnable_note = require(cfg, "_runnable_models_note")
+    for folder in models_with_unguided:
+        check(f"the musique config's note names {folder}", folder in runnable_note)
+    for folder in ("qwen2_5_3b", "phi_4_mini_instruct"):
+        check(
+            f"... and names {folder} as unable to run the unguided arms",
+            folder in runnable_note,
+        )
+    # ADR 0031 item 1 pins this block to the size2000_imbalanced pool, but retrieval.input_key
+    # still resolves to the v1 9,156-pool artifact ADR 0014 pinned for issue #12. An A1 arm
+    # that runs off the default is on the wrong pool and is not a comparison at all, so the
+    # note must name the artifact and the flag (issue #50 PR review, I-3).
     check(
-        "the musique config records the runnable folders",
-        "FOUR model folders" in require(cfg, "_runnable_models_note"),
+        "the note names the A1 retrieval artifact explicitly",
+        "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl" in runnable_note,
     )
+    check(
+        "... its sha256",
+        "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0" in runnable_note,
+    )
+    check("... and the flag that carries it", "--retrieval-input" in runnable_note)
 
 
 def check_guided_cli_cannot_override_a_condition(cfg: dict) -> None:

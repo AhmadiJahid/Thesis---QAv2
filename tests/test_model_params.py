@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Construction checks for ``scripts/print_model_params.py``. No GPU, no weights, no network.
+
+ADR 0027 point 5: a tool that scores no system takes no log entry, and is covered instead by
+tests that pin its **construction**. The counts it prints are machine- and cache-dependent, so
+what is asserted here is the arithmetic (a hand-computed safetensors header), the registry
+wiring (the folder list comes from the committed configs, not a literal list in the script),
+and the refusal to guess (an unresolvable model id is reported ``unmeasured``, never estimated).
+
+Run::
+
+    .venv/bin/python tests/test_model_params.py
+"""
+from __future__ import annotations
+
+import json
+import struct
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+
+import print_model_params as pmp  # noqa: E402
+from model_size import ceiling_for, load_limits  # noqa: E402
+
+
+class TestHeaderArithmetic(unittest.TestCase):
+    """The parameter count is a sum over tensor shapes, hand-checkable."""
+
+    HEADER = {
+        "__metadata__": {"format": "pt"},
+        "model.embed_tokens.weight": {"dtype": "BF16", "shape": [100, 8], "data_offsets": [0, 1]},
+        "model.layers.0.mlp.down_proj.weight": {"dtype": "BF16", "shape": [8, 4], "data_offsets": [1, 2]},
+        "model.norm.weight": {"dtype": "BF16", "shape": [8], "data_offsets": [2, 3]},
+        "model.scalar": {"dtype": "BF16", "shape": [], "data_offsets": [3, 4]},
+    }
+    #: 100*8 + 8*4 + 8 + 1 (the empty shape is a scalar), and __metadata__ holds no tensor.
+    EXPECTED = 800 + 32 + 8 + 1
+
+    def test_counts_every_tensor_and_skips_metadata(self) -> None:
+        self.assertEqual(pmp.count_from_header(self.HEADER), self.EXPECTED)
+
+    def test_dtype_is_irrelevant_to_the_count(self) -> None:
+        """Counting shapes, not bytes: a byte-size/itemsize division would be wrong for a
+        checkpoint with mixed dtypes, which is why this reads shapes directly."""
+        mixed = json.loads(json.dumps(self.HEADER))
+        mixed["model.norm.weight"]["dtype"] = "F32"
+        self.assertEqual(pmp.count_from_header(mixed), self.EXPECTED)
+
+    def test_reads_the_header_off_a_real_file_without_the_tensor_data(self) -> None:
+        """The 8-byte little-endian length prefix is the format; the body after it is never
+        read, so a shard with a truncated tensor section still counts."""
+        blob = json.dumps(self.HEADER).encode("utf-8")
+        path = Path(self.enterContext(__import__("tempfile").TemporaryDirectory()))
+        shard = path / "model-00001-of-00001.safetensors"
+        shard.write_bytes(struct.pack("<Q", len(blob)) + blob)  # no tensor bytes at all
+        self.assertEqual(pmp.count_from_header(pmp.safetensors_header(shard)), self.EXPECTED)
+
+
+class TestRegistryWiring(unittest.TestCase):
+    """The folder list comes from the committed registry, not from a literal in the script."""
+
+    def test_the_decomposer_registry_is_read_from_the_model_configs(self) -> None:
+        models = dict(pmp.registry_models("decomposer"))
+        self.assertEqual(models["qwen2_5_7b_instruct"], "Qwen/Qwen2.5-7B-Instruct")
+        self.assertEqual(models["qwen2_5_14b_instruct"], "Qwen/Qwen2.5-14B-Instruct")
+        self.assertEqual(models["mistral_7b_instruct"], "mistralai/Mistral-7B-Instruct-v0.3")
+
+    def test_every_registered_model_id_matches_its_committed_config(self) -> None:
+        root = REPO_ROOT / "components" / "decomposer" / "models"
+        for folder, model_id in pmp.registry_models("decomposer"):
+            committed = json.loads((root / folder / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(model_id, committed["model_id"], folder)
+
+    def test_the_router_registry_is_reachable_too(self) -> None:
+        self.assertIn("qwen2_5_7b", dict(pmp.registry_models("router")))
+
+
+class TestItRefusesToGuess(unittest.TestCase):
+    def test_an_unresolvable_model_is_unmeasured_not_estimated(self) -> None:
+        record = pmp.measure("not-a-real-org/not-a-real-model", offline=True)
+        self.assertIsNone(record["count"])
+        self.assertEqual(record["source"], "unmeasured")
+        self.assertIn("not in the local HF cache", record["detail"])
+
+
+class TestItComparesAgainstTheCommittedCeiling(unittest.TestCase):
+    """The script must not carry its own copy of a ceiling (issue #50 PR review, I-1/I-4)."""
+
+    def test_it_uses_the_component_keyed_ceiling(self) -> None:
+        limits = load_limits()
+        self.assertEqual(ceiling_for("decomposer", limits), 15_000_000_000)
+        self.assertEqual(ceiling_for("router", limits), 8_000_000_000)
+
+    def test_no_parameter_ceiling_is_hardcoded_in_the_script(self) -> None:
+        source = (REPO_ROOT / "scripts" / "print_model_params.py").read_text(encoding="utf-8")
+        for literal in ("8_000_000_000", "8000000000", "15_000_000_000", "15000000000"):
+            self.assertNotIn(literal, source, f"{literal} is hardcoded in the script")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
