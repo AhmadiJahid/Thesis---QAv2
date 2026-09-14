@@ -1,0 +1,28 @@
+{
+  "_note": "Config for scripts/anchor_inspect.py: select the frozen 45 anchor items (configs/anchor_set_ids.json) out of a run's outputs for the manual inspection of supervisor item A4. Selection only - no metric is recomputed, so a dump's numbers are the evaluator's own. ADR 0032.",
+
+  "ids_file": "configs/anchor_set_ids.json",
+  "run_subdir": "anchor_inspect",
+  "out_prefix": "anchor",
+
+  "_csv_metric_columns_note": "The per-item columns the review CSV carries after question / gold / prediction. They are a READING ORDER, not a metric definition: every one of them is a column scripts/musique_decompositions_evaluator.py already wrote into the per-item file. The six suite terms of ADR 0029 come first (break_exact_match, sari, ged, chain_validity, hop_count_exact_match, plus the over/under pair kept split and never summed), then the string-level columns that predate them, then the step counts that explain a hop-count miss. Adding or removing one changes what Jahid reads, not what anything scores.",
+  "csv_metric_columns": [
+    "break_exact_match",
+    "sari",
+    "ged",
+    "chain_validity",
+    "hop_count_exact_match",
+    "over_decomposition",
+    "under_decomposition",
+    "exact_match",
+    "step_f1",
+    "ordered_step_accuracy",
+    "rouge_l_f1",
+    "decomp_mean",
+    "pred_step_count",
+    "gold_step_count",
+    "step_count_signed_error"
+  ],
+
+  "paths_config": "paths.json"
+}

@@ -58,6 +58,8 @@ When **not** to write one:
 | [0028](./0028-jahid-2026-08-23-delegations-pool-choice-router-call-composite-authorized.md) | Jahid's 2026-08-23 Delegations: Pool Choice and the Router Call Move to the Lead; the Composite Replacement Is Authorized to Implement | Accepted (Jahid, 2026-08-23) |
 | [0029](./0029-the-decomposition-quality-suite-the-implementers-registration.md) | The Decomposition-Quality Suite: Six Unblended Terms as the Reported Primary, and the Composite Frozen as Legacy | Accepted (implementer registration, pending Jahid and his supervisor) |
 | [0030](./0030-remove-the-router-from-the-decomposition-critical-path.md) | Remove the Router from the Decomposition Pipeline's Critical Path | Accepted (lead, 2026-08-23; supervisor may overturn) |
+| [0031](./0031-jahid-2026-09-14-gate-decisions-for-the-supervisor-assignment.md) | Jahid's 2026-09-14 Gate Decisions for the 2026-08-27 Supervisor Assignment | Accepted (Jahid, 2026-09-14; item 4 pending supervisor confirmation) |
+| [0032](./0032-the-fixed-45-item-anchor-set-the-implementers-conventions.md) | The Fixed 45-Item Anchor Set: The Implementer's Conventions | Accepted (implementer conventions, pending Jahid) |
 
 ---
 

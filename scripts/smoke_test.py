@@ -127,6 +127,8 @@ def _stages() -> list[Stage]:
     refine_run = WORK / "pool_refine"
     extract_run = WORK / "sample_extract"
     answer_run = WORK / "answer_accuracy"
+    anchor_dir = WORK / "anchor"
+    anchor_ids = anchor_dir / "anchor_ids.json"
 
     # Three stages write next to their input by design (v1 behaviour). They are pointed at
     # copies under runs/smoke so the committed fixtures are never mutated by a smoke run:
@@ -177,6 +179,66 @@ def _stages() -> list[Stage]:
                 (musique_eval_dir / "eval_metrics.json", "per_gold_hop_metrics.2.rouge_l_f1_macro", 0.9),
             ],
             note="string-level MuSiQue decomposition scoring against gold",
+        ),
+        # The anchor set (supervisor item A4). The fixture pinned files hold 3 ids per hop,
+        # so --n-per-hop 3 draws the whole fixture population: the ids are fixed by the
+        # fixture, and what these stages exercise is the path, not a sample. Every stage
+        # here is CPU-only and selection-only — no model, no re-score.
+        Stage(
+            name="anchor_set_build",
+            cmd=[
+                sys.executable, SCRIPTS / "build_anchor_set.py",
+                "--write", "--n-per-hop", "3", "--out", anchor_ids,
+            ],
+            expect_files=[anchor_ids],
+            note="draw the per-hop anchor ids from the pinned evaluation files",
+        ),
+        Stage(
+            name="anchor_set_verify",
+            cmd=[
+                sys.executable, SCRIPTS / "build_anchor_set.py",
+                "--verify", "--n-per-hop", "3", "--out", anchor_ids,
+            ],
+            note="the draw re-derives from committed code + config + seed (ADR 0027)",
+        ),
+        Stage(
+            name="anchor_filter",
+            cmd=[
+                sys.executable, SCRIPTS / "anchor_inspect.py",
+                "--ids-file", anchor_ids,
+                "--filter", FIXTURES / "predictions" / "decomposer_results_musique.json",
+                "--filter-out", anchor_dir / "anchor_predictions.json",
+                # The fixture predictions cover 3 of the 9 fixture anchors, so this is the
+                # --allow-missing branch on purpose; a real pinned-600 run carries all 45
+                # and the flag is not passed.
+                "--allow-missing",
+            ],
+            expect_files=[anchor_dir / "anchor_predictions.json"],
+            note="restrict a predictions file to the anchor ids (re-scorable as-is)",
+        ),
+        Stage(
+            name="anchor_dump",
+            cmd=[
+                sys.executable, SCRIPTS / "anchor_inspect.py",
+                "--ids-file", anchor_ids,
+                "--per-item", musique_eval_dir / "eval_per_item.json",
+                "--out-dir", anchor_dir / "dump", "--label", "smoke", "--allow-missing",
+            ],
+            expect_files=[
+                anchor_dir / "dump" / "anchor_review.csv",
+                anchor_dir / "dump" / "anchor_per_item.json",
+                anchor_dir / "dump" / "anchor_metrics.json",
+                anchor_dir / "dump" / "anchor_config.json",
+                anchor_dir / "dump" / "anchor_notes.md",
+            ],
+            expect_metrics=[
+                # 4 scored fixture items, of which 3 are among the 9 fixture anchors
+                # (2hop__d004_p is scored but is not in the pinned fixture files).
+                (anchor_dir / "dump" / "anchor_metrics.json", "source_items", 4),
+                (anchor_dir / "dump" / "anchor_metrics.json", "anchor_items_found", 3),
+                (anchor_dir / "dump" / "anchor_metrics.json", "anchor_items_expected", 9),
+            ],
+            note="the manual-inspection dump: anchor rows as a side-by-side CSV",
         ),
         Stage(
             name="kg_eval",
