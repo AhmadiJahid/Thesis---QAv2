@@ -592,9 +592,10 @@ class TestReaderCeiling(unittest.TestCase):
 
     def test_it_is_tighter_than_the_decomposers(self) -> None:
         """PR #32 review, I-3: ADR 0015 raised default_max_params to 1e10 for ONE role, so
-        the reader must not inherit that key."""
+        the reader must not inherit that key. ADR 0031 raised it again, to 1.5e10, for the
+        same role - which widens the gap this test exists to keep open."""
         limits = load_limits()
-        self.assertEqual(ceiling_for("decomposer", limits), 10_000_000_000)
+        self.assertEqual(ceiling_for("decomposer", limits), 15_000_000_000)
         self.assertLess(ceiling_for("answerer", limits), ceiling_for("decomposer", limits))
 
     def test_a_nine_billion_reader_is_refused(self) -> None:

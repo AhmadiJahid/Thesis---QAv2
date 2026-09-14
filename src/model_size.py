@@ -8,9 +8,10 @@ constant buried in code; the assertion is hard, because a ceiling that is only
 assumed is not a ceiling.
 
 One component may carry a **tighter** ceiling than another on purpose: the
-decomposer's key was raised to 1e10 for Qwen3.5-9B (ADR 0015), while the
-answering backend's reader keeps the standing ~8B ceiling under its own key, so
-that exception does not spread to a role no ADR admits (ADR 0019).
+decomposer's key was raised to 1e10 for Qwen3.5-9B (ADR 0015) and again to
+1.5e10 for Qwen2.5-14B-Instruct (ADR 0031, pending supervisor confirmation),
+while the answering backend's reader keeps the standing ~8B ceiling under its own
+key, so that exception does not spread to a role no ADR admits (ADR 0019).
 
 Changing a limit is a human decision (Jahid with his supervisor), not an agent's.
 """
@@ -26,7 +27,8 @@ _LIMIT_KEY = {
     "decomposer": "default_max_params",
     # The MuSiQue answering backend's reader (issue #16, ADR 0019). Its own key, at the
     # standing ~8B ceiling: ADR 0015 raised default_max_params to 1e10 for ONE role
-    # (Qwen3.5-9B as a decomposer), and sharing that key would extend the exception to a
+    # (Qwen3.5-9B as a decomposer) and ADR 0031 raised it to 1.5e10 for the same role
+    # (Qwen2.5-14B-Instruct), and sharing that key would extend the exception to a
     # role no ADR admits (PR #32 review, I-3).
     "answerer": "answerer_max_params",
     "retrieval": "default_max_params",

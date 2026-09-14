@@ -107,11 +107,17 @@ are not identity: a decoy 600 has the right arithmetic and the wrong questions.
 `evaluation_set.pinned: false` with the id-mismatch counts. `configs/decomposer.json` sets none of this and the MetaQA
 behaviour is unchanged.
 
-**Model availability.** As configured, exactly one model folder can run these arms:
-`mistral_7b_instruct`. `qwen3_5_9b` also ships an unguided prompt but is 9B, above the ~8B
-ceiling in `configs/model_limits.json`, so it is refused at load; `qwen2_5_3b` and
-`phi_4_mini_instruct` are within the ceiling but ship no unguided prompt. Whether to add an
-unguided prompt to another ≤8B folder is Jahid's decision.
+**Model availability.** Four model folders ship a parity-guarded unguided prompt and can run
+these arms: `mistral_7b_instruct` (7.25B), `qwen2_5_7b_instruct` (7.62B), `qwen3_5_9b` (9B) and
+`qwen2_5_14b_instruct` (14.77B). The last two are above the ~8B standing ceiling and load only
+because `default_max_params` in `configs/model_limits.json` was raised for the decomposer role —
+to `1e10` for Qwen3.5-9B (ADR 0015) and to `1.5e10` for Qwen2.5-14B-Instruct (ADR 0031), **both
+pending supervisor confirmation**; if the 8B ceiling is reasserted, both are refused at load.
+`qwen2_5_3b` and `phi_4_mini_instruct` are within the ceiling but ship no unguided prompt.
+Whether to add an unguided prompt to another folder is Jahid's decision.
+
+`qwen2_5_14b_instruct`'s weights are **not** in the local HF cache (~28 GB); its `config.json`
+`notes` field carries the exact fetch command.
 
 Two prompt styles, set per model by `prompt_style`:
 

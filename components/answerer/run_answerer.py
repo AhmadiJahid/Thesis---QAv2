@@ -53,7 +53,8 @@ Guarantees, all of them hard:
 
 - the reader's parameter count is printed and asserted against ``configs/model_limits.json``
   before a single answer is generated — against ``answerer_max_params`` (8e9, the standing
-  ceiling), **not** the decomposer's ADR 0015 raise to 1e10, which was granted for one role;
+  ceiling), **not** the decomposer's raises (ADR 0015 to 1e10, ADR 0031 to 1.5e10),
+  which were granted for one role;
 - the reader prompt must carry ``{context}`` and ``{question}`` **in the half that actually
   gets filled**: for a chat-template folder that is the user half, since a placeholder above
   the split marker is passed through as literal text and would leave the reader closed-book;

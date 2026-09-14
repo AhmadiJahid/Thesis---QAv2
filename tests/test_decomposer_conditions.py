@@ -257,7 +257,13 @@ def check_prompt_invariant(cfg: dict) -> None:
     )
     check(
         "folders shipping an unguided prompt",
-        folders == ["mistral_7b_instruct", "qwen3_5_9b"],
+        folders
+        == [
+            "mistral_7b_instruct",
+            "qwen2_5_14b_instruct",
+            "qwen2_5_7b_instruct",
+            "qwen3_5_9b",
+        ],
         str(folders),
     )
     for folder in folders:
@@ -489,32 +495,42 @@ def check_prompt_selection(cfg: dict) -> None:
             check(f"guard rejects a hardcoded hop line {hardcoded.splitlines()[1]!r}", False)
 
     # Model folders that cannot run an unguided arm, stated so the smoke test and the
-    # experiment both pick a folder that can. Of the two that ship an unguided prompt,
-    # qwen3_5_9b is 9B - above the ceiling in configs/model_limits.json - so as configured
-    # exactly ONE folder can run these arms. Whether to add an unguided prompt to another
-    # <=8B folder is Jahid's call, not this test's.
+    # experiment both pick a folder that can. Four ship an unguided prompt since issue
+    # #50 (ADR 0031 item 5) added the two Qwen2.5 arms; qwen2_5_3b and
+    # phi_4_mini_instruct still do not. Whether to add an unguided prompt to another
+    # folder is Jahid's call, not this test's.
     models_with_unguided = sorted(
         d.name
         for d in models_dir.iterdir()
         if d.is_dir() and load_config(d / "config.json").get("unguided_prompt_file")
     )
     check(
-        "mistral_7b_instruct and qwen3_5_9b are the folders that ship an unguided prompt",
-        models_with_unguided == ["mistral_7b_instruct", "qwen3_5_9b"],
+        "the four expected folders ship an unguided prompt",
+        models_with_unguided
+        == [
+            "mistral_7b_instruct",
+            "qwen2_5_14b_instruct",
+            "qwen2_5_7b_instruct",
+            "qwen3_5_9b",
+        ],
         str(models_with_unguided),
     )
     limits = load_config(require(cfg, "model_limits_config"))
     ceiling = int(require(limits, "default_max_params"))
-    check("the parameter ceiling is 1e10 (ADR 0015)", ceiling == 10_000_000_000, str(ceiling))
+    check("the parameter ceiling is 1.5e10 (ADR 0031)", ceiling == 15_000_000_000, str(ceiling))
     check(
         "qwen3_5_9b's own config records the ADR 0015 admission",
         "ADR 0015"
         in load_config(models_dir / "qwen3_5_9b" / "config.json").get("notes", ""),
     )
     check(
-        "the musique config records the two runnable folders",
-        "TWO model folders: mistral_7b_instruct and qwen3_5_9b"
-        in require(cfg, "_runnable_models_note"),
+        "qwen2_5_14b_instruct's own config records the ADR 0031 admission",
+        "ADR 0031"
+        in load_config(models_dir / "qwen2_5_14b_instruct" / "config.json").get("notes", ""),
+    )
+    check(
+        "the musique config records the runnable folders",
+        "FOUR model folders" in require(cfg, "_runnable_models_note"),
     )
 
 
