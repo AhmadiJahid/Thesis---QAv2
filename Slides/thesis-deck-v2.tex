@@ -1,0 +1,1059 @@
+%% =====================================================================
+%%  Decomposing multi-hop questions into ordered atomic steps
+%%  Progress review, September 2026 -- Jahid Ahmadi, Sabanci University
+%%
+%%  Beamer transcription of Slides/thesis-deck-v2.html  (35 slides).
+%%  Compile with pdflatex.  Self-contained: paste into a blank Overleaf
+%%  project as the only .tex file and hit Recompile.  No images, no
+%%  \input, no bibliography.
+%% =====================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{array}
+
+% ---------------------------------------------------------------- fonts
+% If plex-sans is unavailable, comment the two lines below and uncomment this:
+% \usepackage{lmodern}
+\usepackage{plex-sans}
+\usepackage{plex-mono}
+
+% Letter-spacing for the small uppercase eyebrows.  microtype supplies
+% \textls under pdflatex; the \providecommand below is a harmless no-op
+% that only takes effect if it does not.  If letterspacing misbehaves,
+% redefine \lsp as:  \renewcommand{\lsp}[1]{#1}
+\providecommand{\textls}[2][]{#2}
+\newcommand{\lsp}[1]{\textls[140]{#1}}
+
+% --------------------------------------------------------------- colours
+\definecolor{paper}{HTML}{F5F6F4}
+\definecolor{sunk}{HTML}{ECEEEB}
+\definecolor{ink}{HTML}{16211F}
+\definecolor{inktwo}{HTML}{3C4A47}
+\definecolor{muted}{HTML}{687573}
+\definecolor{rulec}{HTML}{D7DDD9}
+\definecolor{ruletwo}{HTML}{C3CCC7}
+\definecolor{accent}{HTML}{0D6B60}
+\definecolor{accentsoft}{HTML}{DDEAE7}
+\definecolor{accentink}{HTML}{0A4F47}
+\definecolor{gold}{HTML}{A8701A}
+\definecolor{goldsoft}{HTML}{F2E7D4}
+\definecolor{bad}{HTML}{A33227}
+\definecolor{badsoft}{HTML}{F4DEDB}
+
+% ----------------------------------------------------------- beamer base
+\usetheme{default}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{}
+\setbeamertemplate{blocks}[default]
+\setbeamersize{text margin left=9mm,text margin right=9mm}
+\setbeamercolor{background canvas}{bg=paper}
+\setbeamercolor{normal text}{fg=ink}
+\usebeamercolor[fg]{normal text}
+\setbeamerfont{frametitle}{size=\normalsize}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+
+% ------------------------------------------------------------- furniture
+% eyebrow + headline block at the top of a content slide
+\newcommand{\slidehead}[2]{%
+  {\color{accent}\fontsize{6.8}{8}\selectfont\bfseries\lsp{#1}\par}%
+  \vspace{2.4mm}%
+  {\color{ink}\fontsize{15}{18}\selectfont #2\par}%
+  \vspace{3.4mm}%
+}
+% same, but the eyebrow is grey rather than accent (HTML: .eyebrow.plain)
+\newcommand{\slideheadplain}[2]{%
+  {\color{muted}\fontsize{6.8}{8}\selectfont\bfseries\lsp{#1}\par}%
+  \vspace{2.4mm}%
+  {\color{ink}\fontsize{15}{18}\selectfont #2\par}%
+  \vspace{3.4mm}%
+}
+
+\newcommand{\thinrule}[1]{\noindent\textcolor{#1}{\rule{\linewidth}{0.4pt}}\par}
+
+% bottom source line: one item, two items, or a mono-only item
+\newcommand{\srcline}[1]{%
+  \vfill\thinrule{rulec}\vspace{1.5mm}%
+  {\color{muted}\fontsize{6.6}{8}\selectfont #1\par}}
+\newcommand{\srcpair}[2]{%
+  \vfill\thinrule{rulec}\vspace{1.5mm}%
+  {\color{muted}\fontsize{6.6}{8}\selectfont #1\hfill{\ttfamily #2}\par}}
+\newcommand{\srcmono}[1]{%
+  \vfill\thinrule{rulec}\vspace{1.5mm}%
+  {\color{muted}\ttfamily\fontsize{6.6}{8}\selectfont #1\par}}
+
+% callout: sunk panel with a coloured left rule
+\newsavebox{\cobox}
+\newcommand{\calloutbg}[3]{%  #1 rule colour  #2 background  #3 text
+  \par\vspace{2.6mm}%
+  \begin{lrbox}{\cobox}%
+    \begin{minipage}{\dimexpr\linewidth-9mm\relax}%
+      \color{inktwo}\footnotesize #3%
+    \end{minipage}%
+  \end{lrbox}%
+  \noindent{\setlength{\fboxsep}{0pt}%
+    \colorbox{#1}{\raisebox{0pt}[\dimexpr\ht\cobox+2.2mm\relax][\dimexpr\dp\cobox+2.2mm\relax]{\rule{1.6pt}{0pt}}}%
+    \colorbox{#2}{\raisebox{0pt}[\dimexpr\ht\cobox+2.2mm\relax][\dimexpr\dp\cobox+2.2mm\relax]{\hspace{3mm}\usebox{\cobox}\hspace{3mm}}}}%
+  \par\vspace{2.6mm}%
+}
+\newcommand{\callout}[1]{\calloutbg{accent}{sunk}{#1}}
+\newcommand{\calloutwarn}[1]{\calloutbg{gold}{sunk}{#1}}
+\newcommand{\calloutopen}[1]{\calloutbg{bad}{sunk}{#1}}
+
+% a plain tinted text box (ladder rungs, quotes)
+\newcommand{\txtbox}[3]{%  #1 background  #2 width  #3 content
+  {\setlength{\fboxsep}{1.8mm}\colorbox{#1}{\begin{minipage}[t]{#2}#3\end{minipage}}}}
+
+% stat: a large number above a small grey caption
+\newcommand{\stat}[3]{%  #1 colour  #2 value  #3 caption
+  {\color{#1}\fontsize{19}{21}\selectfont #2\par}%
+  \vspace{1.6mm}%
+  {\color{muted}\scriptsize #3\par}}
+
+% "point" blocks
+\newcommand{\ptag}[1]{{\color{muted}\fontsize{6.2}{7.5}\selectfont\bfseries\lsp{#1}\par}\vspace{1.4mm}}
+\newcommand{\phead}[1]{{\color{ink}\fontsize{10.5}{12.5}\selectfont\bfseries #1\par}\vspace{1.3mm}}
+\newcommand{\pbody}[1]{{\color{inktwo}\footnotesize #1\par}}
+
+% table column head, gold/mono step placeholder, highlight, tick, pill
+\newcommand{\colhead}[1]{{\color{accent}\fontsize{6.5}{8}\selectfont\bfseries\lsp{#1}}}
+\newcommand{\plc}[1]{{\ttfamily\color{gold}#1}}
+\newcommand{\hlt}[1]{{\setlength{\fboxsep}{1pt}\colorbox{accentsoft}{\textcolor{accentink}{#1}}}}
+% tick mark, drawn rather than taken from a symbol font.
+% If it misbehaves, replace this definition with:  \newcommand{\ck}{$\surd$}
+\newcommand{\ck}{\tikz[baseline=0pt]{\draw[line width=.8pt,line cap=round,line join=round]
+  (0ex,.55ex)--(.45ex,.05ex)--(1.25ex,1.15ex);}}
+\newcommand{\pillon}[1]{\tikz[baseline=-.7ex]{\node[rounded corners=1.7mm,fill=accentsoft,
+  text=accentink,inner xsep=2.4mm,inner ysep=1.2mm,font=\footnotesize\bfseries]{#1};}}
+
+% numbered chain bullet
+\newcommand{\chainnum}[1]{\tikz[baseline=-.35ex]{\node[draw=accent,text=accent,circle,
+  inner sep=0pt,minimum size=4.4mm,line width=.4pt,font=\fontsize{6.5}{7}\selectfont\bfseries]{#1};}}
+
+% horizontal bar row, drawn inside a tikzpicture with x=1mm,y=1mm
+%   #1 y  #2 label  #3 percent 0-100  #4 value  #5 fill colour  #6 track length mm
+\newcommand{\barrow}[6]{%
+  \node[anchor=east,font=\footnotesize,text=ink] at (13,{#1}) {#2};
+  \fill[sunk] (15,{#1-1.6}) rectangle ({15+#6},{#1+1.6});
+  \fill[#5] (15,{#1-1.6}) rectangle ({15+#6*#3/100},{#1+1.6});
+  \node[anchor=west,font=\footnotesize,text=inktwo] at ({17+#6},{#1}) {#4};}
+
+% right-aligned fixed-width column, so long uppercase headers wrap
+% instead of forcing the table past the slide width
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\newcolumntype{S}[1]{>{\scriptsize\raggedleft\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{3pt}
+
+\begin{document}
+
+% ===================================================== 1 -- title ======
+\begin{frame}[t]
+\vspace{9mm}
+{\color{muted}\fontsize{7.5}{9}\selectfont\bfseries\lsp{MASTER'S THESIS \textperiodcentered\ SABANCI UNIVERSITY}\par}
+\vspace{6mm}
+{\color{ink}\fontsize{26}{30}\selectfont
+ Decomposing multi-hop questions\\into ordered atomic steps\par}
+\vspace{7mm}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \fill[accent] (0,0) circle (1.7mm);
+  \draw[accent,line width=.4pt] (0,0) circle (1.7mm);
+  \draw[ruletwo,line width=.4pt] (2.4,0) -- (9.6,0);
+  \draw[accent,line width=.4pt] (12,0) circle (1.7mm);
+  \draw[ruletwo,line width=.4pt] (14.4,0) -- (21.6,0);
+  \draw[accent,line width=.4pt] (24,0) circle (1.7mm);
+\end{tikzpicture}
+\vspace{7mm}
+
+{\color{inktwo}\fontsize{9.5}{15}\selectfont
+ {\color{ink}\bfseries Jahid Ahmadi}\\
+ Supervisor: Ahmmad O. M. Saleh\\
+ {\color{muted}Progress review $\cdot$ September 2026}\par}
+\end{frame}
+
+% ================================================ 2 -- motivation ======
+\begin{frame}[t]
+\slidehead{MOTIVATION}{Most questions worth asking are not one lookup}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.53\textwidth}
+ {\color{inktwo}\small
+  A knowledge base holds facts as single edges. A question like the one on the right
+  touches three of them, and no single lookup answers it.\par}
+ \vspace{3mm}
+ {\color{inktwo}\small
+  Systems that answer it well do so by \hlt{planning first} --- turning one hard
+  question into a short sequence of easy ones.\par}
+\end{column}
+\begin{column}{0.43\textwidth}
+ \vspace{-2.6mm}
+ \calloutbg{accent}{sunk}{\normalsize ``What languages are spoken in films that share a
+  director with \textbf{The Matrix}?''}
+\end{column}
+\end{columns}
+\srcline{The plan is the object of study here --- not the final answer.}
+\end{frame}
+
+% ================================================= 3 -- the chain ======
+\begin{frame}[t]
+\slidehead{MOTIVATION}{The plan is three ordered steps, and each needs the last}
+\begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{118mm}@{}}
+\chainnum{1} & {\color{ink}\fontsize{10.5}{13}\selectfont Who directed \textbf{The Matrix}?}\\[2.2mm]
+\chainnum{2} & {\color{ink}\fontsize{10.5}{13}\selectfont Which other films did \plc{[\#1]} direct?}\\[2.2mm]
+\chainnum{3} & {\color{ink}\fontsize{10.5}{13}\selectfont What languages are spoken in \plc{[\#2]}?}
+\end{tabular}
+\callout{The \plc{[\#k]} placeholders are what make this a \textbf{plan} rather than
+ three unrelated questions. They also make it machine-checkable: a step that references a
+ nonexistent earlier step is detectably broken.}
+\srcline{Ordered $\cdot$ atomic $\cdot$ explicitly linked}
+\end{frame}
+
+% ======================================= 4 -- problem definition ======
+\begin{frame}[t]
+\slidehead{PROBLEM DEFINITION}{What goes in, what must come out}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.51\textwidth}
+\footnotesize
+\begin{tabular}{@{}p{38mm}p{27mm}@{}}
+\multicolumn{2}{@{}l}{\textbf{Input}}\\
+\midrule
+{\ttfamily Q}\quad a multi-hop question & \color{inktwo}natural language\\
+{\ttfamily D}\quad a domain & \color{inktwo}the knowledge source\\
+\multicolumn{2}{@{}l}{\textbf{Output}}\\
+\midrule
+{\ttfamily Q' =}\,$\langle q_1 \dots q_n \rangle$ & \color{inktwo}ordered sub-questions\\[1mm]
+\multicolumn{2}{@{}p{65mm}@{}}{{\color{muted}\scriptsize
+ Each $q_i$ is answerable by a single lookup in {\ttfamily D}, and may reference
+ \plc{[\#j]} for $j < i$.}}
+\end{tabular}
+\end{column}
+\begin{column}{0.45\textwidth}
+ \ptag{WHAT IS \emph{NOT} BEING SOLVED}
+ \pbody{Answering. The executor that runs a plan against a graph is machinery, and
+  answer accuracy is used only as a downstream check that better plans matter.}
+ \vspace{4mm}
+ \ptag{WHAT IS BEING SOLVED}
+ \pbody{Producing {\ttfamily Q'} from {\ttfamily Q} with a mid-sized open model --- and
+  finding what actually governs whether it can.}
+\end{column}
+\end{columns}
+\srcline{n is not given at inference time --- the model must decide the length too.}
+\end{frame}
+
+% =============================================== 5 -- challenges ======
+\begin{frame}[t]
+\slidehead{CHALLENGES}{Three ways a decomposition goes wrong}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.30\textwidth}
+ \ptag{HOW MANY}\phead{Wrong length}
+ \pbody{The model must infer {\ttfamily n} from the question alone. Too few
+  steps drops a hop; too many invent one.}
+\end{column}
+\begin{column}{0.32\textwidth}
+ \ptag{IN WHAT ORDER}\phead{Broken chain}
+ \pbody{A later step must consume an earlier answer. Restating the original question
+  instead produces steps that look fine and compose to nothing.}
+\end{column}
+\begin{column}{0.30\textwidth}
+ \ptag{OVER WHAT}\phead{Invented entities}
+ \pbody{Unconstrained generation names films and people that do not exist in the
+  knowledge source, so the plan cannot execute.}
+\end{column}
+\end{columns}
+\calloutwarn{These three failures are why a single accuracy number is not enough --- the
+ evaluation has to separate \textbf{length}, \textbf{order} and \textbf{content}.}
+\srcline{Each failure mode maps to a metric family later in this deck.}
+\end{frame}
+
+% ==================================== 6 -- methodology overview ======
+\begin{frame}[t]
+\slidehead{METHODOLOGY \textperiodcentered\ OVERVIEW}{Everything that moves sits in how the prompt is built}
+\vspace{3mm}
+\begin{center}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  % stage A
+  \fill[sunk] (0,0) rectangle (66,26);
+  \draw[accent,line width=.6pt] (0,0) rectangle (66,26);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (0,28.6)
+    {STAGE A $\cdot$ THE STUDY};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (3,20.5)
+    {Prompt construction};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (3,15.5)
+    {Typed masking $\to$ few-shot pool $\to$ retrieval $\to$ rerank};
+  \node[anchor=west,rounded corners=1.4mm,fill=accentsoft,text=accentink,inner xsep=1.8mm,
+    inner ysep=1.1mm,font=\ttfamily\fontsize{5}{6}\selectfont] at (3,7) {masking};
+  \node[anchor=west,rounded corners=1.4mm,fill=accentsoft,text=accentink,inner xsep=1.8mm,
+    inner ysep=1.1mm,font=\ttfamily\fontsize{5}{6}\selectfont] at (18,7) {pool};
+  \node[anchor=west,rounded corners=1.4mm,fill=accentsoft,text=accentink,inner xsep=1.8mm,
+    inner ysep=1.1mm,font=\ttfamily\fontsize{5}{6}\selectfont] at (29,7) {retrieval};
+  \node[anchor=west,rounded corners=1.4mm,fill=accentsoft,text=accentink,inner xsep=1.8mm,
+    inner ysep=1.1mm,font=\ttfamily\fontsize{5}{6}\selectfont] at (44,7) {rerank};
+  \draw[ruletwo,line width=.6pt,->] (67.5,13) -- (72.5,13);
+  % stage B
+  \fill[sunk] (74,0) rectangle (101,26);
+  \draw[ruletwo,line width=.5pt] (74,0) rectangle (101,26);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (74,28.6)
+    {STAGE B $\cdot$ FIXED};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (76.5,20.5)
+    {Decomposer};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (76.5,15.5)
+    {One open model, 7--14B};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (76.5,11)
+    {One decoding config};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (76.5,6.5)
+    {One evaluation set};
+  \draw[ruletwo,line width=.6pt,->] (102.5,13) -- (107.5,13);
+  % evaluation
+  \fill[sunk] (109,0) rectangle (140,26);
+  \draw[ruletwo,line width=.5pt] (109,0) rectangle (140,26);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (109,28.6)
+    {EVALUATION};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (111.5,20.5)
+    {Score the plan};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (111.5,15.5)
+    {Against gold steps, or};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (111.5,11)
+    {compile and run it on};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (111.5,6.5)
+    {the graph};
+\end{tikzpicture}
+\end{center}
+\callout{Stage B is held constant on purpose. If the decomposer and its decoding never change,
+ then any difference between runs is attributable to \textbf{prompt construction alone}.}
+\srcline{Each stage-A component gets its own slide next.}
+\end{frame}
+
+% ================================================== 7 -- masking ======
+\begin{frame}[t]
+\slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 1}{Masking makes similarity a statement about \emph{shape}}
+{\color{inktwo}\small
+ Retrieval over raw text finds examples that share names. Shared names say nothing about
+ how many hops a question needs.\par}
+\vspace{4mm}
+\begin{tabular}{@{}>{\raggedleft\arraybackslash}p{24mm}@{\hspace{3mm}}l@{}}
+{\footnotesize\bfseries raw\par}{\scriptsize\color{muted}entities intact\par}
+ & \txtbox{sunk}{100mm}{\ttfamily\footnotesize\color{inktwo}
+   which films did Christina Ricci star in after The Addams Family in 1991}\\[2.6mm]
+{\footnotesize\bfseries uniform\par}{\scriptsize\color{muted}one shared token\par}
+ & \txtbox{sunk}{100mm}{\ttfamily\footnotesize\color{inktwo}
+   which films did {\color{accent}[MASK]} star in after {\color{accent}[MASK]} in {\color{accent}[MASK]}}\\[2.6mm]
+{\footnotesize\bfseries typed\par}{\scriptsize\color{muted}type label kept\par}
+ & \txtbox{accentsoft}{100mm}{\ttfamily\footnotesize\color{accentink}
+   which films did {\color{gold}[PERSON]} star in after {\color{gold}[MOVIE]} in {\color{gold}[YEAR]}}
+\end{tabular}
+\srcline{The pool is masked once in advance, never at query time --- dynamic masking corrupts
+ titles that collide with common words.}
+\end{frame}
+
+% ===================================================== 8 -- pool ======
+\begin{frame}[t]
+\slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 2}{The few-shot pool is a sample, and how it is drawn is a choice}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+\footnotesize
+\begin{tabular}{@{}p{22mm}p{44mm}@{}}
+\colhead{STRATEGY} & \colhead{HOW IT DRAWS}\\
+\midrule
+Imbalanced & \color{inktwo}uniform draw --- follows the corpus skew\\
+Balanced & \color{inktwo}equal quota per hop bucket\\
+Clustered & \color{inktwo}k-means cover, one row per centroid\\
+\bottomrule
+\end{tabular}
+\par\vspace{3.5mm}
+{\color{inktwo}\scriptsize
+ Sizes swept from 1,000 to 8,000 examples, drawn from a 19,938-row training split,
+ stratified on hop prefix at seed 42.\par}
+\end{column}
+\begin{column}{0.46\textwidth}
+ \vspace{-2.6mm}
+ \calloutwarn{MuSiQue is \textbf{72\% two-hop}. An imbalanced pool inherits that skew, so 4-hop
+  examples are scarce exactly where the model needs them most.}
+ \vspace{1.5mm}
+ \stat{accent}{1,175}{4-hop training questions available, against 14,376 at two hops ---
+  every 4-hop result in this deck rests on the thinnest evidence.}
+\end{column}
+\end{columns}
+\srcmono{configs/pool\_sweep.json $\cdot$ MuSiQue-Ans v1.0 train}
+\end{frame}
+
+% ======================================== 9 -- retrieval funnel ======
+\begin{frame}[t]
+\slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 3}{Retrieval is a funnel, and the last stage is expensive}
+\vspace{2mm}
+\begin{center}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  % pool
+  \fill[sunk] (0,0) rectangle (32,26);
+  \draw[ruletwo,line width=.5pt] (0,0) rectangle (32,26);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (0,28.6) {POOL};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (2.5,21) {1,000 -- 8,000};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (2.5,16.6) {masked examples,};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (2.5,12.8) {embedded once};
+  \foreach \r in {3.2,5.6,8} {\foreach \i in {0,...,17}
+    {\fill[ruletwo] ({2.5+\i*1.6},{\r}) rectangle +(0.9,0.9);}}
+  \draw[ruletwo,line width=.6pt,->] (33.5,13) -- (40.5,13);
+  \node[anchor=south west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (33.5,14) {bi-encoder};
+  % top 20
+  \fill[sunk] (42,2) rectangle (70,24);
+  \draw[ruletwo,line width=.5pt] (42,2) rectangle (70,24);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (42,26.6) {TOP 20};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (44.5,19.5) {Vector search};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (44.5,15.2) {Question and pool item};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (44.5,11.9) {embedded separately ---};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (44.5,8.6) {fast, but they never};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (44.5,5.3) {see each other.};
+  \draw[ruletwo,line width=.6pt,->] (71.5,13) -- (78.5,13);
+  \node[anchor=south west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (71.5,14) {rerank};
+  % top 5
+  \fill[accentsoft] (80,4) rectangle (108,22);
+  \draw[accent,line width=.6pt] (80,4) rectangle (108,22);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (80,24.6) {TOP 5};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (82.5,18) {Cross-encoder};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (82.5,13.7) {Scored jointly with};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (82.5,10.4) {the question. Accurate,};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (82.5,7.1) {far slower.};
+  \draw[ruletwo,line width=.6pt,->] (109.5,13) -- (116.5,13);
+  % prompt
+  \fill[sunk] (118,4) rectangle (140,22);
+  \draw[ruletwo,line width=.5pt] (118,4) rectangle (140,22);
+  \node[anchor=west,text=accent,font=\ttfamily\fontsize{5}{6}\selectfont] at (118,24.6) {PROMPT};
+  \node[anchor=west,text=ink,font=\fontsize{7.5}{9}\selectfont\bfseries] at (120.5,18) {5 examples};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (120.5,13.7) {placed highest-};
+  \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (120.5,10.4) {similarity first};
+\end{tikzpicture}
+\end{center}
+\calloutopen{\textbf{Open:} the order in which those five are placed has never been varied. Whether
+ highest-similarity-first is the right end to start from is an untested assumption.}
+\srcmono{bi-encoder e5-small-v2 $\cdot$ cross-encoder rerank over top-20}
+\end{frame}
+
+% =============================================== 10 -- de-scoped ======
+\begin{frame}[t]
+\slideheadplain{METHODOLOGY \textperiodcentered\ WHAT WAS REMOVED}{Two designed components are no longer in the pipeline}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+ \ptag{ROUTER \textperiodcentered\ REMOVED}\phead{Predicting the hop count first}
+ \pbody{A separate model was to read {\ttfamily n} off the question and hand it
+  to the decomposer. It is out of the decomposition critical path: on the pipeline model,
+  even a \emph{perfect} hop count leaves step content unchanged.}
+\end{column}
+\begin{column}{0.47\textwidth}
+ \ptag{JURY \textperiodcentered\ NEVER BUILT}\phead{Scoring a plan before running it}
+ \pbody{An engineering pattern with no evaluation story attached. It was designed, never
+  implemented, and is not claimed.}
+\end{column}
+\end{columns}
+\calloutopen{\textbf{Honest scoping:} the ``perfect hop count changes nothing'' result is measured on
+ \textbf{Mistral-7B}. On Qwen3.5-9B, oracle guidance moved six of nine report-card metrics.
+ The router's removal rests on a single model, and that is an open point, not a settled one.}
+\srcmono{ADR 0030 $\cdot$ exp-004 / exp-005 / exp-014 $\cdot$ open issue \#49}
+\end{frame}
+
+% ==================================== 11 -- research questions ======
+\begin{frame}[t]
+\slidehead{RESEARCH QUESTIONS}{Now that the method is on the table, these are the questions it asks}
+\vspace{1mm}
+\begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
+\chainnum{1} & {\color{ink}\fontsize{10}{12.5}\selectfont
+ Does \textbf{how the few-shot examples are chosen} --- masking, pool, retrieval, rerank ---
+ determine whether a mid-sized model can decompose at all?}\\[3.6mm]
+\chainnum{2} & {\color{ink}\fontsize{10}{12.5}\selectfont
+ Does \textbf{knowing the hop count in advance} help, and is the answer the same across models?}\\[3.6mm]
+\chainnum{3} & {\color{ink}\fontsize{10}{12.5}\selectfont
+ Does \textbf{fine-tuning} beat prompting --- and does it still hold at a depth it never saw
+ in training?}\\[3.6mm]
+\chainnum{4} & {\color{ink}\fontsize{10}{12.5}\selectfont
+ Do \textbf{better plans produce better answers} end to end?}
+\end{tabular}
+\srcline{Every claim that follows is paired to one of these four.}
+\end{frame}
+
+% ========================================= 12 -- divider: setup ======
+{\setbeamercolor{background canvas}{bg=sunk}
+\begin{frame}[t]
+\vspace{18mm}
+{\color{accent}\fontsize{11}{13}\selectfont Part two\par}
+\vspace{4mm}
+{\color{ink}\fontsize{24}{28}\selectfont Experimental setup\par}
+\vspace{5mm}
+{\color{inktwo}\fontsize{11}{15}\selectfont
+ Datasets, what counts as a good decomposition, and how a difference is\\declared real.\par}
+\end{frame}
+}
+
+% ================================================= 13 -- datasets ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ DATA}{Two datasets doing two different jobs}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+\footnotesize
+\begin{tabular}{@{}p{16mm}R{20mm}R{18mm}@{}}
+\colhead{MUSIQUE} & \colhead{TRAIN} & \colhead{DEV USED}\\
+\midrule
+2-hop & \color{inktwo}14,376 & \color{inktwo}200\\
+3-hop & \color{inktwo}4,387 & \color{inktwo}200\\
+4-hop & \color{inktwo}1,175 & \color{inktwo}200\\
+\bottomrule
+\end{tabular}
+\par\vspace{3.5mm}
+{\color{inktwo}\scriptsize
+ Ships \textbf{human-written gold decompositions} --- so the plan itself can be scored.
+ Carries all decomposition-quality evaluation.\par}
+\end{column}
+\begin{column}{0.47\textwidth}
+\footnotesize
+\begin{tabular}{@{}p{16mm}R{20mm}R{18mm}@{}}
+\colhead{METAQA} & \colhead{KB QUESTIONS} & \colhead{EVAL USED}\\
+\midrule
+1-hop & \color{inktwo}96,106 & \color{inktwo}100\\
+2-hop & \color{inktwo}118,980 & \color{inktwo}100\\
+3-hop & \color{inktwo}114,196 & \color{inktwo}100\\
+\bottomrule
+\end{tabular}
+\par\vspace{3.5mm}
+{\color{inktwo}\scriptsize
+ A movie-domain triple store with \textbf{no gold decompositions} --- so a plan is judged
+ only by whether it executes and returns the right answer.\par}
+\end{column}
+\end{columns}
+\callout{The evaluation set is \textbf{600 MuSiQue dev questions, 200 per hop}, pinned by id and
+ identical in every arm --- so every comparison in this deck is paired on the same questions.}
+\srcmono{ADR 0007 pinned evaluation set}
+\end{frame}
+
+% ================================ 14 -- metrics: the three jobs ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{One number cannot catch three different failures}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.30\textwidth}
+ \ptag{IS THE LENGTH RIGHT}\phead{Hop-count EM}
+ \pbody{Predicted step count equals gold. Reported with under- and over-decomposition as a
+  pair, never summed --- too few steps is worse than too many.}
+\end{column}
+\begin{column}{0.31\textwidth}
+ \ptag{IS THE CHAIN INTACT}\phead{Chain validity}
+ \pbody{Do the \plc{[\#k]} links resolve into one connected chain with no orphans?
+  Junk scores zero.}
+\end{column}
+\begin{column}{0.31\textwidth}
+ \ptag{IS THE CONTENT RIGHT}\phead{SARI \textperiodcentered\ GED \textperiodcentered\ Break EM}
+ \pbody{N-gram overlap against gold, graph edit distance between step graphs, and the strict
+  whole-plan match.}
+\end{column}
+\end{columns}
+\calloutwarn{\textbf{Why not one blended score:} a content-perfect but \emph{reversed} plan scores at
+ the top of the table on both GED and SARI. Only the strict match and the ordering terms
+ catch it. Six unblended terms are reported; a report quoting fewer is not reporting it.}
+\srcmono{ADR 0029 $\cdot$ validated against a six-system junk battery}
+\end{frame}
+
+% ============================================ 15 -- normalisation ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{``After normalisation'' means exactly three operations}
+\begin{tabular}{@{}>{\raggedleft\arraybackslash}p{28mm}@{\hspace{3mm}}l@{}}
+{\footnotesize\bfseries as generated\par}{\scriptsize\color{muted}raw step\par}
+ & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
+   Which well-known films did {\color{gold}[\#2]} direct?}\\[2.4mm]
+{\footnotesize\bfseries 1 $\cdot$ lower\par}{\scriptsize\color{muted}+ strip outer space\par}
+ & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
+   which well-known films did {\color{gold}[\#2]} direct?}\\[2.4mm]
+{\footnotesize\bfseries 2 $\cdot$ delete\par}{\scriptsize\color{muted}all but word chars, space, \#\par}
+ & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
+   which wellknown films did {\color{gold}\#2} direct}\\[2.4mm]
+{\footnotesize\bfseries 3 $\cdot$ collapse\par}{\scriptsize\color{muted}whitespace runs\par}
+ & \txtbox{accentsoft}{96mm}{\ttfamily\footnotesize\color{accentink}
+   which wellknown films did {\color{gold}\#2} direct}
+\end{tabular}
+\calloutwarn{Two consequences worth knowing: punctuation is \textbf{deleted, not spaced} --- so
+ {\ttfamily well-known} becomes {\ttfamily wellknown} --- and since {\ttfamily \#} is exempt but
+ brackets are not, \textbf{{\ttfamily [\#2]} and {\ttfamily \#2} compare equal.} Articles, digits
+ and Unicode are left alone.}
+\srcpair{Shared by exact match, step F1 and ordered accuracy}{Break EM is the exception --- it lowercases only}
+\end{frame}
+
+% ==================================== 16 -- ordered step accuracy ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Ordered step accuracy, when the two lengths disagree}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+ {\color{inktwo}\small
+  Steps are compared \textbf{position against position} --- there is no alignment step. The
+  denominator is the \textbf{longer} of the two:\par}
+ \vspace{1mm}
+ \calloutbg{accent}{sunk}{\centering\normalsize
+  $\displaystyle\frac{\mbox{\footnotesize\ttfamily matches at the same index}}%
+  {\mbox{\footnotesize\ttfamily max(}n_{\mathrm{pred}},\,n_{\mathrm{gold}}\mbox{\footnotesize\ttfamily )}}$\par}
+\end{column}
+\begin{column}{0.44\textwidth}
+\footnotesize
+\begin{tabular}{@{}p{36mm}r@{}}
+\colhead{PREDICTED 3, GOLD 2} & \\
+\midrule
+step 1 matches & {\color{ink}\ck}\\
+step 2 matches & {\color{ink}\ck}\\
+step 3 --- no gold to compare & {\color{bad}counted against}\\
+\midrule
+\textbf{Score} & {\color{ink}\normalsize 2 / 3}
+\end{tabular}
+\end{column}
+\end{columns}
+\callout{A surplus step is never compared, but it still enlarges the denominator --- so it costs the
+ same as a wrong one. \textbf{The metric cannot reach 1.0 unless the lengths match}, which is
+ what makes it an ordering \emph{and} length measure at once. A fully reversed 3-step plan
+ scores 1/3 while step F1 scores 1.0.}
+\srcline{Exact string equality after normalisation --- no partial credit per step}
+\end{frame}
+
+% ========================================== 17 -- metric retired ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{The score that used to rank these runs has been retired}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.52\textwidth}
+ \vspace{-2.6mm}
+ \calloutbg{bad}{badsoft}{\textbf{Composite score} --- a hand-weighted blend:\par\vspace{1mm}
+  {\ttfamily\scriptsize 0.4$\cdot$step F1 + 0.3$\cdot$ordered + 0.2$\cdot$ref validity
+  + 0.1$\cdot$count error}}
+ {\color{inktwo}\footnotesize
+  Its 0.2-weight reference-validity term was decided by a bracket-format mismatch: the
+  scorer looked for {\ttfamily [\#k]}, the evaluation data writes {\ttfamily \#k}.
+  The term was effectively settled by 2 of 600 items.\par}
+\end{column}
+\begin{column}{0.42\textwidth}
+ \stat{bad}{$\pm$0.2}{how far the composite swung across nine pairs on which graph edit
+  distance moved a stable +0.01 to +0.02 in one direction}
+ \vspace{2mm}
+ \callout{It stays computed and stamped \textbf{legacy} so older tables remain reproducible ---
+  and it ranks nothing from here on.}
+\end{column}
+\end{columns}
+\srcmono{issue \#40 $\cdot$ frozen 2026-08-23 $\cdot$ superseded by the report card}
+\end{frame}
+
+% ============================================== 18 -- statistics ======
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ STATISTICS}{The metric's type chooses the test}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.30\textwidth}
+ \ptag{CONTINUOUS SCORES}\phead{Paired bootstrap}
+ \pbody{10,000 resamples, 95\% confidence intervals.}
+\end{column}
+\begin{column}{0.30\textwidth}
+ \ptag{BINARY OUTCOMES}\phead{Exact McNemar}
+ \pbody{On the discordant pairs only.}
+\end{column}
+\begin{column}{0.30\textwidth}
+ \ptag{AGREEMENT CHECK}\phead{Paired t-test}
+ \pbody{Run alongside, never instead.}
+\end{column}
+\end{columns}
+\callout{\textbf{Everything is paired.} Both arms of every comparison answer the same pinned 600
+ questions, so per-question difficulty cancels and the test sees only the difference
+ between methods. Underpowered cells are reported as underpowered; noise-scale effects
+ are named as noise.}
+\srcmono{ADR 0009, amended by ADR 0017}
+\end{frame}
+
+% ======================================= 19 -- divider: results ======
+{\setbeamercolor{background canvas}{bg=sunk}
+\begin{frame}[t]
+\vspace{18mm}
+{\color{accent}\fontsize{11}{13}\selectfont Part three\par}
+\vspace{4mm}
+{\color{ink}\fontsize{24}{28}\selectfont Results\par}
+\vspace{5mm}
+{\color{inktwo}\fontsize{11}{15}\selectfont
+ One claim per slide --- overall first, then broken out by hop depth.\par}
+\end{frame}
+}
+
+% ========================================== 20 -- masking result ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ MASKING}{Typed masking leads on every plan metric}
+\small
+\begin{tabular}{@{}p{26mm}R{20mm}R{20mm}R{20mm}R{20mm}R{20mm}@{}}
+\colhead{VARIANT} & \colhead{EXACT MATCH} & \colhead{STEP F1} & \colhead{ORDERED ACC.}
+ & \colhead{ROUGE-L F1} & \colhead{HOP-COUNT EM}\\
+\midrule
+typed & \textbf{0.058} & \textbf{0.201} & \textbf{0.179} & \textbf{0.544} & \textbf{0.522}\\
+uniform & \color{inktwo}0.055 & \color{inktwo}0.190 & \color{inktwo}0.166 & \color{inktwo}0.543 & \color{inktwo}0.505\\
+raw & \color{inktwo}0.037 & \color{inktwo}0.178 & \color{inktwo}0.158 & \color{inktwo}0.532 & \color{inktwo}0.485\\
+\bottomrule
+\end{tabular}
+\calloutwarn{Margins over raw are consistent but \textbf{small} --- 2.1 points of exact match, 2.3 of step
+ F1 --- and \textbf{no significance test has been run on typed vs uniform}. That ordering is
+ provisional and is stated as provisional.}
+\srcline{MuSiQue dev $\cdot$ n = 600 $\cdot$ unguided $\cdot$ Mistral-7B \hfill v1 prior work --- not re-run in v2}
+\end{frame}
+
+% ========================================= 21 -- per-hop decline ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Quality falls with every hop added}
+\small
+\begin{tabular}{@{}p{30mm}p{26mm}R{20mm}R{20mm}R{20mm}@{}}
+\colhead{METRIC} & \colhead{VARIANT} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
+\midrule
+Step F1 & typed & \textbf{0.322} & \textbf{0.171} & \textbf{0.109}\\
+ & uniform & \color{inktwo}0.320 & \color{inktwo}0.157 & \color{inktwo}0.092\\
+ & raw & \color{inktwo}0.282 & \color{inktwo}0.147 & \color{inktwo}0.103\\
+\midrule
+Hop-count EM & typed & \textbf{0.720} & \textbf{0.525} & \color{inktwo}0.320\\
+ & uniform & \color{inktwo}0.695 & \color{inktwo}0.495 & \textbf{0.325}\\
+ & raw & \color{inktwo}0.680 & \color{inktwo}0.490 & \color{inktwo}0.285\\
+\bottomrule
+\end{tabular}
+\callout{Step F1 loses roughly two-thirds of its value between 2 and 4 hops. Four-hop is both the
+ hardest class and the one with the least training data --- those two facts are not
+ independent. \textbf{Provenance:} this is the v1 measurement; the same typed arm re-run
+ and re-scored in v2 sits about a point lower at every depth (0.710 / 0.515 / 0.300).}
+\srcline{200 questions per hop $\cdot$ bold marks best in column \hfill v1 prior work --- not re-run in v2}
+\end{frame}
+
+% =============================================== 22 -- pool size ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ POOL SIZE}{1,000 is too small; above that, nothing separates}
+\vspace{2mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \barrow{24}{8,000}{100}{0.190}{accent}{38}
+  \barrow{16}{4,000}{96.8}{0.184}{accent}{38}
+  \barrow{8}{2,000}{95.8}{0.182}{accent}{38}
+  \barrow{0}{1,000}{89.5}{0.170}{ruletwo}{38}
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.48\textwidth}
+ \vspace{-2.6mm}
+ \callout{Only the contrasts \textbf{involving 1,000} survive Holm correction. No contrast above
+  1,000 survives on any metric --- at this sample size the adjacent steps are
+  \textbf{underpowered, not equal}.}
+ {\color{inktwo}\scriptsize Exact match stays flat across all cells regardless of size.\par}
+\end{column}
+\end{columns}
+\srcpair{Mean step F1 $\cdot$ imbalanced arm}{v1 prior work, re-analysed 2026-08-20 --- not re-run in v2}
+\end{frame}
+
+% ==================================== 23 -- pool construction ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ POOL CONSTRUCTION}{Construction changes everything upstream, and nothing downstream}
+{\color{inktwo}\small
+ Imbalanced against clustered, traced stage by stage. The two arms are physically separate
+ the whole way --- and arrive at the same place.\par}
+\vspace{4mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.22\textwidth}
+ \stat{accent}{0.053}{Jaccard overlap of the two \textbf{pools} --- 201 of 2,000 rows shared}
+\end{column}
+\begin{column}{0.23\textwidth}
+ \stat{accent}{0 / 750}{queries whose \textbf{top-5 exemplars} are the same list. Most share none}
+\end{column}
+\begin{column}{0.22\textwidth}
+ \stat{accent}{0 / 150}{logged \textbf{prompts} that match}
+\end{column}
+\begin{column}{0.23\textwidth}
+ \stat{gold}{92\%}{of \textbf{generated plans} differ --- yet no reported metric moves detectably}
+\end{column}
+\end{columns}
+\callout{\textbf{This was checked because it looked like a bug.} One cell had clustered and imbalanced
+ tie at 0.5133 hop-count EM --- which turned out to be 258 discordant items splitting exactly
+ 129 / 129, in one cell of six. The other five do not tie. \textbf{It is a genuine null, not a
+ duplicated run:} the same harness detects reranking's effect 9 times out of 9.}
+\srcpair{exp-019 re-analysis of exp-010 $\cdot$ n = 750 per cell}{own dev sample, not the pinned 600 --- internally comparable only}
+\end{frame}
+
+% ================================================= 24 -- rerank ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ RERANKING}{Reranking moves overlap and structure, not binary outcomes}
+\vspace{1mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \barrow{49}{ROUGE-L}{100}{9/9 $\cdot$ 3\ck}{accent}{30}
+  \barrow{42}{GED}{100}{9/9 $\cdot$ 4\ck}{accent}{30}
+  \barrow{35}{SARI}{100}{9/9 $\cdot$ 0}{accent}{30}
+  \barrow{28}{Step F1}{88.9}{8/9 $\cdot$ 1\ck}{accent}{30}
+  \barrow{21}{Ordered}{77.8}{7/9 $\cdot$ 1\ck}{accent}{30}
+  \barrow{14}{Hop-count}{88.9}{8/9 $\cdot$ 0}{ruletwo}{30}
+  \barrow{7}{Break EM}{55.6}{5/9 $\cdot$ 0}{ruletwo}{30}
+  \barrow{0}{Chain val.}{44.4}{4/9 $\cdot$ 0}{ruletwo}{30}
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.49\textwidth}
+ \vspace{-2.6mm}
+ \callout{\textbf{The earlier reading was wrong, not null.} ``Rerank doesn't move the score'' was
+  measured on the retired composite, whose own intervals swing $\pm$0.2 on the very pairs
+  where GED moves a stable +0.01--0.02. Wrong instrument, not absent effect.}
+ {\color{inktwo}\scriptsize
+  Pairs improved of 9, then Holm survivors. Pairs share one evaluation set, so sign
+  counts are descriptive.\par}
+\end{column}
+\end{columns}
+\srcline{exp-018 re-analysis of exp-010 $\cdot$ 9 matched pairs $\cdot$ n = 750 each}
+\end{frame}
+
+% ======================================== 25 -- oracle guidance ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ HOP GUIDANCE}{A perfect hop count helps one model far more than the other}
+\small
+\begin{tabular}{@{}p{28mm}R{16mm}R{20mm}R{18mm}S{42mm}@{}}
+\colhead{CONDITION} & \colhead{STEP F1} & \colhead{HOP-COUNT EM} & \colhead{EXACT MATCH}
+ & \colhead{PAIRED TESTS VS UNGUIDED}\\
+\midrule
+\multicolumn{5}{@{}l}{\textbf{Mistral-7B-Instruct-v0.3}}\\
+\midrule
+Unguided & \color{inktwo}0.204 & \color{inktwo}0.508 & \color{inktwo}0.062 & \color{muted}baseline\\
+Oracle-guided & \color{inktwo}0.206 & {\color{gold}\bfseries 0.590} & \color{inktwo}0.057
+ & \color{inktwo}count, ROUGE-L and GED move; step content does not\\
+\midrule
+\multicolumn{5}{@{}l}{\textbf{Qwen3.5-9B}}\\
+\midrule
+Unguided & \color{inktwo}0.213 & \color{inktwo}0.520 & \color{inktwo}0.062 & \color{muted}baseline\\
+Oracle-guided & {\color{gold}\bfseries 0.237} & {\color{gold}\bfseries 0.873} & {\color{gold}\bfseries 0.073}
+ & \color{inktwo}six of nine report-card metrics move, including every content and count term\\
+\bottomrule
+\end{tabular}
+\calloutopen{Same conditions, same 600 questions, same decoding. \textbf{The method's effectiveness is
+ model-dependent} --- which is why the next experiment holds everything else fixed and
+ varies only the model.}
+\srcpair{exp-004 / exp-005, tested in exp-014}{not significant on Qwen: SARI, chain validity, Break EM}
+\end{frame}
+
+% ================================= 26 -- hop-matched retrieval ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ HOP-MATCHED RETRIEVAL}{Matching the pool to the question's depth moves count, not quality}
+\small
+\begin{tabular}{@{}p{40mm}R{16mm}R{20mm}S{46mm}@{}}
+\colhead{METRIC} & \colhead{MIXED POOL} & \colhead{ORACLE HOP-MATCHED} & \colhead{RESULT}\\
+\midrule
+Step F1 (macro) & \color{inktwo}0.204 & \color{inktwo}0.193
+ & \color{muted}not significant $\cdot$ CI [$-$0.006, +0.027]\\
+Ordered step accuracy & \color{inktwo}0.180 & \color{inktwo}0.180
+ & \color{muted}not significant $\cdot$ p = 0.950\\
+Hop-count exact match & \color{inktwo}0.515 & {\color{gold}\bfseries 0.600}
+ & \color{inktwo}significant $\cdot$ McNemar p = 0.0006\\
+Exact match & \color{inktwo}0.062 & \color{inktwo}0.057
+ & \color{muted}not significant $\cdot$ p = 0.664\\
+\bottomrule
+\end{tabular}
+\calloutwarn{The gain concentrates at 2-hop and also \textbf{shrinks the candidate pool} --- so it may be
+ measuring pool size rather than hop matching. \textbf{Not adopted on this evidence.}}
+\srcline{exp-009 $\cdot$ pinned 600 $\cdot$ unguided $\cdot$ Mistral-7B}
+\end{frame}
+
+% ========================================== 27 -- per-hop oracle ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Where the pool is thinnest, hop-matching starts to hurt}
+\small
+\begin{tabular}{@{}p{34mm}p{32mm}R{18mm}R{18mm}R{18mm}@{}}
+\colhead{METRIC} & \colhead{ARM} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
+\midrule
+Step F1 & mixed & \color{inktwo}0.327 & \textbf{0.168} & \textbf{0.116}\\
+ & oracle-matched & \textbf{0.355} & \color{inktwo}0.153 & {\color{bad}0.071}\\
+\midrule
+Ordered accuracy & mixed & \color{inktwo}0.318 & \textbf{0.138} & \textbf{0.085}\\
+ & oracle-matched & \textbf{0.345} & \color{inktwo}0.135 & {\color{bad}0.060}\\
+\midrule
+Hop-count EM & mixed & \color{inktwo}0.710 & \color{inktwo}0.525 & \color{inktwo}0.310\\
+ & oracle-matched & {\color{gold}\bfseries 0.845} & {\color{gold}\bfseries 0.580} & {\color{gold}\bfseries 0.375}\\
+\bottomrule
+\end{tabular}
+\callout{The count keeps improving at every depth. \textbf{Step quality inverts at 4 hops}, where
+ restricting the pool leaves only the 1,175-row bucket to draw from.}
+\srcpair{n = 200 per hop, both arms}{no per-hop significance test run --- the paired test is on the pooled 600}
+\end{frame}
+
+% ============================================ 28 -- fine-tuning ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ FINE-TUNING}{Fine-tuning beats prompting at its best configuration}
+\vspace{2mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+\small
+\begin{tabular}{@{}p{30mm}R{14mm}R{18mm}@{}}
+\colhead{ARM} & \colhead{STEP F1} & \colhead{ROUGE-L F1}\\
+\midrule
+Prompting, best pool & \color{inktwo}0.189 & \color{inktwo}0.545\\
+Fine-tuned LoRA & \textbf{0.341} & \textbf{0.665}\\
+\bottomrule
+\end{tabular}
+\end{column}
+\begin{column}{0.44\textwidth}
+ \vspace{-3mm}
+ \stat{accent}{10 / 10}{paired statistics significant --- seven bootstrap, three McNemar --- and
+  every one of them favours the fine-tuned arm}
+\end{column}
+\end{columns}
+\callout{The prompting arm here is prompting at its \textbf{strongest measured configuration}, not a
+ strawman. Fine-tuning is the current leader, and the prompting study becomes the ablation
+ behind it --- which is a finding, not a defeat.}
+\srcline{exp-015 $\cdot$ pinned 600 $\cdot$ paired bootstrap + McNemar}
+\end{frame}
+
+% ========================================= 29 -- generalisation ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ GENERALISATION}{The fine-tune transfers form, but not depth}
+\vspace{3mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.30\textwidth}
+ \stat{accent}{200/200}{chains still well-formed at a depth never seen in training
+  (chain validity 1.000)}
+\end{column}
+\begin{column}{0.30\textwidth}
+ \stat{gold}{169/200}{but systematically \textbf{too short} --- under-decomposition 0.845}
+\end{column}
+\begin{column}{0.31\textwidth}
+ \stat{bad}{14.5\%}{hop-count exact match on 4-hop, against \textbf{30.0\%} for the prompting
+  baseline}
+\end{column}
+\end{columns}
+\callout{Trained on 2- and 3-hop only, the model keeps producing \textbf{valid} chains at 4 hops ---
+ just too few steps. Step F1 still favours the fine-tune (0.198 vs 0.117); hop-count
+ flips to prompting. \textbf{Fine-tuning is dataset-bound in depth, not in form.}}
+\srcline{exp-013 $\cdot$ LoRA trained on 2/3-hop, evaluated on the 4-hop slice $\cdot$ n = 200}
+\end{frame}
+
+% ============================================= 30 -- end to end ======
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ END TO END}{Better plans do produce better answers --- up to three hops}
+\small
+\begin{tabular}{@{}p{48mm}R{18mm}R{18mm}R{38mm}@{}}
+\colhead{DECOMPOSITION SOURCE} & \colhead{ANSWER EM} & \colhead{ANSWER F1}
+ & \colhead{EM BY HOP (2 / 3 / 4)}\\
+\midrule
+None --- question asked whole & \color{inktwo}18.0\% & \color{inktwo}27.2\% & \color{inktwo}21.5 / 15.5 / 17.0\\
+Prompted, unguided & \color{inktwo}21.3\% & \color{inktwo}29.5\% & \color{inktwo}29.0 / 20.0 / 15.0\\
+Fine-tuned & \color{inktwo}24.2\% & \color{inktwo}32.8\% & \color{inktwo}34.0 / 24.0 / 14.5\\
+Gold decompositions (ceiling) & {\color{gold}\bfseries 28.0\%} & {\color{gold}\bfseries 37.3\%}
+ & {\color{inktwo}40.0 / 30.5 / {\color{bad}13.5}}\\
+\bottomrule
+\end{tabular}
+\calloutopen{\textbf{Read the last column.} Answer accuracy rises monotonically overall --- but at 4 hops
+ the ordering collapses entirely: all four cells sit between 13.5\% and 17.0\%, and asking
+ the question whole is nominally \emph{best}. Decomposition pays off at 2--3 hops only.
+ No significance tests between these cells yet.}
+\srcline{exp-017 $\cdot$ same reader and context in every cell $\cdot$ 200 questions per hop}
+\end{frame}
+
+% =================================== 31 -- divider: where next ======
+{\setbeamercolor{background canvas}{bg=sunk}
+\begin{frame}[t]
+\vspace{18mm}
+{\color{accent}\fontsize{11}{13}\selectfont Part four\par}
+\vspace{4mm}
+{\color{ink}\fontsize{24}{28}\selectfont Where this goes next\par}
+\vspace{5mm}
+{\color{inktwo}\fontsize{11}{15}\selectfont
+ What the evidence does not yet cover, and the experiment designed to cover it.\par}
+\end{frame}
+}
+
+% ======================================= 32 -- the model confound ======
+\begin{frame}[t]
+\slidehead{NEXT \textperiodcentered\ THE GAP IN THE EVIDENCE}{Almost every result here is one model's result}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+ {\color{inktwo}\small
+  Of every MuSiQue arm run, all but one use \textbf{Mistral-7B}. The single Qwen arm
+  disagrees with the Mistral finding it is usually quoted beside.\par}
+ \calloutopen{So ``hop guidance is worth little'' and ``fine-tuning beats prompting'' are currently
+  claims about \textbf{the same one model} --- and the model that disagrees with the first
+  was never brought into the second.}
+\end{column}
+\begin{column}{0.45\textwidth}
+ \ptag{THE EXPERIMENT}\phead{Hold everything, vary one thing}
+ \pbody{Same 2,000-example imbalanced pool, same pinned 600, same unguided condition,
+  same decoding.}
+ \vspace{3.5mm}
+
+ \pillon{Mistral-7B}\hspace{1.5mm}\pillon{Qwen2.5-7B}\hspace{1.5mm}\pillon{Qwen2.5-14B}
+ \vspace{3.5mm}
+
+ {\color{inktwo}\scriptsize
+  Mistral vs Qwen-7B isolates the \textbf{family}. Qwen-7B vs Qwen-14B isolates the
+  \textbf{size}. Each contrast moves exactly one factor.\par
+  \vspace{2mm}
+  Qwen3.5-9B is deliberately \emph{not} the size rung --- it differs from Qwen2.5-7B in
+  generation as well as parameter count, so it would confound the two. Bringing it into
+  the fine-tuning claim is a separate arm, and a cheap one.\par}
+\end{column}
+\end{columns}
+\srcmono{open issue \#49 $\cdot$ \#50}
+\end{frame}
+
+% ============================================== 33 -- also next ======
+\begin{frame}[t]
+\slidehead{NEXT \textperiodcentered\ ALSO QUEUED}{Four more things, in order}
+\begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
+\chainnum{1} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{A fine-tune trained on the pool alone} --- 2,000 examples, not the full 19,938 ---
+ to isolate what the pool itself is worth.}\\[3mm]
+\chainnum{2} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{A fixed 45-question anchor set}, 15 per hop, inspected by hand in every experiment
+ from here on. The same questions every time.}\\[3mm]
+\chainnum{3} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{Few-shot example ordering} --- currently highest-similarity-first, never varied.
+ Reversed, and least-complex-first.}\\[3mm]
+\chainnum{4} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{Whether the null generalises} --- pool construction is now measured as a genuine
+ null, but masking, retriever and pool size have not had the same stage-by-stage check.}
+\end{tabular}
+\srcline{Every result from here on is reported overall \emph{and} per hop depth.}
+\end{frame}
+
+% ============================================ 34 -- limitations ======
+\begin{frame}[t]
+\slideheadplain{HONEST BOUNDARIES}{What this evidence does not support}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+ \phead{Single-model scope}
+ \pbody{The hop-guidance finding is Mistral-specific; Qwen3.5-9B behaves differently.}
+ \vspace{3.5mm}
+ \phead{Typed vs uniform untested}
+ \pbody{The gap sits inside plausible run-to-run variance and carries no significance test.}
+ \vspace{3.5mm}
+ \phead{Pool evidence is one trial}
+ \pbody{One draw per strategy mixes the strategy's effect with the noise of that draw.}
+\end{column}
+\begin{column}{0.47\textwidth}
+ \phead{No human judgement}
+ \pbody{Exact match against one gold plan penalises valid alternatives. No human validity
+  study has been run.}
+ \vspace{3.5mm}
+ \phead{MetaQA end-to-end blocked}
+ \pbody{The integrated graph run depends on an external system not yet available.}
+ \vspace{3.5mm}
+ \phead{No LLM judge, by design}
+ \pbody{Early scoring used one; it is not ground truth and those figures are not evidence here.}
+\end{column}
+\end{columns}
+\srcline{Anything not backed by a run artifact is reported as unmeasured.}
+\end{frame}
+
+% ============================================== 35 -- decisions ======
+\begin{frame}[t]
+\slidehead{TO AGREE ON}{Three decisions I need from this meeting}
+\vspace{1mm}
+\begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
+\chainnum{1} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{Is the report card the thesis's primary metric?}
+ {\color{muted}Proposed, with end-to-end answer accuracy as the downstream complement.
+ Brought to confirm, not to open.}}\\[3.4mm]
+\chainnum{2} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{Is pool construction a contribution, or a hyperparameter?}
+ {\color{muted}Proposal: a hyperparameter, fixed at size-2,000 imbalanced. It is now a
+ measured null rather than an untested one --- reportable as an ablation, but it cannot be
+ claimed as a gain.}}\\[3.4mm]
+\chainnum{3} & {\color{ink}\fontsize{9.5}{12}\selectfont
+ \textbf{Do both datasets stay in scope, or does MuSiQue alone carry the thesis?}
+ {\color{muted}MetaQA's end-to-end half is externally blocked.}}
+\end{tabular}
+\srcline{Everything already run stays in the thesis as the ablation behind these choices.}
+\end{frame}
+
+\end{document}

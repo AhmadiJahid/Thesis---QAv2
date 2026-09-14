@@ -797,7 +797,7 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       provisional and is stated as provisional.
     </div>
   </div>
-  <footer><span>MuSiQue dev · n = 600 · unguided · Mistral-7B</span></footer>
+  <footer><span>MuSiQue dev · n = 600 · unguided · Mistral-7B</span><span class="src">v1 prior work — not re-run in v2</span></footer>
 </section>
 
 <!-- 19 ────────────────────────────── per-hop decline -->
@@ -817,10 +817,11 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
     <div class="callout">
       Step F1 loses roughly two-thirds of its value between 2 and 4 hops. Four-hop is both the
       hardest class and the one with the least training data — those two facts are not
-      independent.
+      independent. <b>Provenance:</b> this is the v1 measurement; the same typed arm re-run
+      and re-scored in v2 sits about a point lower at every depth (0.710 / 0.515 / 0.300).
     </div>
   </div>
-  <footer><span>200 questions per hop · bold marks best in column</span></footer>
+  <footer><span>200 questions per hop · bold marks best in column</span><span class="src">v1 prior work — not re-run in v2</span></footer>
 </section>
 
 <!-- 20 ────────────────────────────── pool size -->
@@ -1117,6 +1118,11 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
         <p class="sub" style="font-size:1.2cqw">
           Mistral vs Qwen-7B isolates the <b>family</b>. Qwen-7B vs Qwen-14B isolates the
           <b>size</b>. Each contrast moves exactly one factor.
+        </p>
+        <p class="sub" style="font-size:1.2cqw">
+          Qwen3.5-9B is deliberately <em>not</em> the size rung — it differs from Qwen2.5-7B in
+          generation as well as parameter count, so it would confound the two. Bringing it into
+          the fine-tuning claim is a separate arm, and a cheap one.
         </p>
       </div>
     </div>
