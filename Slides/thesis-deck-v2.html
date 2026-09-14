@@ -1,0 +1,1167 @@
+<title>Decomposing Multi-Hop Questions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --paper:#F5F6F4; --sunk:#ECEEEB; --ink:#16211F; --ink-2:#3C4A47; --muted:#687573;
+  --rule:#D7DDD9; --rule-2:#C3CCC7;
+  --accent:#0D6B60; --accent-soft:#DDEAE7; --accent-ink:#0A4F47;
+  --gold:#A8701A; --gold-soft:#F2E7D4;
+  --bad:#A33227; --bad-soft:#F4DEDB;
+  --shadow:rgba(22,33,31,.10);
+}
+:root:not([data-theme="light"]){ @media (prefers-color-scheme: dark){
+  --paper:#0F1615; --sunk:#171F1E; --ink:#E9EDEB; --ink-2:#C3CCC9; --muted:#8D9A97;
+  --rule:#26302E; --rule-2:#35413E;
+  --accent:#54B6A8; --accent-soft:#16302C; --accent-ink:#8FD6CB;
+  --gold:#D8A250; --gold-soft:#332715;
+  --bad:#E07766; --bad-soft:#3A1F1B;
+  --shadow:rgba(0,0,0,.5);
+}}
+:root[data-theme="dark"]{
+  --paper:#0F1615; --sunk:#171F1E; --ink:#E9EDEB; --ink-2:#C3CCC9; --muted:#8D9A97;
+  --rule:#26302E; --rule-2:#35413E;
+  --accent:#54B6A8; --accent-soft:#16302C; --accent-ink:#8FD6CB;
+  --gold:#D8A250; --gold-soft:#332715;
+  --bad:#E07766; --bad-soft:#3A1F1B;
+  --shadow:rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  min-height:100vh; overflow:hidden;
+}
+
+/* ---------- deck mechanics ---------- */
+#deck{ position:relative; width:min(100vw, 177.78vh); height:min(56.25vw, 100vh); }
+.slide{
+  position:absolute; inset:0; container-type:size;
+  background:var(--paper); display:none; padding:5.6cqw 6cqw 4.4cqw;
+  flex-direction:column;
+}
+.slide.on{ display:flex; }
+
+/* ---------- shared slide furniture ---------- */
+.eyebrow{
+  font-size:1.32cqw; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 1.6cqh;
+}
+.eyebrow.plain{ color:var(--muted); }
+h1{ font-family:Spectral,Georgia,serif; font-weight:600; font-size:4.4cqw; line-height:1.12;
+    letter-spacing:-.012em; margin:0; text-wrap:balance; }
+h2{ font-family:Spectral,Georgia,serif; font-weight:500; font-size:3.3cqw; line-height:1.16;
+    letter-spacing:-.01em; margin:0 0 .6cqh; text-wrap:balance; }
+h2 .q{ color:var(--muted); }
+.sub{ font-size:1.62cqw; line-height:1.5; color:var(--ink-2); max-width:62ch; margin:.8cqh 0 0; }
+.body{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:2.4cqh; min-height:0; }
+.rule{ height:1px; background:var(--rule); border:0; margin:1.6cqh 0 0; }
+footer{
+  margin-top:auto; padding-top:1.6cqh; border-top:1px solid var(--rule);
+  font-size:1.12cqw; color:var(--muted); display:flex; justify-content:space-between; gap:2cqw;
+}
+footer .src{ font-family:"IBM Plex Mono",monospace; font-size:1.02cqw; }
+mark{ background:var(--accent-soft); color:var(--accent-ink); padding:.05em .25em; border-radius:2px; }
+code,.mono{ font-family:"IBM Plex Mono",monospace; }
+strong{ font-weight:600; }
+.num{ font-variant-numeric:tabular-nums; }
+
+/* ---------- title slide ---------- */
+.title-slide{ justify-content:center; }
+.title-slide .kicker{ font-size:1.4cqw; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; }
+.title-slide h1{ font-size:5.4cqw; margin:2.4cqh 0 0; max-width:24ch; }
+.title-slide .who{ margin-top:4cqh; font-size:1.5cqw; color:var(--ink-2); line-height:1.7; }
+.title-slide .who b{ color:var(--ink); font-weight:600; }
+.chainmark{ display:flex; align-items:center; gap:.7cqw; margin-top:3.2cqh; }
+.chainmark i{ display:block; width:1.5cqw; height:1.5cqw; border-radius:50%;
+  border:1.5px solid var(--accent); font-style:normal; }
+.chainmark i:nth-child(1){ background:var(--accent); }
+.chainmark s{ display:block; width:3cqw; height:1px; background:var(--rule-2); }
+
+/* ---------- section divider ---------- */
+.divider{ justify-content:center; background:var(--sunk); }
+.divider h1{ font-size:5cqw; }
+.divider .lead{ font-size:1.7cqw; color:var(--ink-2); margin-top:1.6cqh; max-width:56ch; }
+.divider .step{ font-family:Spectral,Georgia,serif; font-size:1.7cqw; color:var(--accent); }
+
+/* ---------- generic grids ---------- */
+.cols{ display:grid; gap:2.6cqw; }
+.c2{ grid-template-columns:1fr 1fr; }
+.c3{ grid-template-columns:repeat(3,1fr); }
+.c4{ grid-template-columns:repeat(4,1fr); }
+.split{ display:grid; grid-template-columns:1.05fr .95fr; gap:3.2cqw; align-items:start; }
+
+.point h3{ font-size:1.72cqw; margin:0 0 .7cqh; font-weight:600; letter-spacing:-.005em; }
+.point p{ font-size:1.36cqw; line-height:1.55; color:var(--ink-2); margin:0; }
+.point .tag{ font-size:1.06cqw; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; display:block; margin-bottom:.8cqh; }
+
+/* ---------- data display ---------- */
+.stat{ display:flex; flex-direction:column; gap:.5cqh; }
+.stat .v{ font-family:Spectral,Georgia,serif; font-size:4.2cqw; line-height:1;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.stat .v.accent{ color:var(--accent); }
+.stat .v.gold{ color:var(--gold); }
+.stat .v.bad{ color:var(--bad); }
+.stat .k{ font-size:1.2cqw; color:var(--muted); line-height:1.45; max-width:26ch; }
+
+table{ width:100%; border-collapse:collapse; font-size:1.34cqw; font-variant-numeric:tabular-nums; }
+th{ text-align:right; font-size:1.04cqw; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--accent); font-weight:600; padding:0 0 1.1cqh; border-bottom:1px solid var(--rule-2); }
+th:first-child,td:first-child{ text-align:left; }
+td{ padding:1.15cqh 0; border-bottom:1px solid var(--rule); text-align:right; color:var(--ink-2); }
+td:first-child{ color:var(--ink); }
+tr:last-child td{ border-bottom:0; }
+td.best{ color:var(--ink); font-weight:600; }
+td.bad{ color:var(--bad); }
+td.gold{ color:var(--gold); font-weight:600; }
+tbody.group td:first-child{ padding-left:1.6cqw; }
+tr.head-row td{ font-weight:600; color:var(--ink); font-size:1.2cqw;
+  padding-top:1.8cqh; border-bottom:1px solid var(--rule-2); letter-spacing:.01em; }
+.note-row td{ border-bottom:0; color:var(--muted); font-size:1.1cqw; padding-top:1cqh; }
+
+.callout{
+  background:var(--sunk); border-left:2px solid var(--accent);
+  padding:1.7cqh 1.9cqw; font-size:1.3cqw; line-height:1.5; color:var(--ink-2);
+}
+.callout b{ color:var(--ink); }
+.callout.warn{ border-left-color:var(--gold); }
+.callout.open{ border-left-color:var(--bad); }
+
+/* chain of steps */
+.chain{ display:flex; flex-direction:column; gap:1.1cqh; }
+.link{ display:flex; align-items:baseline; gap:1.1cqw; font-size:1.5cqw; line-height:1.45; }
+.link .n{
+  flex:none; width:2.3cqw; height:2.3cqw; border-radius:50%; border:1px solid var(--accent);
+  color:var(--accent); font-size:1.1cqw; font-weight:600; display:grid; place-items:center;
+  align-self:flex-start; margin-top:.2cqh;
+}
+.link .t{ color:var(--ink); }
+.ref{ font-family:"IBM Plex Mono",monospace; color:var(--gold); font-size:.92em; }
+
+/* mask ladder */
+.ladder{ display:flex; flex-direction:column; gap:1.5cqh; }
+.rung{ display:grid; grid-template-columns:9cqw 1fr; gap:1.8cqw; align-items:baseline; }
+.rung .lbl{ text-align:right; }
+.rung .lbl b{ display:block; font-size:1.32cqw; }
+.rung .lbl span{ display:block; font-size:1.02cqw; color:var(--muted); }
+.rung .txt{ font-family:"IBM Plex Mono",monospace; font-size:1.28cqw; line-height:1.5;
+  color:var(--ink-2); padding:1cqh 1.2cqw; background:var(--sunk); }
+.rung.sel .txt{ background:var(--accent-soft); color:var(--accent-ink); }
+.tok{ color:var(--accent); font-weight:500; }
+.tok.g{ color:var(--gold); }
+
+/* bars */
+.bars{ display:flex; flex-direction:column; gap:1.3cqh; }
+.bar{ display:grid; grid-template-columns:7cqw 1fr 5.5cqw; gap:1.2cqw; align-items:center;
+  font-size:1.26cqw; }
+.bar .track{ height:1.5cqh; background:var(--sunk); position:relative; }
+.bar .fill{ position:absolute; inset:0 auto 0 0; background:var(--accent); }
+.bar .fill.q{ background:var(--rule-2); }
+.bar .val{ text-align:right; font-variant-numeric:tabular-nums; color:var(--ink-2); }
+.bar .lab{ color:var(--ink); }
+
+/* pill row */
+.pills{ display:flex; flex-wrap:wrap; gap:.8cqw; }
+.pill{ font-size:1.1cqw; padding:.55cqh 1cqw; background:var(--sunk); color:var(--ink-2);
+  border-radius:999px; }
+.pill.on{ background:var(--accent-soft); color:var(--accent-ink); font-weight:600; }
+.pill.off{ opacity:.55; text-decoration:line-through; }
+
+/* svg diagrams */
+svg{ display:block; width:100%; height:auto; overflow:visible; }
+.s-fill{ fill:var(--sunk); } .s-stroke{ stroke:var(--rule-2); fill:none; }
+.s-ink{ fill:var(--ink); } .s-mut{ fill:var(--muted); } .s-acc{ fill:var(--accent); }
+.s-accs{ fill:var(--accent-soft); } .s-accstroke{ stroke:var(--accent); fill:none; }
+.s-lab{ font-family:"IBM Plex Sans",sans-serif; font-size:13px; fill:var(--ink); }
+.s-cap{ font-family:"IBM Plex Sans",sans-serif; font-size:11px; fill:var(--muted); }
+.s-mono{ font-family:"IBM Plex Mono",monospace; font-size:11px; fill:var(--accent); }
+
+/* ---------- chrome ---------- */
+#chrome{
+  position:fixed; bottom:1.6vh; right:2vw; display:flex; align-items:center; gap:1.2vw;
+  font-size:min(1.4vh,13px); color:var(--muted); z-index:20;
+}
+#chrome button{
+  font:inherit; color:var(--muted); background:transparent; border:1px solid var(--rule-2);
+  border-radius:3px; padding:.3em .7em; cursor:pointer;
+}
+#chrome button:hover{ color:var(--accent); border-color:var(--accent); }
+#chrome button:focus-visible,#deck:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+#count{ font-variant-numeric:tabular-nums; }
+#progress{ position:fixed; left:0; bottom:0; height:2px; background:var(--accent); z-index:21;
+  transition:width .18s ease; }
+@media (prefers-reduced-motion:reduce){ #progress{ transition:none; } }
+
+/* ---------- print: every slide becomes a page ---------- */
+@page{ size:1280px 720px; margin:0; }
+@media print{
+  body{ display:block; overflow:visible; background:#fff; }
+  #chrome,#progress{ display:none !important; }
+  #deck{ width:1280px; height:auto; }
+  .slide{ display:flex !important; position:relative; width:1280px; height:720px;
+          page-break-after:always; break-after:page; }
+}
+</style>
+
+<div id="deck" tabindex="0">
+
+<!-- 1 ─────────────────────────────── title -->
+<section class="slide title-slide on">
+  <div class="kicker">Master's thesis · Sabancı University</div>
+  <h1>Decomposing multi-hop questions into ordered atomic steps</h1>
+  <div class="chainmark"><i>1</i><s></s><i></i><s></s><i></i></div>
+  <div class="who">
+    <b>Jahid Ahmadi</b><br>
+    Supervisor: Ahmmad O. M. Saleh<br>
+    <span style="color:var(--muted)">Progress review · September 2026</span>
+  </div>
+</section>
+
+<!-- 2 ─────────────────────────────── motivation -->
+<section class="slide">
+  <div class="eyebrow">Motivation</div>
+  <div class="body">
+    <h2>Most questions worth asking are not one lookup</h2>
+    <div class="split">
+      <div>
+        <p class="sub" style="margin-top:0">
+          A knowledge base holds facts as single edges. A question like the one on the right
+          touches three of them, and no single lookup answers it.
+        </p>
+        <p class="sub">
+          Systems that answer it well do so by <mark>planning first</mark> — turning one hard
+          question into a short sequence of easy ones.
+        </p>
+      </div>
+      <div class="callout" style="font-size:1.5cqw;line-height:1.5">
+        “What languages are spoken in films that share a director with
+        <b>The Matrix</b>?”
+      </div>
+    </div>
+  </div>
+  <footer><span>The plan is the object of study here — not the final answer.</span></footer>
+</section>
+
+<!-- 3 ─────────────────────────────── the chain -->
+<section class="slide">
+  <div class="eyebrow">Motivation</div>
+  <div class="body">
+    <h2>The plan is three ordered steps, and each needs the last</h2>
+    <div class="chain" style="margin-top:1cqh">
+      <div class="link"><span class="n">1</span><span class="t">Who directed <b>The Matrix</b>?</span></div>
+      <div class="link"><span class="n">2</span><span class="t">Which other films did <span class="ref">[#1]</span> direct?</span></div>
+      <div class="link"><span class="n">3</span><span class="t">What languages are spoken in <span class="ref">[#2]</span>?</span></div>
+    </div>
+    <div class="callout">
+      The <span class="ref">[#k]</span> placeholders are what make this a <b>plan</b> rather than
+      three unrelated questions. They also make it machine-checkable: a step that references a
+      nonexistent earlier step is detectably broken.
+    </div>
+  </div>
+  <footer><span>Ordered · atomic · explicitly linked</span></footer>
+</section>
+
+<!-- 4 ─────────────────────────────── problem definition -->
+<section class="slide">
+  <div class="eyebrow">Problem definition</div>
+  <div class="body">
+    <h2>What goes in, what must come out</h2>
+    <div class="split">
+      <div>
+        <table>
+          <tr class="head-row"><td colspan="2">Input</td></tr>
+          <tr><td><span class="mono">Q</span> &nbsp; a multi-hop question</td><td>natural language</td></tr>
+          <tr><td><span class="mono">D</span> &nbsp; a domain</td><td>the knowledge source</td></tr>
+          <tr class="head-row"><td colspan="2">Output</td></tr>
+          <tr><td><span class="mono">Q′ = ⟨q₁ … q<sub>n</sub>⟩</span></td><td>ordered sub-questions</td></tr>
+          <tr class="note-row"><td colspan="2">
+            Each <span class="mono">q<sub>i</sub></span> is answerable by a single lookup in
+            <span class="mono">D</span>, and may reference <span class="ref">[#j]</span> for j &lt; i.
+          </td></tr>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2.2cqh">
+        <div class="point">
+          <span class="tag">What is <em>not</em> being solved</span>
+          <p>Answering. The executor that runs a plan against a graph is machinery, and
+             answer accuracy is used only as a downstream check that better plans matter.</p>
+        </div>
+        <div class="point">
+          <span class="tag">What is being solved</span>
+          <p>Producing <span class="mono">Q′</span> from <span class="mono">Q</span> with a
+             mid-sized open model — and finding what actually governs whether it can.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer><span>n is not given at inference time — the model must decide the length too.</span></footer>
+</section>
+
+<!-- 5 ─────────────────────────────── challenges -->
+<section class="slide">
+  <div class="eyebrow">Challenges</div>
+  <div class="body">
+    <h2>Three ways a decomposition goes wrong</h2>
+    <div class="cols c3" style="margin-top:1.4cqh">
+      <div class="point">
+        <span class="tag">How many</span>
+        <h3>Wrong length</h3>
+        <p>The model must infer <span class="mono">n</span> from the question alone. Too few
+           steps drops a hop; too many invent one.</p>
+      </div>
+      <div class="point">
+        <span class="tag">In what order</span>
+        <h3>Broken chain</h3>
+        <p>A later step must consume an earlier answer. Restating the original question
+           instead produces steps that look fine and compose to nothing.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Over what</span>
+        <h3>Invented entities</h3>
+        <p>Unconstrained generation names films and people that do not exist in the
+           knowledge source, so the plan cannot execute.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      These three failures are why a single accuracy number is not enough — the evaluation
+      has to separate <b>length</b>, <b>order</b> and <b>content</b>.
+    </div>
+  </div>
+  <footer><span>Each failure mode maps to a metric family later in this deck.</span></footer>
+</section>
+
+<!-- 6 ─────────────────────────────── methodology overview -->
+<section class="slide">
+  <div class="eyebrow">Methodology · overview</div>
+  <div class="body">
+    <h2>Everything that moves sits in how the prompt is built</h2>
+    <svg viewBox="0 0 1000 210" role="img" aria-label="Pipeline: prompt construction feeds a fixed decomposer, whose plan is scored or executed">
+      <rect class="s-fill" x="0" y="34" width="470" height="122" rx="3"/>
+      <rect class="s-accstroke" x="0" y="34" width="470" height="122" rx="3" stroke-width="1.5"/>
+      <text class="s-mono" x="16" y="24">STAGE A · THE STUDY</text>
+      <text class="s-lab" x="16" y="66" font-weight="600">Prompt construction</text>
+      <text class="s-cap" x="16" y="90">Typed masking → few-shot pool → retrieval → rerank</text>
+      <g transform="translate(16,108)">
+        <rect class="s-accs" x="0" y="0" width="104" height="26" rx="13"/>
+        <text class="s-mono" x="18" y="17">masking</text>
+        <rect class="s-accs" x="114" y="0" width="82" height="26" rx="13"/>
+        <text class="s-mono" x="132" y="17">pool</text>
+        <rect class="s-accs" x="206" y="0" width="104" height="26" rx="13"/>
+        <text class="s-mono" x="224" y="17">retrieval</text>
+        <rect class="s-accs" x="320" y="0" width="98" height="26" rx="13"/>
+        <text class="s-mono" x="338" y="17">rerank</text>
+      </g>
+      <path class="s-stroke" d="M478 95 H 528" stroke-width="1.5" marker-end="url(#ar)"/>
+      <rect class="s-fill" x="536" y="34" width="196" height="122" rx="3"/>
+      <rect class="s-stroke" x="536" y="34" width="196" height="122" rx="3"/>
+      <text class="s-mono" x="552" y="24">STAGE B · FIXED</text>
+      <text class="s-lab" x="552" y="66" font-weight="600">Decomposer</text>
+      <text class="s-cap" x="552" y="90">One open model, 7–14B</text>
+      <text class="s-cap" x="552" y="108">One decoding config</text>
+      <text class="s-cap" x="552" y="126">One evaluation set</text>
+      <path class="s-stroke" d="M740 95 H 790" stroke-width="1.5" marker-end="url(#ar)"/>
+      <rect class="s-fill" x="798" y="34" width="202" height="122" rx="3"/>
+      <rect class="s-stroke" x="798" y="34" width="202" height="122" rx="3"/>
+      <text class="s-mono" x="814" y="24">EVALUATION</text>
+      <text class="s-lab" x="814" y="66" font-weight="600">Score the plan</text>
+      <text class="s-cap" x="814" y="90">Against gold steps, or</text>
+      <text class="s-cap" x="814" y="108">compile and run it on</text>
+      <text class="s-cap" x="814" y="126">the graph</text>
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--rule-2)"/></marker></defs>
+    </svg>
+    <div class="callout">
+      Stage B is held constant on purpose. If the decomposer and its decoding never change,
+      then any difference between runs is attributable to <b>prompt construction alone</b>.
+    </div>
+  </div>
+  <footer><span>Each stage-A component gets its own slide next.</span></footer>
+</section>
+
+<!-- 7 ─────────────────────────────── masking -->
+<section class="slide">
+  <div class="eyebrow">Methodology · component 1</div>
+  <div class="body">
+    <h2>Masking makes similarity a statement about <em>shape</em></h2>
+    <p class="sub" style="margin-top:0">
+      Retrieval over raw text finds examples that share names. Shared names say nothing about
+      how many hops a question needs.
+    </p>
+    <div class="ladder">
+      <div class="rung">
+        <div class="lbl"><b>raw</b><span>entities intact</span></div>
+        <div class="txt">which films did Christina Ricci star in after The Addams Family in 1991</div>
+      </div>
+      <div class="rung">
+        <div class="lbl"><b>uniform</b><span>one shared token</span></div>
+        <div class="txt">which films did <span class="tok">[MASK]</span> star in after <span class="tok">[MASK]</span> in <span class="tok">[MASK]</span></div>
+      </div>
+      <div class="rung sel">
+        <div class="lbl"><b>typed</b><span>type label kept</span></div>
+        <div class="txt">which films did <span class="tok g">[PERSON]</span> star in after <span class="tok g">[MOVIE]</span> in <span class="tok g">[YEAR]</span></div>
+      </div>
+    </div>
+  </div>
+  <footer>
+    <span>The pool is masked once in advance, never at query time — dynamic masking corrupts
+      titles that collide with common words.</span>
+  </footer>
+</section>
+
+<!-- 8 ─────────────────────────────── pool -->
+<section class="slide">
+  <div class="eyebrow">Methodology · component 2</div>
+  <div class="body">
+    <h2>The few-shot pool is a sample, and how it is drawn is a choice</h2>
+    <div class="split">
+      <div>
+        <table>
+          <tr><th>Strategy</th><th>How it draws</th></tr>
+          <tr><td>Imbalanced</td><td>uniform draw — follows the corpus skew</td></tr>
+          <tr><td>Balanced</td><td>equal quota per hop bucket</td></tr>
+          <tr><td>Clustered</td><td>k-means cover, one row per centroid</td></tr>
+        </table>
+        <p class="sub" style="font-size:1.3cqw">
+          Sizes swept from 1,000 to 8,000 examples, drawn from a 19,938-row training split,
+          stratified on hop prefix at seed 42.
+        </p>
+      </div>
+      <div>
+        <div class="callout warn" style="margin-bottom:1.8cqh">
+          MuSiQue is <b>72% two-hop</b>. An imbalanced pool inherits that skew, so 4-hop
+          examples are scarce exactly where the model needs them most.
+        </div>
+        <div class="stat">
+          <span class="v accent num">1,175</span>
+          <span class="k">4-hop training questions available, against 14,376 at two hops —
+            every 4-hop result in this deck rests on the thinnest evidence.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer><span class="src">configs/pool_sweep.json · MuSiQue-Ans v1.0 train</span></footer>
+</section>
+
+<!-- 9 ─────────────────────────────── retrieval funnel -->
+<section class="slide">
+  <div class="eyebrow">Methodology · component 3</div>
+  <div class="body">
+    <h2>Retrieval is a funnel, and the last stage is expensive</h2>
+    <svg viewBox="0 0 1000 250" role="img" aria-label="Funnel from a pool of up to 8000 examples, to top 20 by bi-encoder, to top 5 by cross-encoder rerank, into the prompt">
+      <rect class="s-fill" x="0" y="40" width="230" height="150" rx="3"/>
+      <rect class="s-stroke" x="0" y="40" width="230" height="150" rx="3"/>
+      <text class="s-mono" x="16" y="30">POOL</text>
+      <text class="s-lab" x="16" y="76" font-weight="600">1,000 – 8,000</text>
+      <text class="s-cap" x="16" y="98">masked examples,</text>
+      <text class="s-cap" x="16" y="116">embedded once</text>
+      <g class="s-mut" font-size="10" font-family="IBM Plex Mono">
+        <text x="16" y="146">▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪</text>
+        <text x="16" y="160">▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪</text>
+        <text x="16" y="174">▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪▪</text>
+      </g>
+      <path class="s-stroke" d="M238 115 H 296" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text class="s-cap" x="243" y="105">bi-encoder</text>
+      <rect class="s-fill" x="304" y="55" width="200" height="120" rx="3"/>
+      <rect class="s-stroke" x="304" y="55" width="200" height="120" rx="3"/>
+      <text class="s-mono" x="320" y="45">TOP 20</text>
+      <text class="s-lab" x="320" y="90" font-weight="600">Vector search</text>
+      <text class="s-cap" x="320" y="112">Question and pool item</text>
+      <text class="s-cap" x="320" y="130">embedded separately —</text>
+      <text class="s-cap" x="320" y="148">fast, but they never</text>
+      <text class="s-cap" x="320" y="166">see each other.</text>
+      <path class="s-stroke" d="M512 115 H 570" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text class="s-cap" x="517" y="105">rerank</text>
+      <rect class="s-accs" x="578" y="70" width="180" height="90" rx="3"/>
+      <rect class="s-accstroke" x="578" y="70" width="180" height="90" rx="3" stroke-width="1.5"/>
+      <text class="s-mono" x="594" y="60">TOP 5</text>
+      <text class="s-lab" x="594" y="105" font-weight="600">Cross-encoder</text>
+      <text class="s-cap" x="594" y="127">Scored jointly with</text>
+      <text class="s-cap" x="594" y="145">the question. Accurate,</text>
+      <text class="s-cap" x="594" y="163">far slower.</text>
+      <path class="s-stroke" d="M766 115 H 824" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <rect class="s-fill" x="832" y="70" width="168" height="90" rx="3"/>
+      <rect class="s-stroke" x="832" y="70" width="168" height="90" rx="3"/>
+      <text class="s-mono" x="848" y="60">PROMPT</text>
+      <text class="s-lab" x="848" y="105" font-weight="600">5 examples</text>
+      <text class="s-cap" x="848" y="127">placed highest-</text>
+      <text class="s-cap" x="848" y="145">similarity first</text>
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--rule-2)"/></marker></defs>
+    </svg>
+    <div class="callout open">
+      <b>Open:</b> the order in which those five are placed has never been varied. Whether
+      highest-similarity-first is the right end to start from is an untested assumption.
+    </div>
+  </div>
+  <footer><span class="src">bi-encoder e5-small-v2 · cross-encoder rerank over top-20</span></footer>
+</section>
+
+<!-- 10 ────────────────────────────── de-scoped -->
+<section class="slide">
+  <div class="eyebrow plain">Methodology · what was removed</div>
+  <div class="body">
+    <h2>Two designed components are no longer in the pipeline</h2>
+    <div class="cols c2" style="margin-top:1cqh">
+      <div class="point">
+        <span class="tag">Router · removed</span>
+        <h3>Predicting the hop count first</h3>
+        <p>A separate model was to read <span class="mono">n</span> off the question and hand it
+           to the decomposer. It is out of the decomposition critical path: on the pipeline model,
+           even a <em>perfect</em> hop count leaves step content unchanged.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Jury · never built</span>
+        <h3>Scoring a plan before running it</h3>
+        <p>An engineering pattern with no evaluation story attached. It was designed, never
+           implemented, and is not claimed.</p>
+      </div>
+    </div>
+    <div class="callout open">
+      <b>Honest scoping:</b> the “perfect hop count changes nothing” result is measured on
+      <b>Mistral-7B</b>. On Qwen3.5-9B, oracle guidance moved six of nine report-card metrics.
+      The router's removal rests on a single model, and that is an open point, not a settled one.
+    </div>
+  </div>
+  <footer><span class="src">ADR 0030 · exp-004 / exp-005 / exp-014 · open issue #49</span></footer>
+</section>
+
+<!-- 11 ────────────────────────────── research questions -->
+<section class="slide">
+  <div class="eyebrow">Research questions</div>
+  <div class="body">
+    <h2>Now that the method is on the table, these are the questions it asks</h2>
+    <div class="chain" style="margin-top:1cqh;gap:2cqh">
+      <div class="link"><span class="n">1</span><span class="t">
+        Does <b>how the few-shot examples are chosen</b> — masking, pool, retrieval, rerank —
+        determine whether a mid-sized model can decompose at all?</span></div>
+      <div class="link"><span class="n">2</span><span class="t">
+        Does <b>knowing the hop count in advance</b> help, and is the answer the same across models?</span></div>
+      <div class="link"><span class="n">3</span><span class="t">
+        Does <b>fine-tuning</b> beat prompting — and does it still hold at a depth it never saw
+        in training?</span></div>
+      <div class="link"><span class="n">4</span><span class="t">
+        Do <b>better plans produce better answers</b> end to end?</span></div>
+    </div>
+  </div>
+  <footer><span>Every claim that follows is paired to one of these four.</span></footer>
+</section>
+
+<!-- 12 ────────────────────────────── divider: setup -->
+<section class="slide divider">
+  <div class="step">Part two</div>
+  <h1>Experimental setup</h1>
+  <p class="lead">Datasets, what counts as a good decomposition, and how a difference is
+    declared real.</p>
+</section>
+
+<!-- 13 ────────────────────────────── datasets -->
+<section class="slide">
+  <div class="eyebrow">Setup · data</div>
+  <div class="body">
+    <h2>Two datasets doing two different jobs</h2>
+    <div class="split">
+      <div>
+        <table>
+          <tr><th>MuSiQue</th><th>Train</th><th>Dev used</th></tr>
+          <tr><td>2-hop</td><td class="num">14,376</td><td class="num">200</td></tr>
+          <tr><td>3-hop</td><td class="num">4,387</td><td class="num">200</td></tr>
+          <tr><td>4-hop</td><td class="num">1,175</td><td class="num">200</td></tr>
+        </table>
+        <p class="sub" style="font-size:1.26cqw">
+          Ships <b>human-written gold decompositions</b> — so the plan itself can be scored.
+          Carries all decomposition-quality evaluation.
+        </p>
+      </div>
+      <div>
+        <table>
+          <tr><th>MetaQA</th><th>KB questions</th><th>Eval used</th></tr>
+          <tr><td>1-hop</td><td class="num">96,106</td><td class="num">100</td></tr>
+          <tr><td>2-hop</td><td class="num">118,980</td><td class="num">100</td></tr>
+          <tr><td>3-hop</td><td class="num">114,196</td><td class="num">100</td></tr>
+        </table>
+        <p class="sub" style="font-size:1.26cqw">
+          A movie-domain triple store with <b>no gold decompositions</b> — so a plan is judged
+          only by whether it executes and returns the right answer.
+        </p>
+      </div>
+    </div>
+    <div class="callout">
+      The evaluation set is <b>600 MuSiQue dev questions, 200 per hop</b>, pinned by id and
+      identical in every arm — so every comparison in this deck is paired on the same questions.
+    </div>
+  </div>
+  <footer><span class="src">ADR 0007 pinned evaluation set</span></footer>
+</section>
+
+<!-- 14 ────────────────────────────── metrics: the three jobs -->
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>One number cannot catch three different failures</h2>
+    <div class="cols c3" style="margin-top:1.2cqh">
+      <div class="point">
+        <span class="tag">Is the length right</span>
+        <h3>Hop-count EM</h3>
+        <p>Predicted step count equals gold. Reported with under- and over-decomposition as a
+           pair, never summed — too few steps is worse than too many.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Is the chain intact</span>
+        <h3>Chain validity</h3>
+        <p>Do the <span class="ref">[#k]</span> links resolve into one connected chain with no
+           orphans? Junk scores zero.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Is the content right</span>
+        <h3>SARI · GED · Break EM</h3>
+        <p>N-gram overlap against gold, graph edit distance between step graphs, and the strict
+           whole-plan match.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <b>Why not one blended score:</b> a content-perfect but <em>reversed</em> plan scores at
+      the top of the table on both GED and SARI. Only the strict match and the ordering terms
+      catch it. Six unblended terms are reported; a report quoting fewer is not reporting it.
+    </div>
+  </div>
+  <footer><span class="src">ADR 0029 · validated against a six-system junk battery</span></footer>
+</section>
+
+<!-- 15 ────────────────────────────── metric retired -->
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>The score that used to rank these runs has been retired</h2>
+    <div class="split">
+      <div>
+        <div class="callout" style="background:var(--bad-soft);border-left-color:var(--bad)">
+          <b>Composite score</b> — a hand-weighted blend:<br>
+          <span class="mono" style="font-size:1.15cqw">0.4·step F1 + 0.3·ordered + 0.2·ref validity
+          + 0.1·count error</span>
+        </div>
+        <p class="sub" style="font-size:1.32cqw">
+          Its 0.2-weight reference-validity term was decided by a bracket-format mismatch: the
+          scorer looked for <span class="mono">[#k]</span>, the evaluation data writes
+          <span class="mono">#k</span>. The term was effectively settled by 2 of 600 items.
+        </p>
+      </div>
+      <div>
+        <div class="stat" style="margin-bottom:2.4cqh">
+          <span class="v bad num">±0.2</span>
+          <span class="k">how far the composite swung across nine pairs on which graph edit
+            distance moved a stable +0.01 to +0.02 in one direction</span>
+        </div>
+        <div class="callout">
+          It stays computed and stamped <b>legacy</b> so older tables remain reproducible —
+          and it ranks nothing from here on.
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer><span class="src">issue #40 · frozen 2026-08-23 · superseded by the report card</span></footer>
+</section>
+
+<!-- 16 ────────────────────────────── statistics -->
+<section class="slide">
+  <div class="eyebrow">Setup · statistics</div>
+  <div class="body">
+    <h2>The metric's type chooses the test</h2>
+    <div class="cols c3" style="margin-top:1.2cqh">
+      <div class="point">
+        <span class="tag">Continuous scores</span>
+        <h3>Paired bootstrap</h3>
+        <p>10,000 resamples, 95% confidence intervals.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Binary outcomes</span>
+        <h3>Exact McNemar</h3>
+        <p>On the discordant pairs only.</p>
+      </div>
+      <div class="point">
+        <span class="tag">Agreement check</span>
+        <h3>Paired t-test</h3>
+        <p>Run alongside, never instead.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <b>Everything is paired.</b> Both arms of every comparison answer the same pinned 600
+      questions, so per-question difficulty cancels and the test sees only the difference
+      between methods. Underpowered cells are reported as underpowered; noise-scale effects
+      are named as noise.
+    </div>
+  </div>
+  <footer><span class="src">ADR 0009, amended by ADR 0017</span></footer>
+</section>
+
+<!-- 17 ────────────────────────────── divider: results -->
+<section class="slide divider">
+  <div class="step">Part three</div>
+  <h1>Results</h1>
+  <p class="lead">One claim per slide — overall first, then broken out by hop depth.</p>
+</section>
+
+<!-- 18 ────────────────────────────── masking result -->
+<section class="slide">
+  <div class="eyebrow">Result · masking</div>
+  <div class="body">
+    <h2>Typed masking leads on every plan metric</h2>
+    <table>
+      <tr><th>Variant</th><th>Exact match</th><th>Step F1</th><th>Ordered acc.</th><th>ROUGE-L F1</th><th>Hop-count EM</th></tr>
+      <tr><td>typed</td><td class="best">0.058</td><td class="best">0.201</td><td class="best">0.179</td><td class="best">0.544</td><td class="best">0.522</td></tr>
+      <tr><td>uniform</td><td>0.055</td><td>0.190</td><td>0.166</td><td>0.543</td><td>0.505</td></tr>
+      <tr><td>raw</td><td>0.037</td><td>0.178</td><td>0.158</td><td>0.532</td><td>0.485</td></tr>
+    </table>
+    <div class="callout warn">
+      Margins over raw are consistent but <b>small</b> — 2.1 points of exact match, 2.3 of step
+      F1 — and <b>no significance test has been run on typed vs uniform</b>. That ordering is
+      provisional and is stated as provisional.
+    </div>
+  </div>
+  <footer><span>MuSiQue dev · n = 600 · unguided · Mistral-7B</span></footer>
+</section>
+
+<!-- 19 ────────────────────────────── per-hop decline -->
+<section class="slide">
+  <div class="eyebrow">Result · by hop depth</div>
+  <div class="body">
+    <h2>Quality falls with every hop added</h2>
+    <table>
+      <tr><th>Metric</th><th>Variant</th><th>2-hop</th><th>3-hop</th><th>4-hop</th></tr>
+      <tr><td>Step F1</td><td>typed</td><td class="best">0.322</td><td class="best">0.171</td><td class="best">0.109</td></tr>
+      <tr><td></td><td>uniform</td><td>0.320</td><td>0.157</td><td>0.092</td></tr>
+      <tr><td></td><td>raw</td><td>0.282</td><td>0.147</td><td>0.103</td></tr>
+      <tr class="head-row"><td>Hop-count EM</td><td>typed</td><td class="best">0.720</td><td class="best">0.525</td><td>0.320</td></tr>
+      <tr><td></td><td>uniform</td><td>0.695</td><td>0.495</td><td class="best">0.325</td></tr>
+      <tr><td></td><td>raw</td><td>0.680</td><td>0.490</td><td>0.285</td></tr>
+    </table>
+    <div class="callout">
+      Step F1 loses roughly two-thirds of its value between 2 and 4 hops. Four-hop is both the
+      hardest class and the one with the least training data — those two facts are not
+      independent.
+    </div>
+  </div>
+  <footer><span>200 questions per hop · bold marks best in column</span></footer>
+</section>
+
+<!-- 20 ────────────────────────────── pool size -->
+<section class="slide">
+  <div class="eyebrow">Result · pool size</div>
+  <div class="body">
+    <h2>1,000 is too small; above that, nothing separates</h2>
+    <div class="split">
+      <div class="bars">
+        <div class="bar"><span class="lab">8,000</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">0.190</span></div>
+        <div class="bar"><span class="lab">4,000</span><span class="track"><span class="fill" style="width:96.8%"></span></span><span class="val">0.184</span></div>
+        <div class="bar"><span class="lab">2,000</span><span class="track"><span class="fill" style="width:95.8%"></span></span><span class="val">0.182</span></div>
+        <div class="bar"><span class="lab">1,000</span><span class="track"><span class="fill q" style="width:89.5%"></span></span><span class="val">0.170</span></div>
+      </div>
+      <div>
+        <div class="callout">
+          Only the contrasts <b>involving 1,000</b> survive Holm correction. No contrast above
+          1,000 survives on any metric — at this sample size the adjacent steps are
+          <b>underpowered, not equal</b>.
+        </div>
+        <p class="sub" style="font-size:1.24cqw">
+          Exact match stays flat across all cells regardless of size.
+        </p>
+      </div>
+    </div>
+  </div>
+  <footer>
+    <span>Mean step F1 · imbalanced arm</span>
+    <span class="src">v1 prior work, re-analysed 2026-08-20 — not re-run in v2</span>
+  </footer>
+</section>
+
+<!-- 21 ────────────────────────────── construction strategy + the open question -->
+<section class="slide">
+  <div class="eyebrow">Result · pool construction</div>
+  <div class="body">
+    <h2>Construction changes everything upstream, and nothing downstream</h2>
+    <p class="sub" style="margin-top:0">
+      Imbalanced against clustered, traced stage by stage. The two arms are physically separate
+      the whole way — and arrive at the same place.
+    </p>
+    <div class="cols c4" style="margin-top:.4cqh">
+      <div class="stat">
+        <span class="v accent num">0.053</span>
+        <span class="k">Jaccard overlap of the two <b>pools</b> — 201 of 2,000 rows shared</span>
+      </div>
+      <div class="stat">
+        <span class="v accent num">0 / 750</span>
+        <span class="k">queries whose <b>top-5 exemplars</b> are the same list. Most share none</span>
+      </div>
+      <div class="stat">
+        <span class="v accent num">0 / 150</span>
+        <span class="k">logged <b>prompts</b> that match</span>
+      </div>
+      <div class="stat">
+        <span class="v gold num">92%</span>
+        <span class="k">of <b>generated plans</b> differ — yet no reported metric moves detectably</span>
+      </div>
+    </div>
+    <div class="callout">
+      <b>This was checked because it looked like a bug.</b> One cell had clustered and imbalanced
+      tie at 0.5133 hop-count EM — which turned out to be 258 discordant items splitting exactly
+      129 / 129, in one cell of six. The other five do not tie. <b>It is a genuine null, not a
+      duplicated run:</b> the same harness detects reranking's effect 9 times out of 9.
+    </div>
+  </div>
+  <footer>
+    <span>exp-019 re-analysis of exp-010 · n = 750 per cell</span>
+    <span class="src">own dev sample, not the pinned 600 — internally comparable only</span>
+  </footer>
+</section>
+
+<!-- 22 ────────────────────────────── rerank -->
+<section class="slide">
+  <div class="eyebrow">Result · reranking</div>
+  <div class="body">
+    <h2>Reranking moves overlap and structure, not binary outcomes</h2>
+    <div class="split">
+      <div class="bars">
+        <div class="bar"><span class="lab">ROUGE-L</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">9/9 · 3✓</span></div>
+        <div class="bar"><span class="lab">GED</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">9/9 · 4✓</span></div>
+        <div class="bar"><span class="lab">SARI</span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">9/9 · 0</span></div>
+        <div class="bar"><span class="lab">Step F1</span><span class="track"><span class="fill" style="width:88.9%"></span></span><span class="val">8/9 · 1✓</span></div>
+        <div class="bar"><span class="lab">Ordered</span><span class="track"><span class="fill" style="width:77.8%"></span></span><span class="val">7/9 · 1✓</span></div>
+        <div class="bar"><span class="lab">Hop-count</span><span class="track"><span class="fill q" style="width:88.9%"></span></span><span class="val">8/9 · 0</span></div>
+        <div class="bar"><span class="lab">Break EM</span><span class="track"><span class="fill q" style="width:55.6%"></span></span><span class="val">5/9 · 0</span></div>
+        <div class="bar"><span class="lab">Chain val.</span><span class="track"><span class="fill q" style="width:44.4%"></span></span><span class="val">4/9 · 0</span></div>
+      </div>
+      <div>
+        <div class="callout">
+          <b>The earlier reading was wrong, not null.</b> “Rerank doesn't move the score” was
+          measured on the retired composite, whose own intervals swing ±0.2 on the very pairs
+          where GED moves a stable +0.01–0.02. Wrong instrument, not absent effect.
+        </div>
+        <p class="sub" style="font-size:1.2cqw">
+          Pairs improved of 9, then Holm survivors. Pairs share one evaluation set, so sign
+          counts are descriptive.
+        </p>
+      </div>
+    </div>
+  </div>
+  <footer><span>exp-018 re-analysis of exp-010 · 9 matched pairs · n = 750 each</span></footer>
+</section>
+
+<!-- 23 ────────────────────────────── oracle guidance -->
+<section class="slide">
+  <div class="eyebrow">Result · hop guidance</div>
+  <div class="body">
+    <h2>A perfect hop count helps one model far more than the other</h2>
+    <table>
+      <tr><th>Condition</th><th>Step F1</th><th>Hop-count EM</th><th>Exact match</th><th>Paired tests vs unguided</th></tr>
+      <tr class="head-row"><td colspan="5">Mistral-7B-Instruct-v0.3</td></tr>
+      <tr><td>Unguided</td><td>0.204</td><td>0.508</td><td>0.062</td><td style="text-align:right;font-size:1.1cqw;color:var(--muted)">baseline</td></tr>
+      <tr><td>Oracle-guided</td><td>0.206</td><td class="gold">0.590</td><td>0.057</td>
+          <td style="text-align:right;font-size:1.1cqw">count, ROUGE-L and GED move; step content does not</td></tr>
+      <tr class="head-row"><td colspan="5">Qwen3.5-9B</td></tr>
+      <tr><td>Unguided</td><td>0.213</td><td>0.520</td><td>0.062</td><td style="text-align:right;font-size:1.1cqw;color:var(--muted)">baseline</td></tr>
+      <tr><td>Oracle-guided</td><td class="gold">0.237</td><td class="gold">0.873</td><td class="gold">0.073</td>
+          <td style="text-align:right;font-size:1.1cqw">six of nine report-card metrics move, including every content and count term</td></tr>
+    </table>
+    <div class="callout open">
+      Same conditions, same 600 questions, same decoding. <b>The method's effectiveness is
+      model-dependent</b> — which is why the next experiment holds everything else fixed and
+      varies only the model.
+    </div>
+  </div>
+  <footer>
+    <span>exp-004 / exp-005, tested in exp-014</span>
+    <span class="src">not significant on Qwen: SARI, chain validity, Break EM</span>
+  </footer>
+</section>
+
+<!-- 24 ────────────────────────────── hop-matched retrieval -->
+<section class="slide">
+  <div class="eyebrow">Result · hop-matched retrieval</div>
+  <div class="body">
+    <h2>Matching the pool to the question's depth moves count, not quality</h2>
+    <table>
+      <tr><th>Metric</th><th>Mixed pool</th><th>Oracle hop-matched</th><th>Result</th></tr>
+      <tr><td>Step F1 (macro)</td><td>0.204</td><td>0.193</td><td style="font-size:1.14cqw;color:var(--muted)">not significant · CI [−0.006, +0.027]</td></tr>
+      <tr><td>Ordered step accuracy</td><td>0.180</td><td>0.180</td><td style="font-size:1.14cqw;color:var(--muted)">not significant · p = 0.950</td></tr>
+      <tr><td>Hop-count exact match</td><td>0.515</td><td class="gold">0.600</td><td style="font-size:1.14cqw">significant · McNemar p = 0.0006</td></tr>
+      <tr><td>Exact match</td><td>0.062</td><td>0.057</td><td style="font-size:1.14cqw;color:var(--muted)">not significant · p = 0.664</td></tr>
+    </table>
+    <div class="callout warn">
+      The gain concentrates at 2-hop and also <b>shrinks the candidate pool</b> — so it may be
+      measuring pool size rather than hop matching. <b>Not adopted on this evidence.</b>
+    </div>
+  </div>
+  <footer><span>exp-009 · pinned 600 · unguided · Mistral-7B</span></footer>
+</section>
+
+<!-- 25 ────────────────────────────── per-hop oracle -->
+<section class="slide">
+  <div class="eyebrow">Result · by hop depth</div>
+  <div class="body">
+    <h2>Where the pool is thinnest, hop-matching starts to hurt</h2>
+    <table>
+      <tr><th>Metric</th><th>Arm</th><th>2-hop</th><th>3-hop</th><th>4-hop</th></tr>
+      <tr><td>Step F1</td><td>mixed</td><td>0.327</td><td class="best">0.168</td><td class="best">0.116</td></tr>
+      <tr><td></td><td>oracle-matched</td><td class="best">0.355</td><td>0.153</td><td class="bad">0.071</td></tr>
+      <tr class="head-row"><td>Ordered accuracy</td><td>mixed</td><td>0.318</td><td class="best">0.138</td><td class="best">0.085</td></tr>
+      <tr><td></td><td>oracle-matched</td><td class="best">0.345</td><td>0.135</td><td class="bad">0.060</td></tr>
+      <tr class="head-row"><td>Hop-count EM</td><td>mixed</td><td>0.710</td><td>0.525</td><td>0.310</td></tr>
+      <tr><td></td><td>oracle-matched</td><td class="gold">0.845</td><td class="gold">0.580</td><td class="gold">0.375</td></tr>
+    </table>
+    <div class="callout">
+      The count keeps improving at every depth. <b>Step quality inverts at 4 hops</b>, where
+      restricting the pool leaves only the 1,175-row bucket to draw from.
+    </div>
+  </div>
+  <footer>
+    <span>n = 200 per hop, both arms</span>
+    <span class="src">no per-hop significance test run — the paired test is on the pooled 600</span>
+  </footer>
+</section>
+
+<!-- 26 ────────────────────────────── fine-tuning -->
+<section class="slide">
+  <div class="eyebrow">Result · fine-tuning</div>
+  <div class="body">
+    <h2>Fine-tuning beats prompting at its best configuration</h2>
+    <div class="split">
+      <div>
+        <table>
+          <tr><th>Arm</th><th>Step F1</th><th>ROUGE-L F1</th></tr>
+          <tr><td>Prompting, best pool</td><td>0.189</td><td>0.545</td></tr>
+          <tr><td>Fine-tuned LoRA</td><td class="best">0.341</td><td class="best">0.665</td></tr>
+        </table>
+      </div>
+      <div class="stat">
+        <span class="v accent num">10 / 10</span>
+        <span class="k">paired statistics significant — seven bootstrap, three McNemar — and
+          every one of them favours the fine-tuned arm</span>
+      </div>
+    </div>
+    <div class="callout">
+      The prompting arm here is prompting at its <b>strongest measured configuration</b>, not a
+      strawman. Fine-tuning is the current leader, and the prompting study becomes the ablation
+      behind it — which is a finding, not a defeat.
+    </div>
+  </div>
+  <footer><span>exp-015 · pinned 600 · paired bootstrap + McNemar</span></footer>
+</section>
+
+<!-- 27 ────────────────────────────── generalisation -->
+<section class="slide">
+  <div class="eyebrow">Result · generalisation</div>
+  <div class="body">
+    <h2>The fine-tune transfers form, but not depth</h2>
+    <div class="cols c3" style="margin-top:.6cqh">
+      <div class="stat">
+        <span class="v accent num">200/200</span>
+        <span class="k">chains still well-formed at a depth never seen in training
+          (chain validity 1.000)</span>
+      </div>
+      <div class="stat">
+        <span class="v gold num">169/200</span>
+        <span class="k">but systematically <b>too short</b> — under-decomposition 0.845</span>
+      </div>
+      <div class="stat">
+        <span class="v bad num">14.5%</span>
+        <span class="k">hop-count exact match on 4-hop, against <b>30.0%</b> for the prompting
+          baseline</span>
+      </div>
+    </div>
+    <div class="callout">
+      Trained on 2- and 3-hop only, the model keeps producing <b>valid</b> chains at 4 hops —
+      just too few steps. Step F1 still favours the fine-tune (0.198 vs 0.117); hop-count
+      flips to prompting. <b>Fine-tuning is dataset-bound in depth, not in form.</b>
+    </div>
+  </div>
+  <footer><span>exp-013 · LoRA trained on 2/3-hop, evaluated on the 4-hop slice · n = 200</span></footer>
+</section>
+
+<!-- 28 ────────────────────────────── end to end -->
+<section class="slide">
+  <div class="eyebrow">Result · end to end</div>
+  <div class="body">
+    <h2>Better plans do produce better answers — up to three hops</h2>
+    <table>
+      <tr><th>Decomposition source</th><th>Answer EM</th><th>Answer F1</th><th>EM by hop (2 / 3 / 4)</th></tr>
+      <tr><td>None — question asked whole</td><td>18.0%</td><td>27.2%</td><td>21.5 / 15.5 / 17.0</td></tr>
+      <tr><td>Prompted, unguided</td><td>21.3%</td><td>29.5%</td><td>29.0 / 20.0 / 15.0</td></tr>
+      <tr><td>Fine-tuned</td><td>24.2%</td><td>32.8%</td><td>34.0 / 24.0 / 14.5</td></tr>
+      <tr><td>Gold decompositions (ceiling)</td><td class="gold">28.0%</td><td class="gold">37.3%</td><td>40.0 / 30.5 / <span class="bad">13.5</span></td></tr>
+    </table>
+    <div class="callout open">
+      <b>Read the last column.</b> Answer accuracy rises monotonically overall — but at 4 hops
+      the ordering collapses entirely: all four cells sit between 13.5% and 17.0%, and asking
+      the question whole is nominally <em>best</em>. Decomposition pays off at 2–3 hops only.
+      No significance tests between these cells yet.
+    </div>
+  </div>
+  <footer><span>exp-017 · same reader and context in every cell · 200 questions per hop</span></footer>
+</section>
+
+<!-- 29 ────────────────────────────── divider: where next -->
+<section class="slide divider">
+  <div class="step">Part four</div>
+  <h1>Where this goes next</h1>
+  <p class="lead">What the evidence does not yet cover, and the experiment designed to cover it.</p>
+</section>
+
+<!-- 30 ────────────────────────────── the model confound -->
+<section class="slide">
+  <div class="eyebrow">Next · the gap in the evidence</div>
+  <div class="body">
+    <h2>Almost every result here is one model's result</h2>
+    <div class="split">
+      <div>
+        <p class="sub" style="margin-top:0">
+          Of every MuSiQue arm run, all but one use <b>Mistral-7B</b>. The single Qwen arm
+          disagrees with the Mistral finding it is usually quoted beside.
+        </p>
+        <div class="callout open">
+          So “hop guidance is worth little” and “fine-tuning beats prompting” are currently
+          claims about <b>the same one model</b> — and the model that disagrees with the first
+          was never brought into the second.
+        </div>
+      </div>
+      <div>
+        <div class="point">
+          <span class="tag">The experiment</span>
+          <h3>Hold everything, vary one thing</h3>
+          <p style="margin-bottom:1.4cqh">Same 2,000-example imbalanced pool, same pinned 600,
+             same unguided condition, same decoding.</p>
+        </div>
+        <div class="pills">
+          <span class="pill on">Mistral-7B</span>
+          <span class="pill on">Qwen2.5-7B</span>
+          <span class="pill on">Qwen2.5-14B</span>
+        </div>
+        <p class="sub" style="font-size:1.2cqw">
+          Mistral vs Qwen-7B isolates the <b>family</b>. Qwen-7B vs Qwen-14B isolates the
+          <b>size</b>. Each contrast moves exactly one factor.
+        </p>
+      </div>
+    </div>
+  </div>
+  <footer><span class="src">open issue #49 · #50</span></footer>
+</section>
+
+<!-- 31 ────────────────────────────── also next -->
+<section class="slide">
+  <div class="eyebrow">Next · also queued</div>
+  <div class="body">
+    <h2>Four more things, in order</h2>
+    <div class="chain" style="margin-top:.6cqh;gap:1.7cqh">
+      <div class="link"><span class="n">1</span><span class="t">
+        <b>A fine-tune trained on the pool alone</b> — 2,000 examples, not the full 19,938 —
+        to isolate what the pool itself is worth.</span></div>
+      <div class="link"><span class="n">2</span><span class="t">
+        <b>A fixed 45-question anchor set</b>, 15 per hop, inspected by hand in every experiment
+        from here on. The same questions every time.</span></div>
+      <div class="link"><span class="n">3</span><span class="t">
+        <b>Few-shot example ordering</b> — currently highest-similarity-first, never varied.
+        Reversed, and least-complex-first.</span></div>
+      <div class="link"><span class="n">4</span><span class="t">
+        <b>Whether the null generalises</b> — pool construction is now measured as a genuine
+        null, but masking, retriever and pool size have not had the same stage-by-stage check.</span></div>
+    </div>
+  </div>
+  <footer><span>Every result from here on is reported overall <em>and</em> per hop depth.</span></footer>
+</section>
+
+<!-- 32 ────────────────────────────── limitations -->
+<section class="slide">
+  <div class="eyebrow plain">Honest boundaries</div>
+  <div class="body">
+    <h2>What this evidence does not support</h2>
+    <div class="cols c2" style="gap:2.2cqw 3cqw;margin-top:.6cqh">
+      <div class="point"><h3>Single-model scope</h3>
+        <p>The hop-guidance finding is Mistral-specific; Qwen3.5-9B behaves differently.</p></div>
+      <div class="point"><h3>No human judgement</h3>
+        <p>Exact match against one gold plan penalises valid alternatives. No human validity
+           study has been run.</p></div>
+      <div class="point"><h3>Typed vs uniform untested</h3>
+        <p>The gap sits inside plausible run-to-run variance and carries no significance test.</p></div>
+      <div class="point"><h3>MetaQA end-to-end blocked</h3>
+        <p>The integrated graph run depends on an external system not yet available.</p></div>
+      <div class="point"><h3>Pool evidence is one trial</h3>
+        <p>One draw per strategy mixes the strategy's effect with the noise of that draw.</p></div>
+      <div class="point"><h3>No LLM judge, by design</h3>
+        <p>Early scoring used one; it is not ground truth and those figures are not evidence here.</p></div>
+    </div>
+  </div>
+  <footer><span>Anything not backed by a run artifact is reported as unmeasured.</span></footer>
+</section>
+
+<!-- 33 ────────────────────────────── decisions -->
+<section class="slide">
+  <div class="eyebrow">To agree on</div>
+  <div class="body">
+    <h2>Three decisions I need from this meeting</h2>
+    <div class="chain" style="margin-top:1cqh;gap:2.4cqh">
+      <div class="link"><span class="n">1</span><span class="t">
+        <b>Is the report card the thesis's primary metric?</b>
+        <span style="color:var(--muted)">Proposed, with end-to-end answer accuracy as the
+        downstream complement. Brought to confirm, not to open.</span></span></div>
+      <div class="link"><span class="n">2</span><span class="t">
+        <b>Is pool construction a contribution, or a hyperparameter?</b>
+        <span style="color:var(--muted)">Proposal: a hyperparameter, fixed at size-2,000
+        imbalanced. It is now a measured null rather than an untested one — reportable as an
+        ablation, but it cannot be claimed as a gain.</span></span></div>
+      <div class="link"><span class="n">3</span><span class="t">
+        <b>Do both datasets stay in scope, or does MuSiQue alone carry the thesis?</b>
+        <span style="color:var(--muted)">MetaQA's end-to-end half is externally blocked.</span></span></div>
+    </div>
+  </div>
+  <footer><span>Everything already run stays in the thesis as the ablation behind these choices.</span></footer>
+</section>
+
+</div>
+
+<div id="progress" style="width:0"></div>
+<div id="chrome">
+  <button id="prev" aria-label="Previous slide">←</button>
+  <span id="count">1 / 33</span>
+  <button id="next" aria-label="Next slide">→</button>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var countEl = document.getElementById('count');
+  var bar = document.getElementById('progress');
+
+  function show(n){
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function(s, k){ s.classList.toggle('on', k === i); });
+    countEl.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + 'vw';
+    try{ localStorage.setItem('deck-slide', String(i)); }catch(e){}
+  }
+  function step(d){ show(i + d); }
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); step(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); step(-1); }
+    else if (e.key === 'Home') { e.preventDefault(); show(0); }
+    else if (e.key === 'End') { e.preventDefault(); show(slides.length - 1); }
+  });
+  document.getElementById('next').addEventListener('click', function(){ step(1); });
+  document.getElementById('prev').addEventListener('click', function(){ step(-1); });
+  document.getElementById('deck').addEventListener('click', function(e){
+    if (e.target.closest('#chrome')) return;
+    step(e.clientX > window.innerWidth / 2 ? 1 : -1);
+  });
+
+  var start = 0;
+  try{ start = parseInt(localStorage.getItem('deck-slide') || '0', 10) || 0; }catch(e){}
+  show(start);
+  document.getElementById('deck').focus();
+})();
+</script>
