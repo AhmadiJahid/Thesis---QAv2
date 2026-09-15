@@ -126,10 +126,32 @@
 % label + wrapped body sharing one baseline.  Used instead of a two-column
 % tabular: \arraystretch (1.25 above) shifts p-column text down relative to
 % its neighbour, and \makebox + \parbox[t] cannot drift.
+% Both sides are \parbox[t] and the size is set OUTSIDE both boxes: a size
+% change inside a [t]-aligned box positions its first line against the outer
+% font's strut, which is what makes label and body drift apart.
 \newcommand{\defrow}[3][30mm]{%
-  \noindent\makebox[#1][l]{\color{ink}\footnotesize\bfseries #2}%
-  \parbox[t]{\dimexpr\linewidth-#1\relax}{\color{inktwo}\footnotesize #3}%
-  \par\vspace{3mm}}
+  \par\noindent\footnotesize
+  \parbox[t]{#1}{\raggedright\bfseries\textcolor{ink}{#2}}%
+  \parbox[t]{\dimexpr\linewidth-#1\relax}{\raggedright\textcolor{inktwo}{#3}}%
+  \par\vspace{2.6mm}}
+
+% right-aligned label + sublabel beside a tinted example box.  Same rule as
+% \defrow: the size is set outside both boxes so their first lines share a
+% baseline.  Used by the masking and normalisation ladders.
+\newcommand{\ladderrow}[5][28mm]{% width, label, sublabel, box colour, content
+  \par\noindent\footnotesize
+  \parbox[t]{#1}{\raggedleft\bfseries\textcolor{ink}{#2}\par
+   \vspace{0.3mm}{\scriptsize\textcolor{muted}{#3}\par}}%
+  \hspace{3mm}%
+  \txtbox{#4}{\dimexpr\linewidth-#1-7mm\relax}{\ttfamily#5}%
+  \par\vspace{1.8mm}}
+
+% label + tinted example box, same rule: size outside, \parbox[t] both sides
+\newcommand{\exrow}[4][20mm]{%
+  \par\noindent\footnotesize
+  \parbox[t]{#1}{\raggedright\bfseries\textcolor{ink}{#2}}%
+  \txtbox{#3}{\dimexpr\linewidth-#1-4mm\relax}{\ttfamily#4}%
+  \par\vspace{2.2mm}}
 
 % table column head, gold/mono step placeholder, highlight, tick, pill
 \newcommand{\colhead}[1]{{\color{accent}\fontsize{6.5}{8}\selectfont\bfseries\lsp{#1}}}
@@ -213,9 +235,9 @@
 \begin{frame}[t]
 \slidehead{MOTIVATION}{The plan is three ordered steps, and each needs the last}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{118mm}@{}}
-\chainnum{1} & {\color{ink}\fontsize{10.5}{13}\selectfont Who directed \textbf{The Matrix}?}\\[2.2mm]
-\chainnum{2} & {\color{ink}\fontsize{10.5}{13}\selectfont Which other films did \plc{[\#1]} direct?}\\[2.2mm]
-\chainnum{3} & {\color{ink}\fontsize{10.5}{13}\selectfont What languages are spoken in \plc{[\#2]}?}
+\chainnum{1} & \textcolor{ink}{\fontsize{10.5}{13}\selectfont Who directed \textbf{The Matrix}?}\\[2.2mm]
+\chainnum{2} & \textcolor{ink}{\fontsize{10.5}{13}\selectfont Which other films did \plc{[\#1]} direct?}\\[2.2mm]
+\chainnum{3} & \textcolor{ink}{\fontsize{10.5}{13}\selectfont What languages are spoken in \plc{[\#2]}?}
 \end{tabular}
 \callout{The \plc{[\#k]} placeholders are what make this a \textbf{plan} rather than
  three unrelated questions. They also make it machine-checkable: a step that references a
@@ -231,11 +253,11 @@
 \begin{tabular}{@{}l@{\hspace{16mm}}l@{}}
 \multicolumn{2}{@{}l}{\textbf{Input}}\\
 \midrule
-{\ttfamily Q}\quad a multi-hop question & \color{inktwo}natural language\\
-{\ttfamily D}\quad a domain           & \color{inktwo}the knowledge source\\[2.5mm]
+{\ttfamily Q}\quad a multi-hop question & \textcolor{inktwo}{natural language}\\
+{\ttfamily D}\quad a domain           & \textcolor{inktwo}{the knowledge source}\\[2.5mm]
 \multicolumn{2}{@{}l}{\textbf{Output}}\\
 \midrule
-{\ttfamily Q' =}\,$\langle q_1 \dots q_n \rangle$ & \color{inktwo}ordered sub-questions
+{\ttfamily Q' =}\,$\langle q_1 \dots q_n \rangle$ & \textcolor{inktwo}{ordered sub-questions}
 \end{tabular}
 \par\vspace{5mm}
 {\color{muted}\scriptsize
@@ -324,25 +346,19 @@
 \begin{frame}[t]
 \slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 1}{What masking is, and the two places it is applied}
 {\color{inktwo}\small
- Masking replaces a named entity with a token for its \emph{type}, so two questions can be
- compared on the shape they share rather than on the names they happen to share.\par}
-\vspace{4.5mm}
-\noindent\makebox[20mm][l]{\color{ink}\footnotesize\bfseries raw}%
- \txtbox{sunk}{106mm}{\ttfamily\footnotesize\color{inktwo}who directed Baby Face}\par
-\vspace{2.2mm}
-\noindent\makebox[20mm][l]{\color{ink}\footnotesize\bfseries masked}%
- \txtbox{accentsoft}{106mm}{\ttfamily\footnotesize\color{accentink}who directed \plc{[MOVIE]}}\par
-\vspace{5.5mm}
-\defrow[34mm]{On the pool}{Masked once, in advance. The masked pool is a maintained artifact,
- regenerated as a deliberate step and never re-masked while a query is being served.}
-\defrow[34mm]{On the question}{Masked at lookup time, on every incoming question, just before
- it is matched against the pool.}
-\vspace{1mm}
-\calloutwarn{The split is not cosmetic. {\ttfamily Stars} is itself a title in the knowledge
- base, so re-masking the pool would turn {\ttfamily who stars in Baby Face} into
- {\ttfamily who [MOVIE] in [MOVIE]}. A corrupted question costs one lookup; a corrupted pool
- item degrades every lookup after it.}
-\srcmono{ADR 0003 $\cdot$ src/entity\_masking.py $\cdot$ placeholders: [MOVIE] and [PERSON], from the MetaQA KB}
+ Masking replaces a named entity with a token for its \emph{type}, so questions are compared
+ on shape, not on names.\par}
+\vspace{3mm}
+\exrow{raw}{sunk}{\textcolor{inktwo}{who directed Baby Face}}
+\exrow{masked}{accentsoft}{\textcolor{accentink}{who directed }\plc{[MOVIE]}}
+\vspace{3mm}
+\defrow[32mm]{On the pool}{Masked once, in advance. The masked pool is a maintained artifact,
+ never re-masked while a query is served.}
+\defrow[32mm]{On the question}{Masked at lookup time, on every question, before it meets the pool.}
+\calloutwarn{{\ttfamily Stars} is itself a title in the knowledge base: re-masking the pool would
+ turn {\ttfamily who stars in Baby Face} into {\ttfamily who [MOVIE] in [MOVIE]}. A bad pool item
+ costs every lookup after it.}
+\srcmono{ADR 0003 $\cdot$ src/entity\_masking.py $\cdot$ placeholders: [MOVIE] and [PERSON]}
 \end{frame}
 
 % ====================================== 7b -- masking: variants ======
@@ -352,17 +368,12 @@
  Retrieval over raw text finds examples that share names. Shared names say nothing about
  how many hops a question needs.\par}
 \vspace{4mm}
-\begin{tabular}{@{}>{\raggedleft\arraybackslash}p{24mm}@{\hspace{3mm}}l@{}}
-{\footnotesize\bfseries raw\par}{\scriptsize\color{muted}entities intact\par}
- & \txtbox{sunk}{100mm}{\ttfamily\footnotesize\color{inktwo}
-   which films did Christina Ricci star in after The Addams Family in 1991}\\[2.6mm]
-{\footnotesize\bfseries uniform\par}{\scriptsize\color{muted}one shared token\par}
- & \txtbox{sunk}{100mm}{\ttfamily\footnotesize\color{inktwo}
-   which films did {\color{accent}[MASK]} star in after {\color{accent}[MASK]} in 1991}\\[2.6mm]
-{\footnotesize\bfseries typed\par}{\scriptsize\color{muted}type label kept\par}
- & \txtbox{accentsoft}{100mm}{\ttfamily\footnotesize\color{accentink}
-   which films did {\color{gold}[PERSON]} star in after {\color{gold}[MOVIE]} in 1991}
-\end{tabular}
+\ladderrow[24mm]{raw}{entities intact}{sunk}%
+ {\textcolor{inktwo}{which films did Christina Ricci star in after The Addams Family in 1991}}
+\ladderrow[24mm]{uniform}{one shared token}{sunk}%
+ {\textcolor{inktwo}{which films did \textcolor{accent}{[MASK]} star in after \textcolor{accent}{[MASK]} in 1991}}
+\ladderrow[24mm]{typed}{type label kept}{accentsoft}%
+ {\textcolor{accentink}{which films did \plc{[PERSON]} star in after \plc{[MOVIE]} in 1991}}
 \srcline{The pool is masked once in advance, never at query time --- dynamic masking corrupts
  titles that collide with common words.}
 \end{frame}
@@ -373,7 +384,7 @@
 {\color{inktwo}\small
  Every prompt draws its examples from one pool. The pool is built once, before any question
  is asked --- and three strategies build it differently.\par}
-\vspace{7mm}
+\vspace{5.5mm}
 \defrow[30mm]{Imbalanced}{Draws uniformly. The pool inherits whatever mix the corpus already has.}
 \defrow[30mm]{Balanced}{Fills an equal quota from each hop bucket, so no hop count dominates.}
 \defrow[30mm]{Clustered}{k-means over the pool, one example per centroid --- covers the spread
@@ -440,15 +451,15 @@
 \slidehead{RESEARCH QUESTIONS}{Now that the method is on the table, these are the questions it asks}
 \vspace{1mm}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
-\chainnum{1} & {\color{ink}\fontsize{10}{12.5}\selectfont
+\chainnum{1} & \textcolor{ink}{\fontsize{10}{12.5}\selectfont
  Does \textbf{how the few-shot examples are chosen} --- masking, pool, retrieval, rerank ---
  determine whether a mid-sized model can decompose at all?}\\[3.6mm]
-\chainnum{2} & {\color{ink}\fontsize{10}{12.5}\selectfont
+\chainnum{2} & \textcolor{ink}{\fontsize{10}{12.5}\selectfont
  Does \textbf{knowing the hop count in advance} help, and is the answer the same across models?}\\[3.6mm]
-\chainnum{3} & {\color{ink}\fontsize{10}{12.5}\selectfont
+\chainnum{3} & \textcolor{ink}{\fontsize{10}{12.5}\selectfont
  Does \textbf{fine-tuning} beat prompting --- and does it still hold at a depth it never saw
  in training?}\\[3.6mm]
-\chainnum{4} & {\color{ink}\fontsize{10}{12.5}\selectfont
+\chainnum{4} & \textcolor{ink}{\fontsize{10}{12.5}\selectfont
  Do \textbf{better plans produce better answers} end to end?}
 \end{tabular}
 \srcline{Every claim that follows is paired to one of these four.}
@@ -476,9 +487,9 @@
 \begin{tabular}{@{}p{16mm}R{20mm}R{18mm}@{}}
 \colhead{MUSIQUE} & \colhead{TRAIN} & \colhead{DEV USED}\\
 \midrule
-2-hop & \color{inktwo}14,376 & \color{inktwo}200\\
-3-hop & \color{inktwo}4,387 & \color{inktwo}200\\
-4-hop & \color{inktwo}1,175 & \color{inktwo}200\\
+2-hop & \textcolor{inktwo}{14,376} & \textcolor{inktwo}{200}\\
+3-hop & \textcolor{inktwo}{4,387} & \textcolor{inktwo}{200}\\
+4-hop & \textcolor{inktwo}{1,175} & \textcolor{inktwo}{200}\\
 \bottomrule
 \end{tabular}
 \par\vspace{3.5mm}
@@ -491,9 +502,9 @@
 \begin{tabular}{@{}p{16mm}R{20mm}R{18mm}@{}}
 \colhead{METAQA} & \colhead{KB QUESTIONS} & \colhead{EVAL USED}\\
 \midrule
-1-hop & \color{inktwo}96,106 & \color{inktwo}100\\
-2-hop & \color{inktwo}118,980 & \color{inktwo}100\\
-3-hop & \color{inktwo}114,196 & \color{inktwo}100\\
+1-hop & \textcolor{inktwo}{96,106} & \textcolor{inktwo}{100}\\
+2-hop & \textcolor{inktwo}{118,980} & \textcolor{inktwo}{100}\\
+3-hop & \textcolor{inktwo}{114,196} & \textcolor{inktwo}{100}\\
 \bottomrule
 \end{tabular}
 \par\vspace{3.5mm}
@@ -536,24 +547,17 @@
 % ============================================ 15 -- normalisation ======
 \begin{frame}[t]
 \slidehead{SETUP \textperiodcentered\ METRICS}{``After normalisation'' means exactly three operations}
-\begin{tabular}{@{}>{\raggedleft\arraybackslash}p{28mm}@{\hspace{3mm}}l@{}}
-{\footnotesize\bfseries as generated\par}{\scriptsize\color{muted}raw step\par}
- & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
-   Which well-known films did {\color{gold}[\#2]} direct?}\\[2.4mm]
-{\footnotesize\bfseries 1 $\cdot$ lower\par}{\scriptsize\color{muted}+ strip outer space\par}
- & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
-   which well-known films did {\color{gold}[\#2]} direct?}\\[2.4mm]
-{\footnotesize\bfseries 2 $\cdot$ delete\par}{\scriptsize\color{muted}all but word chars, space, \#\par}
- & \txtbox{sunk}{96mm}{\ttfamily\footnotesize\color{inktwo}
-   which wellknown films did {\color{gold}\#2} direct}\\[2.4mm]
-{\footnotesize\bfseries 3 $\cdot$ collapse\par}{\scriptsize\color{muted}whitespace runs\par}
- & \txtbox{accentsoft}{96mm}{\ttfamily\footnotesize\color{accentink}
-   which wellknown films did {\color{gold}\#2} direct}
-\end{tabular}
-\calloutwarn{Two consequences worth knowing: punctuation is \textbf{deleted, not spaced} --- so
- {\ttfamily well-known} becomes {\ttfamily wellknown} --- and since {\ttfamily \#} is exempt but
- brackets are not, \textbf{{\ttfamily [\#2]} and {\ttfamily \#2} compare equal.} Articles, digits
- and Unicode are left alone.}
+\ladderrow{as generated}{raw step}{sunk}%
+ {\textcolor{inktwo}{Which well-known films did \plc{[\#2]} direct?}}
+\ladderrow{1 $\cdot$ lower}{+ strip outer space}{sunk}%
+ {\textcolor{inktwo}{which well-known films did \plc{[\#2]} direct?}}
+\ladderrow{2 $\cdot$ delete}{all but word chars, space, \#}{sunk}%
+ {\textcolor{inktwo}{which wellknown films did \plc{\#2} direct}}
+\ladderrow{3 $\cdot$ collapse}{whitespace runs}{accentsoft}%
+ {\textcolor{accentink}{which wellknown films did \plc{\#2} direct}}
+\calloutwarn{Punctuation is \textbf{deleted, not spaced}: {\ttfamily well-known} becomes
+ {\ttfamily wellknown}. {\ttfamily \#} is exempt but brackets are not, so \textbf{{\ttfamily [\#2]}
+ and {\ttfamily \#2} compare equal}. Articles, digits and Unicode are left alone.}
 \srcpair{Shared by exact match, step F1 and ordered accuracy}{Break EM is the exception --- it lowercases only}
 \end{frame}
 
@@ -575,11 +579,11 @@
 \begin{tabular}{@{}p{36mm}r@{}}
 \colhead{PREDICTED 3, GOLD 2} & \\
 \midrule
-step 1 matches & {\color{ink}\ck}\\
-step 2 matches & {\color{ink}\ck}\\
-step 3 --- no gold to compare & {\color{bad}counted against}\\
+step 1 matches & \textcolor{ink}{\ck}\\
+step 2 matches & \textcolor{ink}{\ck}\\
+step 3 --- no gold step & \textcolor{bad}{counted against}\\
 \midrule
-\textbf{Score} & {\color{ink}\normalsize 2 / 3}
+\textbf{Score} & \textcolor{ink}{\normalsize 2 / 3}
 \end{tabular}
 \end{column}
 \end{columns}
@@ -661,8 +665,8 @@ step 3 --- no gold to compare & {\color{bad}counted against}\\
  & \colhead{ROUGE-L F1} & \colhead{HOP-COUNT EM}\\
 \midrule
 typed & \textbf{0.058} & \textbf{0.201} & \textbf{0.179} & \textbf{0.544} & \textbf{0.522}\\
-uniform & \color{inktwo}0.055 & \color{inktwo}0.190 & \color{inktwo}0.166 & \color{inktwo}0.543 & \color{inktwo}0.505\\
-raw & \color{inktwo}0.037 & \color{inktwo}0.178 & \color{inktwo}0.158 & \color{inktwo}0.532 & \color{inktwo}0.485\\
+uniform & \textcolor{inktwo}{0.055} & \textcolor{inktwo}{0.190} & \textcolor{inktwo}{0.166} & \textcolor{inktwo}{0.543} & \textcolor{inktwo}{0.505}\\
+raw & \textcolor{inktwo}{0.037} & \textcolor{inktwo}{0.178} & \textcolor{inktwo}{0.158} & \textcolor{inktwo}{0.532} & \textcolor{inktwo}{0.485}\\
 \bottomrule
 \end{tabular}
 \calloutwarn{Margins over raw are consistent but \textbf{small} --- 2.1 points of exact match, 2.3 of step
@@ -675,18 +679,19 @@ raw & \color{inktwo}0.037 & \color{inktwo}0.178 & \color{inktwo}0.158 & \color{i
 \begin{frame}[t]
 \slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Quality falls with every hop added}
 \small
+{\renewcommand{\arraystretch}{1.06}%
 \begin{tabular}{@{}p{30mm}p{26mm}R{20mm}R{20mm}R{20mm}@{}}
 \colhead{METRIC} & \colhead{VARIANT} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
 \midrule
 Step F1 & typed & \textbf{0.322} & \textbf{0.171} & \textbf{0.109}\\
- & uniform & \color{inktwo}0.320 & \color{inktwo}0.157 & \color{inktwo}0.092\\
- & raw & \color{inktwo}0.282 & \color{inktwo}0.147 & \color{inktwo}0.103\\
+ & uniform & \textcolor{inktwo}{0.320} & \textcolor{inktwo}{0.157} & \textcolor{inktwo}{0.092}\\
+ & raw & \textcolor{inktwo}{0.282} & \textcolor{inktwo}{0.147} & \textcolor{inktwo}{0.103}\\
 \midrule
-Hop-count EM & typed & \textbf{0.720} & \textbf{0.525} & \color{inktwo}0.320\\
- & uniform & \color{inktwo}0.695 & \color{inktwo}0.495 & \textbf{0.325}\\
- & raw & \color{inktwo}0.680 & \color{inktwo}0.490 & \color{inktwo}0.285\\
+Hop-count EM & typed & \textbf{0.720} & \textbf{0.525} & \textcolor{inktwo}{0.320}\\
+ & uniform & \textcolor{inktwo}{0.695} & \textcolor{inktwo}{0.495} & \textbf{0.325}\\
+ & raw & \textcolor{inktwo}{0.680} & \textcolor{inktwo}{0.490} & \textcolor{inktwo}{0.285}\\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \callout{Step F1 loses roughly two-thirds of its value between 2 and 4 hops. Four-hop is both the
  hardest class and the one with the least training data --- those two facts are not
  independent. \textbf{Provenance:} this is the v1 measurement; the same typed arm re-run
@@ -780,26 +785,27 @@ Hop-count EM & typed & \textbf{0.720} & \textbf{0.525} & \color{inktwo}0.320\\
 \begin{frame}[t]
 \slidehead{RESULT \textperiodcentered\ HOP GUIDANCE}{A perfect hop count helps one model far more than the other}
 \small
+{\renewcommand{\arraystretch}{1.00}%
 \begin{tabular}{@{}p{28mm}R{16mm}R{20mm}R{18mm}S{42mm}@{}}
 \colhead{CONDITION} & \colhead{STEP F1} & \colhead{HOP-COUNT EM} & \colhead{EXACT MATCH}
  & \colhead{PAIRED TESTS VS UNGUIDED}\\
 \midrule
 \multicolumn{5}{@{}l}{\textbf{Mistral-7B-Instruct-v0.3}}\\
 \midrule
-Unguided & \color{inktwo}0.204 & \color{inktwo}0.508 & \color{inktwo}0.062 & \color{muted}baseline\\
-Oracle-guided & \color{inktwo}0.206 & {\color{gold}\bfseries 0.590} & \color{inktwo}0.057
- & \color{inktwo}count, ROUGE-L and GED move; step content does not\\
+Unguided & \textcolor{inktwo}{0.204} & \textcolor{inktwo}{0.508} & \textcolor{inktwo}{0.062} & \textcolor{muted}{baseline}\\
+Oracle-guided & \textcolor{inktwo}{0.206} & \textcolor{gold}{\bfseries 0.590} & \textcolor{inktwo}{0.057}
+ & \textcolor{inktwo}{count, ROUGE-L and GED move; content does not}\\
 \midrule
 \multicolumn{5}{@{}l}{\textbf{Qwen3.5-9B}}\\
 \midrule
-Unguided & \color{inktwo}0.213 & \color{inktwo}0.520 & \color{inktwo}0.062 & \color{muted}baseline\\
-Oracle-guided & {\color{gold}\bfseries 0.237} & {\color{gold}\bfseries 0.873} & {\color{gold}\bfseries 0.073}
- & \color{inktwo}six of nine report-card metrics move, including every content and count term\\
+Unguided & \textcolor{inktwo}{0.213} & \textcolor{inktwo}{0.520} & \textcolor{inktwo}{0.062} & \textcolor{muted}{baseline}\\
+Oracle-guided & \textcolor{gold}{\bfseries 0.237} & \textcolor{gold}{\bfseries 0.873} & \textcolor{gold}{\bfseries 0.073}
+ & \textcolor{inktwo}{six of nine report-card metrics move, content and count included}\\
 \bottomrule
-\end{tabular}
-\calloutopen{Same conditions, same 600 questions, same decoding. \textbf{The method's effectiveness is
- model-dependent} --- which is why the next experiment holds everything else fixed and
- varies only the model.}
+\end{tabular}}
+\vspace{-3.5mm}
+\calloutopen{Same conditions, same 600 questions, same decoding. \textbf{Effectiveness is
+ model-dependent}, which is why the next experiment varies only the model.}
 \srcpair{exp-004 / exp-005, tested in exp-014}{not significant on Qwen: SARI, chain validity, Break EM}
 \end{frame}
 
@@ -810,14 +816,14 @@ Oracle-guided & {\color{gold}\bfseries 0.237} & {\color{gold}\bfseries 0.873} & 
 \begin{tabular}{@{}p{40mm}R{16mm}R{20mm}S{46mm}@{}}
 \colhead{METRIC} & \colhead{MIXED POOL} & \colhead{ORACLE HOP-MATCHED} & \colhead{RESULT}\\
 \midrule
-Step F1 (macro) & \color{inktwo}0.204 & \color{inktwo}0.193
- & \color{muted}not significant $\cdot$ CI [$-$0.006, +0.027]\\
-Ordered step accuracy & \color{inktwo}0.180 & \color{inktwo}0.180
- & \color{muted}not significant $\cdot$ p = 0.950\\
-Hop-count exact match & \color{inktwo}0.515 & {\color{gold}\bfseries 0.600}
- & \color{inktwo}significant $\cdot$ McNemar p = 0.0006\\
-Exact match & \color{inktwo}0.062 & \color{inktwo}0.057
- & \color{muted}not significant $\cdot$ p = 0.664\\
+Step F1 (macro) & \textcolor{inktwo}{0.204} & \textcolor{inktwo}{0.193}
+ & \textcolor{muted}{not significant $\cdot$ CI [$-$0.006, +0.027]}\\
+Ordered step accuracy & \textcolor{inktwo}{0.180} & \textcolor{inktwo}{0.180}
+ & \textcolor{muted}{not significant $\cdot$ p = 0.950}\\
+Hop-count exact match & \textcolor{inktwo}{0.515} & \textcolor{gold}{\bfseries 0.600}
+ & \textcolor{inktwo}{significant $\cdot$ McNemar p = 0.0006}\\
+Exact match & \textcolor{inktwo}{0.062} & \textcolor{inktwo}{0.057}
+ & \textcolor{muted}{not significant $\cdot$ p = 0.664}\\
 \bottomrule
 \end{tabular}
 \calloutwarn{The gain concentrates at 2-hop and also \textbf{shrinks the candidate pool} --- so it may be
@@ -832,14 +838,14 @@ Exact match & \color{inktwo}0.062 & \color{inktwo}0.057
 \begin{tabular}{@{}p{34mm}p{32mm}R{18mm}R{18mm}R{18mm}@{}}
 \colhead{METRIC} & \colhead{ARM} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
 \midrule
-Step F1 & mixed & \color{inktwo}0.327 & \textbf{0.168} & \textbf{0.116}\\
- & oracle-matched & \textbf{0.355} & \color{inktwo}0.153 & {\color{bad}0.071}\\
+Step F1 & mixed & \textcolor{inktwo}{0.327} & \textbf{0.168} & \textbf{0.116}\\
+ & oracle-matched & \textbf{0.355} & \textcolor{inktwo}{0.153} & \textcolor{bad}{0.071}\\
 \midrule
-Ordered accuracy & mixed & \color{inktwo}0.318 & \textbf{0.138} & \textbf{0.085}\\
- & oracle-matched & \textbf{0.345} & \color{inktwo}0.135 & {\color{bad}0.060}\\
+Ordered accuracy & mixed & \textcolor{inktwo}{0.318} & \textbf{0.138} & \textbf{0.085}\\
+ & oracle-matched & \textbf{0.345} & \textcolor{inktwo}{0.135} & \textcolor{bad}{0.060}\\
 \midrule
-Hop-count EM & mixed & \color{inktwo}0.710 & \color{inktwo}0.525 & \color{inktwo}0.310\\
- & oracle-matched & {\color{gold}\bfseries 0.845} & {\color{gold}\bfseries 0.580} & {\color{gold}\bfseries 0.375}\\
+Hop-count EM & mixed & \textcolor{inktwo}{0.710} & \textcolor{inktwo}{0.525} & \textcolor{inktwo}{0.310}\\
+ & oracle-matched & \textcolor{gold}{\bfseries 0.845} & \textcolor{gold}{\bfseries 0.580} & \textcolor{gold}{\bfseries 0.375}\\
 \bottomrule
 \end{tabular}
 \callout{The count keeps improving at every depth. \textbf{Step quality inverts at 4 hops}, where
@@ -854,10 +860,10 @@ Hop-count EM & mixed & \color{inktwo}0.710 & \color{inktwo}0.525 & \color{inktwo
 \begin{columns}[T,onlytextwidth]
 \begin{column}{0.50\textwidth}
 \small
-\begin{tabular}{@{}p{30mm}R{14mm}R{18mm}@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{34mm}R{14mm}R{17mm}@{}}
 \colhead{ARM} & \colhead{STEP F1} & \colhead{ROUGE-L F1}\\
 \midrule
-Prompting, best pool & \color{inktwo}0.189 & \color{inktwo}0.545\\
+Prompting, best pool & \textcolor{inktwo}{0.189} & \textcolor{inktwo}{0.545}\\
 Fine-tuned LoRA & \textbf{0.341} & \textbf{0.665}\\
 \bottomrule
 \end{tabular}
@@ -905,11 +911,11 @@ Fine-tuned LoRA & \textbf{0.341} & \textbf{0.665}\\
 \colhead{DECOMPOSITION SOURCE} & \colhead{ANSWER EM} & \colhead{ANSWER F1}
  & \colhead{EM BY HOP (2 / 3 / 4)}\\
 \midrule
-None --- question asked whole & \color{inktwo}18.0\% & \color{inktwo}27.2\% & \color{inktwo}21.5 / 15.5 / 17.0\\
-Prompted, unguided & \color{inktwo}21.3\% & \color{inktwo}29.5\% & \color{inktwo}29.0 / 20.0 / 15.0\\
-Fine-tuned & \color{inktwo}24.2\% & \color{inktwo}32.8\% & \color{inktwo}34.0 / 24.0 / 14.5\\
-Gold decompositions (ceiling) & {\color{gold}\bfseries 28.0\%} & {\color{gold}\bfseries 37.3\%}
- & {\color{inktwo}40.0 / 30.5 / {\color{bad}13.5}}\\
+None --- question asked whole & \textcolor{inktwo}{18.0\%} & \textcolor{inktwo}{27.2\%} & \textcolor{inktwo}{21.5 / 15.5 / 17.0}\\
+Prompted, unguided & \textcolor{inktwo}{21.3\%} & \textcolor{inktwo}{29.5\%} & \textcolor{inktwo}{29.0 / 20.0 / 15.0}\\
+Fine-tuned & \textcolor{inktwo}{24.2\%} & \textcolor{inktwo}{32.8\%} & \textcolor{inktwo}{34.0 / 24.0 / 14.5}\\
+Gold decompositions (ceiling) & \textcolor{gold}{\bfseries 28.0\%} & \textcolor{gold}{\bfseries 37.3\%}
+ & \textcolor{inktwo}{40.0 / 30.5 / {\color{bad}13.5}}\\
 \bottomrule
 \end{tabular}
 \calloutopen{\textbf{Read the last column.} Answer accuracy rises monotonically overall --- but at 4 hops
@@ -946,20 +952,20 @@ Gold decompositions (ceiling) & {\color{gold}\bfseries 28.0\%} & {\color{gold}\b
 \end{column}
 \begin{column}{0.45\textwidth}
  \ptag{THE EXPERIMENT}\phead{Hold everything, vary one thing}
- \pbody{Same 2,000-example imbalanced pool, same pinned 600, same unguided condition,
-  same decoding.}
- \vspace{3.5mm}
+ \pbody{Same 2,000-example imbalanced pool, same pinned 600, same unguided condition and
+  decoding.}
+ \vspace{2.5mm}
 
  \pillon{Mistral-7B}\hspace{1.5mm}\pillon{Qwen2.5-7B}\hspace{1.5mm}\pillon{Qwen2.5-14B}
- \vspace{3.5mm}
+ \vspace{1.5mm}
 
  {\color{inktwo}\scriptsize
-  Mistral vs Qwen-7B isolates the \textbf{family}. Qwen-7B vs Qwen-14B isolates the
-  \textbf{size}. Each contrast moves exactly one factor.\par
-  \vspace{2mm}
-  Qwen3.5-9B is deliberately \emph{not} the size rung --- it differs from Qwen2.5-7B in
+  Mistral vs Qwen-7B isolates the \textbf{family}, Qwen-7B vs Qwen-14B the \textbf{size}.
+  Each contrast moves exactly one factor.\par
+  \vspace{1mm}
+  Qwen3.5-9B is deliberately \emph{not} the size rung: it differs from Qwen2.5-7B in
   generation as well as parameter count, so it would confound the two. Bringing it into
-  the fine-tuning claim is a separate arm, and a cheap one.\par}
+  the fine-tuning claim is a separate, cheap arm.\par}
 \end{column}
 \end{columns}
 \srcmono{open issue \#49 $\cdot$ \#50}
@@ -969,16 +975,16 @@ Gold decompositions (ceiling) & {\color{gold}\bfseries 28.0\%} & {\color{gold}\b
 \begin{frame}[t]
 \slidehead{NEXT \textperiodcentered\ ALSO QUEUED}{Four more things, in order}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
-\chainnum{1} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{1} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{A fine-tune trained on the pool alone} --- 2,000 examples, not the full 19,938 ---
  to isolate what the pool itself is worth.}\\[3mm]
-\chainnum{2} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{2} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{A fixed 45-question anchor set}, 15 per hop, inspected by hand in every experiment
  from here on. The same questions every time.}\\[3mm]
-\chainnum{3} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{3} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Few-shot example ordering} --- currently highest-similarity-first, never varied.
  Reversed, and least-complex-first.}\\[3mm]
-\chainnum{4} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{4} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Whether the null generalises} --- pool construction is now measured as a genuine
  null, but masking, retriever and pool size have not had the same stage-by-stage check.}
 \end{tabular}
@@ -1019,16 +1025,16 @@ Gold decompositions (ceiling) & {\color{gold}\bfseries 28.0\%} & {\color{gold}\b
 \slidehead{TO AGREE ON}{Three decisions I need from this meeting}
 \vspace{1mm}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
-\chainnum{1} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{1} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Is the report card the thesis's primary metric?}
  {\color{muted}Proposed, with end-to-end answer accuracy as the downstream complement.
  Brought to confirm, not to open.}}\\[3.4mm]
-\chainnum{2} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{2} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Is pool construction a contribution, or a hyperparameter?}
  {\color{muted}Proposal: a hyperparameter, fixed at size-2,000 imbalanced. It is now a
  measured null rather than an untested one --- reportable as an ablation, but it cannot be
  claimed as a gain.}}\\[3.4mm]
-\chainnum{3} & {\color{ink}\fontsize{9.5}{12}\selectfont
+\chainnum{3} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Do both datasets stay in scope, or does MuSiQue alone carry the thesis?}
  {\color{muted}MetaQA's end-to-end half is externally blocked.}}
 \end{tabular}
