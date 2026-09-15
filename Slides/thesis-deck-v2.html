@@ -420,30 +420,19 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
   <div class="eyebrow">Methodology · component 2</div>
   <div class="body">
     <h2>The few-shot pool is a sample, and how it is drawn is a choice</h2>
-    <div class="split">
-      <div>
-        <table>
-          <tr><th>Strategy</th><th>How it draws</th></tr>
-          <tr><td>Imbalanced</td><td>uniform draw — follows the corpus skew</td></tr>
-          <tr><td>Balanced</td><td>equal quota per hop bucket</td></tr>
-          <tr><td>Clustered</td><td>k-means cover, one row per centroid</td></tr>
-        </table>
-        <p class="sub" style="font-size:1.3cqw">
-          Sizes swept from 1,000 to 8,000 examples, drawn from a 19,938-row training split,
-          stratified on hop prefix at seed 42.
-        </p>
-      </div>
-      <div>
-        <div class="callout warn" style="margin-bottom:1.8cqh">
-          MuSiQue is <b>72% two-hop</b>. An imbalanced pool inherits that skew, so 4-hop
-          examples are scarce exactly where the model needs them most.
-        </div>
-        <div class="stat">
-          <span class="v accent num">1,175</span>
-          <span class="k">4-hop training questions available, against 14,376 at two hops —
-            every 4-hop result in this deck rests on the thinnest evidence.</span>
-        </div>
-      </div>
+    <p class="sub">
+      Every prompt draws its examples from one pool. The pool is built once, before any
+      question is asked — and three strategies build it differently.
+    </p>
+    <table>
+      <tr><th>Strategy</th><th>How it draws</th></tr>
+      <tr><td>Imbalanced</td><td>Draws uniformly. The pool inherits whatever mix the corpus already has.</td></tr>
+      <tr><td>Balanced</td><td>Fills an equal quota from each hop bucket, so no hop count dominates.</td></tr>
+      <tr><td>Clustered</td><td>k-means over the pool, one example per centroid — covers the spread rather than the frequency.</td></tr>
+    </table>
+    <div class="callout warn" style="margin-top:2.2cqh">
+      MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
+      so the harder multi-hop examples are the scarcest thing in the prompt.
     </div>
   </div>
   <footer><span class="src">configs/pool_sweep.json · MuSiQue-Ans v1.0 train</span></footer>

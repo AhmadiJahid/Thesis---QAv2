@@ -355,31 +355,22 @@
 % ===================================================== 8 -- pool ======
 \begin{frame}[t]
 \slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 2}{The few-shot pool is a sample, and how it is drawn is a choice}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.50\textwidth}
-\footnotesize
-\begin{tabular}{@{}p{22mm}p{44mm}@{}}
+{\color{inktwo}\small
+ Every prompt draws its examples from one pool. The pool is built once, before any question
+ is asked --- and three strategies build it differently.\par}
+\vspace{6mm}
+\begin{tabular}{@{}p{26mm}@{\hspace{4mm}}p{95mm}@{}}
 \colhead{STRATEGY} & \colhead{HOW IT DRAWS}\\
 \midrule
-Imbalanced & \color{inktwo}uniform draw --- follows the corpus skew\\
-Balanced & \color{inktwo}equal quota per hop bucket\\
-Clustered & \color{inktwo}k-means cover, one row per centroid\\
+Imbalanced & \color{inktwo}Draws uniformly. The pool inherits whatever mix the corpus already has.\\[2.2mm]
+Balanced   & \color{inktwo}Fills an equal quota from each hop bucket, so no hop count dominates.\\[2.2mm]
+Clustered  & \color{inktwo}k-means over the pool, one example per centroid --- covers the spread
+             rather than the frequency.\\
 \bottomrule
 \end{tabular}
-\par\vspace{3.5mm}
-{\color{inktwo}\scriptsize
- Sizes swept from 1,000 to 8,000 examples, drawn from a 19,938-row training split,
- stratified on hop prefix at seed 42.\par}
-\end{column}
-\begin{column}{0.46\textwidth}
- \vspace{-2.6mm}
- \calloutwarn{MuSiQue is \textbf{72\% two-hop}. An imbalanced pool inherits that skew, so 4-hop
-  examples are scarce exactly where the model needs them most.}
- \vspace{1.5mm}
- \stat{accent}{1,175}{4-hop training questions available, against 14,376 at two hops ---
-  every 4-hop result in this deck rests on the thinnest evidence.}
-\end{column}
-\end{columns}
+\vspace{5mm}
+\calloutwarn{MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
+ so the harder multi-hop examples are the scarcest thing in the prompt.}
 \srcmono{configs/pool\_sweep.json $\cdot$ MuSiQue-Ans v1.0 train}
 \end{frame}
 
