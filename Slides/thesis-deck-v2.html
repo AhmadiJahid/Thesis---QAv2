@@ -357,7 +357,41 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
   <footer><span>Each stage-A component gets its own slide next.</span></footer>
 </section>
 
-<!-- 7 ─────────────────────────────── masking -->
+<!-- 7a ─────────────────────────── masking: definition -->
+<section class="slide">
+  <div class="eyebrow">Methodology · component 1</div>
+  <div class="body">
+    <h2>What masking is, and the two places it is applied</h2>
+    <p class="sub">
+      Masking replaces a named entity with a token for its <em>type</em>, so two questions can
+      be compared on the shape they share rather than on the names they happen to share.
+    </p>
+    <table style="width:auto;margin-top:2.4cqh">
+      <tr><td style="width:16%"><b>raw</b></td>
+          <td><span class="mono">who directed Baby Face</span></td></tr>
+      <tr><td><b>masked</b></td>
+          <td><span class="mono">who directed <span class="ref">[MOVIE]</span></span></td></tr>
+    </table>
+    <table style="margin-top:2.6cqh">
+      <tr><td style="width:24%"><b>On the pool</b></td>
+          <td>Masked once, in advance. The masked pool is a maintained artifact, regenerated as
+              a deliberate step and never re-masked while a query is being served.</td></tr>
+      <tr><td><b>On the question</b></td>
+          <td>Masked at lookup time, on every incoming question, just before it is matched
+              against the pool.</td></tr>
+    </table>
+    <div class="callout warn" style="margin-top:2.2cqh">
+      The split is not cosmetic. <span class="mono">Stars</span> is itself a title in the
+      knowledge base, so re-masking the pool would turn
+      <span class="mono">who stars in Baby Face</span> into
+      <span class="mono">who [MOVIE] in [MOVIE]</span>. A corrupted question costs one lookup;
+      a corrupted pool item degrades every lookup after it.
+    </div>
+  </div>
+  <footer><span class="src">ADR 0003 · src/entity_masking.py · placeholders: [MOVIE] and [PERSON], from the MetaQA KB</span></footer>
+</section>
+
+<!-- 7b ──────────────────────────── masking: variants -->
 <section class="slide">
   <div class="eyebrow">Methodology · component 1</div>
   <div class="body">
@@ -373,11 +407,11 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       </div>
       <div class="rung">
         <div class="lbl"><b>uniform</b><span>one shared token</span></div>
-        <div class="txt">which films did <span class="tok">[MASK]</span> star in after <span class="tok">[MASK]</span> in <span class="tok">[MASK]</span></div>
+        <div class="txt">which films did <span class="tok">[MASK]</span> star in after <span class="tok">[MASK]</span> in 1991</div>
       </div>
       <div class="rung sel">
         <div class="lbl"><b>typed</b><span>type label kept</span></div>
-        <div class="txt">which films did <span class="tok g">[PERSON]</span> star in after <span class="tok g">[MOVIE]</span> in <span class="tok g">[YEAR]</span></div>
+        <div class="txt">which films did <span class="tok g">[PERSON]</span> star in after <span class="tok g">[MOVIE]</span> in 1991</div>
       </div>
     </div>
   </div>

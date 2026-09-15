@@ -320,7 +320,32 @@
 \srcline{Each stage-A component gets its own slide next.}
 \end{frame}
 
-% ================================================== 7 -- masking ======
+% ==================================== 7a -- masking: definition ======
+\begin{frame}[t]
+\slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 1}{What masking is, and the two places it is applied}
+{\color{inktwo}\small
+ Masking replaces a named entity with a token for its \emph{type}, so two questions can be
+ compared on the shape they share rather than on the names they happen to share.\par}
+\vspace{4.5mm}
+\noindent\makebox[20mm][l]{\color{ink}\footnotesize\bfseries raw}%
+ \txtbox{sunk}{106mm}{\ttfamily\footnotesize\color{inktwo}who directed Baby Face}\par
+\vspace{2.2mm}
+\noindent\makebox[20mm][l]{\color{ink}\footnotesize\bfseries masked}%
+ \txtbox{accentsoft}{106mm}{\ttfamily\footnotesize\color{accentink}who directed \plc{[MOVIE]}}\par
+\vspace{5.5mm}
+\defrow[34mm]{On the pool}{Masked once, in advance. The masked pool is a maintained artifact,
+ regenerated as a deliberate step and never re-masked while a query is being served.}
+\defrow[34mm]{On the question}{Masked at lookup time, on every incoming question, just before
+ it is matched against the pool.}
+\vspace{1mm}
+\calloutwarn{The split is not cosmetic. {\ttfamily Stars} is itself a title in the knowledge
+ base, so re-masking the pool would turn {\ttfamily who stars in Baby Face} into
+ {\ttfamily who [MOVIE] in [MOVIE]}. A corrupted question costs one lookup; a corrupted pool
+ item degrades every lookup after it.}
+\srcmono{ADR 0003 $\cdot$ src/entity\_masking.py $\cdot$ placeholders: [MOVIE] and [PERSON], from the MetaQA KB}
+\end{frame}
+
+% ====================================== 7b -- masking: variants ======
 \begin{frame}[t]
 \slidehead{METHODOLOGY \textperiodcentered\ COMPONENT 1}{Masking makes similarity a statement about \emph{shape}}
 {\color{inktwo}\small
@@ -333,10 +358,10 @@
    which films did Christina Ricci star in after The Addams Family in 1991}\\[2.6mm]
 {\footnotesize\bfseries uniform\par}{\scriptsize\color{muted}one shared token\par}
  & \txtbox{sunk}{100mm}{\ttfamily\footnotesize\color{inktwo}
-   which films did {\color{accent}[MASK]} star in after {\color{accent}[MASK]} in {\color{accent}[MASK]}}\\[2.6mm]
+   which films did {\color{accent}[MASK]} star in after {\color{accent}[MASK]} in 1991}\\[2.6mm]
 {\footnotesize\bfseries typed\par}{\scriptsize\color{muted}type label kept\par}
  & \txtbox{accentsoft}{100mm}{\ttfamily\footnotesize\color{accentink}
-   which films did {\color{gold}[PERSON]} star in after {\color{gold}[MOVIE]} in {\color{gold}[YEAR]}}
+   which films did {\color{gold}[PERSON]} star in after {\color{gold}[MOVIE]} in 1991}
 \end{tabular}
 \srcline{The pool is masked once in advance, never at query time --- dynamic masking corrupts
  titles that collide with common words.}
