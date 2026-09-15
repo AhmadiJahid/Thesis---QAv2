@@ -273,33 +273,17 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
   <div class="eyebrow">Problem definition</div>
   <div class="body">
     <h2>What goes in, what must come out</h2>
-    <div class="split">
-      <div>
-        <table>
-          <tr class="head-row"><td colspan="2">Input</td></tr>
-          <tr><td><span class="mono">Q</span> &nbsp; a multi-hop question</td><td>natural language</td></tr>
-          <tr><td><span class="mono">D</span> &nbsp; a domain</td><td>the knowledge source</td></tr>
-          <tr class="head-row"><td colspan="2">Output</td></tr>
-          <tr><td><span class="mono">Q′ = ⟨q₁ … q<sub>n</sub>⟩</span></td><td>ordered sub-questions</td></tr>
-          <tr class="note-row"><td colspan="2">
-            Each <span class="mono">q<sub>i</sub></span> is answerable by a single lookup in
-            <span class="mono">D</span>, and may reference <span class="ref">[#j]</span> for j &lt; i.
-          </td></tr>
-        </table>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:2.2cqh">
-        <div class="point">
-          <span class="tag">What is <em>not</em> being solved</span>
-          <p>Answering. The executor that runs a plan against a graph is machinery, and
-             answer accuracy is used only as a downstream check that better plans matter.</p>
-        </div>
-        <div class="point">
-          <span class="tag">What is being solved</span>
-          <p>Producing <span class="mono">Q′</span> from <span class="mono">Q</span> with a
-             mid-sized open model — and finding what actually governs whether it can.</p>
-        </div>
-      </div>
-    </div>
+    <table style="width:auto;margin-top:2.4cqh">
+      <tr class="head-row"><td colspan="2">Input</td></tr>
+      <tr><td><span class="mono">Q</span> &nbsp; a multi-hop question</td><td style="padding-left:14cqw">natural language</td></tr>
+      <tr><td><span class="mono">D</span> &nbsp; a domain</td><td style="padding-left:14cqw">the knowledge source</td></tr>
+      <tr class="head-row"><td colspan="2">Output</td></tr>
+      <tr><td><span class="mono">Q′ = ⟨q₁ … q<sub>n</sub>⟩</span></td><td style="padding-left:14cqw">ordered sub-questions</td></tr>
+    </table>
+    <p class="sub" style="margin-top:2.8cqh">
+      Each <span class="mono">q<sub>i</sub></span> is answerable by a single lookup in
+      <span class="mono">D</span>, and may reference <span class="ref">[#j]</span> for j &lt; i.
+    </p>
   </div>
   <footer><span>n is not given at inference time — the model must decide the length too.</span></footer>
 </section>
@@ -309,29 +293,17 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
   <div class="eyebrow">Challenges</div>
   <div class="body">
     <h2>Three ways a decomposition goes wrong</h2>
-    <div class="cols c3" style="margin-top:1.4cqh">
-      <div class="point">
-        <span class="tag">How many</span>
-        <h3>Wrong length</h3>
-        <p>The model must infer <span class="mono">n</span> from the question alone. Too few
-           steps drops a hop; too many invent one.</p>
-      </div>
-      <div class="point">
-        <span class="tag">In what order</span>
-        <h3>Broken chain</h3>
-        <p>A later step must consume an earlier answer. Restating the original question
-           instead produces steps that look fine and compose to nothing.</p>
-      </div>
-      <div class="point">
-        <span class="tag">Over what</span>
-        <h3>Invented entities</h3>
-        <p>Unconstrained generation names films and people that do not exist in the
-           knowledge source, so the plan cannot execute.</p>
-      </div>
-    </div>
-    <div class="callout warn">
-      These three failures are why a single accuracy number is not enough — the evaluation
-      has to separate <b>length</b>, <b>order</b> and <b>content</b>.
+    <p class="sub">
+      The three failures are independent, and one accuracy number hides all of them.
+    </p>
+    <table style="margin-top:2.6cqh">
+      <tr><td style="width:22%"><b>Wrong length</b></td><td>The model has to infer how many steps the question needs. Too few drop a hop; too many invent one.</td></tr>
+      <tr><td><b>Broken chain</b></td><td>A later step has to consume an earlier answer. Steps that restate the original question look fine and compose to nothing.</td></tr>
+      <tr><td><b>Invented entities</b></td><td>The model names people and films that are not in the knowledge source, so the plan cannot execute.</td></tr>
+    </table>
+    <div class="callout warn" style="margin-top:2.4cqh">
+      This is why the evaluation separates <b>length</b>, <b>order</b> and <b>content</b>
+      rather than reporting a single score.
     </div>
   </div>
   <footer><span>Each failure mode maps to a metric family later in this deck.</span></footer>
@@ -424,13 +396,12 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       Every prompt draws its examples from one pool. The pool is built once, before any
       question is asked — and three strategies build it differently.
     </p>
-    <table>
-      <tr><th>Strategy</th><th>How it draws</th></tr>
-      <tr><td>Imbalanced</td><td>Draws uniformly. The pool inherits whatever mix the corpus already has.</td></tr>
-      <tr><td>Balanced</td><td>Fills an equal quota from each hop bucket, so no hop count dominates.</td></tr>
-      <tr><td>Clustered</td><td>k-means over the pool, one example per centroid — covers the spread rather than the frequency.</td></tr>
+    <table style="margin-top:2.6cqh">
+      <tr><td style="width:20%"><b>Imbalanced</b></td><td>Draws uniformly. The pool inherits whatever mix the corpus already has.</td></tr>
+      <tr><td><b>Balanced</b></td><td>Fills an equal quota from each hop bucket, so no hop count dominates.</td></tr>
+      <tr><td><b>Clustered</b></td><td>k-means over the pool, one example per centroid — covers the spread rather than the frequency.</td></tr>
     </table>
-    <div class="callout warn" style="margin-top:2.2cqh">
+    <div class="callout warn" style="margin-top:2.4cqh">
       MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
       so the harder multi-hop examples are the scarcest thing in the prompt.
     </div>
@@ -490,35 +461,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
     </div>
   </div>
   <footer><span class="src">bi-encoder e5-small-v2 · cross-encoder rerank over top-20</span></footer>
-</section>
-
-<!-- 10 ────────────────────────────── de-scoped -->
-<section class="slide">
-  <div class="eyebrow plain">Methodology · what was removed</div>
-  <div class="body">
-    <h2>Two designed components are no longer in the pipeline</h2>
-    <div class="cols c2" style="margin-top:1cqh">
-      <div class="point">
-        <span class="tag">Router · removed</span>
-        <h3>Predicting the hop count first</h3>
-        <p>A separate model was to read <span class="mono">n</span> off the question and hand it
-           to the decomposer. It is out of the decomposition critical path: on the pipeline model,
-           even a <em>perfect</em> hop count leaves step content unchanged.</p>
-      </div>
-      <div class="point">
-        <span class="tag">Jury · never built</span>
-        <h3>Scoring a plan before running it</h3>
-        <p>An engineering pattern with no evaluation story attached. It was designed, never
-           implemented, and is not claimed.</p>
-      </div>
-    </div>
-    <div class="callout open">
-      <b>Honest scoping:</b> the “perfect hop count changes nothing” result is measured on
-      <b>Mistral-7B</b>. On Qwen3.5-9B, oracle guidance moved six of nine report-card metrics.
-      The router's removal rests on a single model, and that is an open point, not a settled one.
-    </div>
-  </div>
-  <footer><span class="src">ADR 0030 · exp-004 / exp-005 / exp-014 · open issue #49</span></footer>
 </section>
 
 <!-- 11 ────────────────────────────── research questions -->

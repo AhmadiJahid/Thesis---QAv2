@@ -123,6 +123,14 @@
 \newcommand{\phead}[1]{{\color{ink}\fontsize{10.5}{12.5}\selectfont\bfseries #1\par}\vspace{1.3mm}}
 \newcommand{\pbody}[1]{{\color{inktwo}\footnotesize #1\par}}
 
+% label + wrapped body sharing one baseline.  Used instead of a two-column
+% tabular: \arraystretch (1.25 above) shifts p-column text down relative to
+% its neighbour, and \makebox + \parbox[t] cannot drift.
+\newcommand{\defrow}[3][30mm]{%
+  \noindent\makebox[#1][l]{\color{ink}\footnotesize\bfseries #2}%
+  \parbox[t]{\dimexpr\linewidth-#1\relax}{\color{inktwo}\footnotesize #3}%
+  \par\vspace{3mm}}
+
 % table column head, gold/mono step placeholder, highlight, tick, pill
 \newcommand{\colhead}[1]{{\color{accent}\fontsize{6.5}{8}\selectfont\bfseries\lsp{#1}}}
 \newcommand{\plc}[1]{{\ttfamily\color{gold}#1}}
@@ -218,57 +226,39 @@
 % ======================================= 4 -- problem definition ======
 \begin{frame}[t]
 \slidehead{PROBLEM DEFINITION}{What goes in, what must come out}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.51\textwidth}
+\vspace{4mm}
 \footnotesize
-\begin{tabular}{@{}p{38mm}p{27mm}@{}}
+\begin{tabular}{@{}l@{\hspace{16mm}}l@{}}
 \multicolumn{2}{@{}l}{\textbf{Input}}\\
 \midrule
 {\ttfamily Q}\quad a multi-hop question & \color{inktwo}natural language\\
-{\ttfamily D}\quad a domain & \color{inktwo}the knowledge source\\
+{\ttfamily D}\quad a domain           & \color{inktwo}the knowledge source\\[2.5mm]
 \multicolumn{2}{@{}l}{\textbf{Output}}\\
 \midrule
-{\ttfamily Q' =}\,$\langle q_1 \dots q_n \rangle$ & \color{inktwo}ordered sub-questions\\[1mm]
-\multicolumn{2}{@{}p{65mm}@{}}{{\color{muted}\scriptsize
- Each $q_i$ is answerable by a single lookup in {\ttfamily D}, and may reference
- \plc{[\#j]} for $j < i$.}}
+{\ttfamily Q' =}\,$\langle q_1 \dots q_n \rangle$ & \color{inktwo}ordered sub-questions
 \end{tabular}
-\end{column}
-\begin{column}{0.45\textwidth}
- \ptag{WHAT IS \emph{NOT} BEING SOLVED}
- \pbody{Answering. The executor that runs a plan against a graph is machinery, and
-  answer accuracy is used only as a downstream check that better plans matter.}
- \vspace{4mm}
- \ptag{WHAT IS BEING SOLVED}
- \pbody{Producing {\ttfamily Q'} from {\ttfamily Q} with a mid-sized open model --- and
-  finding what actually governs whether it can.}
-\end{column}
-\end{columns}
+\par\vspace{5mm}
+{\color{muted}\scriptsize
+ Each $q_i$ is answerable by a single lookup in {\ttfamily D}, and may reference
+ \plc{[\#j]} for $j < i$.\par}
 \srcline{n is not given at inference time --- the model must decide the length too.}
 \end{frame}
 
 % =============================================== 5 -- challenges ======
 \begin{frame}[t]
 \slidehead{CHALLENGES}{Three ways a decomposition goes wrong}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.30\textwidth}
- \ptag{HOW MANY}\phead{Wrong length}
- \pbody{The model must infer {\ttfamily n} from the question alone. Too few
-  steps drops a hop; too many invent one.}
-\end{column}
-\begin{column}{0.32\textwidth}
- \ptag{IN WHAT ORDER}\phead{Broken chain}
- \pbody{A later step must consume an earlier answer. Restating the original question
-  instead produces steps that look fine and compose to nothing.}
-\end{column}
-\begin{column}{0.30\textwidth}
- \ptag{OVER WHAT}\phead{Invented entities}
- \pbody{Unconstrained generation names films and people that do not exist in the
-  knowledge source, so the plan cannot execute.}
-\end{column}
-\end{columns}
-\calloutwarn{These three failures are why a single accuracy number is not enough --- the
- evaluation has to separate \textbf{length}, \textbf{order} and \textbf{content}.}
+{\color{inktwo}\small
+ The three failures are independent, and one accuracy number hides all of them.\par}
+\vspace{7mm}
+\defrow[34mm]{Wrong length}{The model has to infer how many steps the question needs.
+ Too few drop a hop; too many invent one.}
+\defrow[34mm]{Broken chain}{A later step has to consume an earlier answer. Steps that
+ restate the original question look fine and compose to nothing.}
+\defrow[34mm]{Invented entities}{The model names people and films that are not in the
+ knowledge source, so the plan cannot execute.}
+\vspace{4mm}
+\calloutwarn{This is why the evaluation separates \textbf{length}, \textbf{order} and
+ \textbf{content} rather than reporting a single score.}
 \srcline{Each failure mode maps to a metric family later in this deck.}
 \end{frame}
 
@@ -358,17 +348,12 @@
 {\color{inktwo}\small
  Every prompt draws its examples from one pool. The pool is built once, before any question
  is asked --- and three strategies build it differently.\par}
-\vspace{6mm}
-\begin{tabular}{@{}p{26mm}@{\hspace{4mm}}p{95mm}@{}}
-\colhead{STRATEGY} & \colhead{HOW IT DRAWS}\\
-\midrule
-Imbalanced & \color{inktwo}Draws uniformly. The pool inherits whatever mix the corpus already has.\\[2.2mm]
-Balanced   & \color{inktwo}Fills an equal quota from each hop bucket, so no hop count dominates.\\[2.2mm]
-Clustered  & \color{inktwo}k-means over the pool, one example per centroid --- covers the spread
-             rather than the frequency.\\
-\bottomrule
-\end{tabular}
-\vspace{5mm}
+\vspace{7mm}
+\defrow[30mm]{Imbalanced}{Draws uniformly. The pool inherits whatever mix the corpus already has.}
+\defrow[30mm]{Balanced}{Fills an equal quota from each hop bucket, so no hop count dominates.}
+\defrow[30mm]{Clustered}{k-means over the pool, one example per centroid --- covers the spread
+ rather than the frequency.}
+\vspace{4mm}
 \calloutwarn{MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
  so the harder multi-hop examples are the scarcest thing in the prompt.}
 \srcmono{configs/pool\_sweep.json $\cdot$ MuSiQue-Ans v1.0 train}
@@ -423,28 +408,6 @@ Clustered  & \color{inktwo}k-means over the pool, one example per centroid --- c
 \calloutopen{\textbf{Open:} the order in which those five are placed has never been varied. Whether
  highest-similarity-first is the right end to start from is an untested assumption.}
 \srcmono{bi-encoder e5-small-v2 $\cdot$ cross-encoder rerank over top-20}
-\end{frame}
-
-% =============================================== 10 -- de-scoped ======
-\begin{frame}[t]
-\slideheadplain{METHODOLOGY \textperiodcentered\ WHAT WAS REMOVED}{Two designed components are no longer in the pipeline}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.47\textwidth}
- \ptag{ROUTER \textperiodcentered\ REMOVED}\phead{Predicting the hop count first}
- \pbody{A separate model was to read {\ttfamily n} off the question and hand it
-  to the decomposer. It is out of the decomposition critical path: on the pipeline model,
-  even a \emph{perfect} hop count leaves step content unchanged.}
-\end{column}
-\begin{column}{0.47\textwidth}
- \ptag{JURY \textperiodcentered\ NEVER BUILT}\phead{Scoring a plan before running it}
- \pbody{An engineering pattern with no evaluation story attached. It was designed, never
-  implemented, and is not claimed.}
-\end{column}
-\end{columns}
-\calloutopen{\textbf{Honest scoping:} the ``perfect hop count changes nothing'' result is measured on
- \textbf{Mistral-7B}. On Qwen3.5-9B, oracle guidance moved six of nine report-card metrics.
- The router's removal rests on a single model, and that is an open point, not a settled one.}
-\srcmono{ADR 0030 $\cdot$ exp-004 / exp-005 / exp-014 $\cdot$ open issue \#49}
 \end{frame}
 
 % ==================================== 11 -- research questions ======
