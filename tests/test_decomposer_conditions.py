@@ -371,7 +371,9 @@ def test_exemplar_hop_lines() -> None:
         {"pool_id": "4hop1__p2", "question": "q2?", "decomposition": "a?\nb?\nc?\nd?"},
     ]
     # Hand-computed: 2 steps and 4 steps, whatever the query's hop count is (here 3).
-    block = rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="exemplar_gold")
+    block = rd.format_few_shot_examples(
+        examples, 3, exemplar_hop_mode="exemplar_gold", ordering="as_is"
+    )
     hops = [int(m) for m in re.findall(r"Hop count: (\d+)", block)]
     check("exemplar_gold states each exemplar's own step count", hops == [2, 4], str(hops))
     check(
@@ -385,7 +387,9 @@ def test_exemplar_hop_lines() -> None:
     )
 
     # v1's behaviour is still available, and is what the MetaQA config selects.
-    v1_block = rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="query")
+    v1_block = rd.format_few_shot_examples(
+        examples, 3, exemplar_hop_mode="query", ordering="as_is"
+    )
     v1_hops = [int(m) for m in re.findall(r"Hop count: (\d+)", v1_block)]
     check("query mode stamps the query's hop count on every exemplar", v1_hops == [3, 3], str(v1_hops))
     check(
@@ -396,7 +400,9 @@ def test_exemplar_hop_lines() -> None:
 
     # An unguided prompt has no hop line at all, in either mode.
     for mode in rd.EXEMPLAR_HOP_MODES:
-        unguided_block = rd.format_few_shot_examples(examples, None, exemplar_hop_mode=mode)
+        unguided_block = rd.format_few_shot_examples(
+            examples, None, exemplar_hop_mode=mode, ordering="as_is"
+        )
         check(f"unguided block has no hop line ({mode})", "Hop count" not in unguided_block)
 
     # A missing or empty gold decomposition is a refusal naming the pool id - no fallback.
@@ -406,7 +412,9 @@ def test_exemplar_hop_lines() -> None:
         ({"pool_id": "2hop__blank", "question": "q?", "decomposition": "\n  \n"}, "a blank decomposition"),
     ):
         try:
-            rd.format_few_shot_examples([broken], 3, exemplar_hop_mode="exemplar_gold")
+            rd.format_few_shot_examples(
+                [broken], 3, exemplar_hop_mode="exemplar_gold", ordering="as_is"
+            )
         except SystemExit as exc:
             check(
                 f"refused: {why}, naming the pool id",
@@ -416,7 +424,9 @@ def test_exemplar_hop_lines() -> None:
             check(f"refused: {why}, naming the pool id", False)
 
     try:
-        rd.format_few_shot_examples(examples, 3, exemplar_hop_mode="whatever")
+        rd.format_few_shot_examples(
+            examples, 3, exemplar_hop_mode="whatever", ordering="as_is"
+        )
     except SystemExit:
         check("an unknown exemplar hop mode is refused", True)
     else:

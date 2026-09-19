@@ -65,7 +65,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence, TypeVar
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
@@ -628,6 +628,14 @@ def examples_from_reranked_row(
     Candidates that are the query itself are dropped first (see :func:`is_self_example`),
     so k exemplars are still assembled from the rest of the ranked list. Returns
     ``(examples, self_excluded_count)``.
+
+    This is *selection*, and it is always the retrieval-rank order: ``kept[:k]``, highest
+    similarity first. The presentation order the prompt shows is applied once, later, in
+    :func:`format_few_shot_examples` via :func:`order_few_shot_examples` - deliberately not
+    here as well, because applying an ordering at both ends would cancel out on this path
+    and leave the reversed arm looking exactly like the as-is one. Keeping the two apart is
+    also what makes the supervisor's A5 contrast clean: the k exemplars are identical under
+    every ordering, and only their order in the prompt moves.
     """
     key = f"{mode}_top_k"
     candidates = row.get(key) or []
@@ -690,6 +698,78 @@ def examples_from_reranked_row(
     return out, self_excluded
 
 
+#: How the k selected few-shot exemplars are ORDERED in the prompt. Selection is unchanged by
+#: this: the same k exemplars appear under every value, only their order moves. Named by the
+#: supervisor on 2026-08-27 (assignment item A5, "the order is matter"): ``as_is`` is the
+#: retrieval-rank order - highest similarity first - which is what every run up to exp-015 did
+#: and is the default, and ``reversed`` is the same k exemplars lowest similarity first.
+FEW_SHOT_ORDERINGS = ("as_is", "reversed")
+
+#: Orderings whose NAME is reserved but whose implementation is deliberately absent, mapped to
+#: the refusal each one prints. The supervisor named a third ordering, least-complex to
+#: most-complex, but did not define "complexity"; gold hop count, question length and
+#: gold-chain length were all candidates and choosing one here would be inventing methodology
+#: (ADR 0032 item 5). The name is reserved so a run that asks for it fails loudly rather than
+#: silently falling back to as-is, and so the eventual implementation keeps this spelling.
+FEW_SHOT_ORDERINGS_RESERVED = {
+    "complexity_asc": (
+        "few-shot ordering 'complexity_asc' is reserved but NOT implemented: \"complexity\" "
+        "is undefined pending Jahid / the supervisor (ADR 0032 item 5). The supervisor asked "
+        "on 2026-08-27 for a least-complex-to-most-complex ordering without saying what "
+        "complexity means - gold hop count, question length and gold-chain length were all "
+        "candidates - and picking one here would invent methodology. Use 'as_is' or "
+        "'reversed' until the key is defined."
+    )
+}
+
+
+def resolve_few_shot_ordering(value: Any, *, src: str) -> str:
+    """Validate a few-shot ordering, refusing the reserved and the unknown.
+
+    ``src`` names where the value came from (a config path or ``--ordering``) so the refusal
+    says which one to fix.
+    """
+    if not isinstance(value, str):
+        raise SystemExit(
+            f"few-shot ordering from {src} is {value!r} ({type(value).__name__}); expected "
+            f"one of {list(FEW_SHOT_ORDERINGS)}"
+        )
+    if value in FEW_SHOT_ORDERINGS_RESERVED:
+        raise SystemExit(f"[{src}] {FEW_SHOT_ORDERINGS_RESERVED[value]}")
+    if value not in FEW_SHOT_ORDERINGS:
+        raise SystemExit(
+            f"unknown few-shot ordering {value!r} from {src} (expected one of "
+            f"{list(FEW_SHOT_ORDERINGS)}; {sorted(FEW_SHOT_ORDERINGS_RESERVED)} is reserved "
+            "but not implemented)"
+        )
+    return value
+
+
+#: Exemplars are dicts, but the prompt-log header orders the parallel list of
+#: ``(exemplar, similarity)`` pairs with the same function, so that the numbered list it
+#: prints cannot drift out of step with the prompt body. Hence the element type is free.
+_Exemplar = TypeVar("_Exemplar")
+
+
+def order_few_shot_examples(
+    examples: Sequence[_Exemplar], ordering: str
+) -> list[_Exemplar]:
+    """Return the exemplars in presentation order. Same multiset, never a different k.
+
+    ``as_is`` hands back the input list unchanged (retrieval-rank order, highest similarity
+    first); ``reversed`` hands back the same objects in the opposite order. Nothing is
+    dropped, added or re-selected here - that is the property the A5 contrast rests on.
+
+    This is the ONE implementation of the reversal in the file; the prompt-log header calls
+    it too rather than reversing its own copy, so a future third ordering cannot be applied
+    to the prompt and forgotten in the log.
+    """
+    ordering = resolve_few_shot_ordering(ordering, src="order_few_shot_examples")
+    if ordering == "reversed":
+        return list(examples)[::-1]
+    return list(examples)
+
+
 #: What the ``Hop count:`` line above each few-shot exemplar states, in a *guided* prompt.
 #: ``exemplar_gold`` - the exemplar's own gold hop count, i.e. the number of steps in its own
 #: gold decomposition. Jahid's decision of 2026-08-19 (issue #12) for the MuSiQue conditions.
@@ -729,6 +809,7 @@ def format_few_shot_examples(
     hop_count: int | None,
     *,
     exemplar_hop_mode: str,
+    ordering: str,
 ) -> str:
     """Format (question, decomposition) pairs. Omit the hop line when unguided.
 
@@ -741,6 +822,11 @@ def format_few_shot_examples(
 
     The query's own hop line (the ``{hop_count}`` slot in the prompt template) is unaffected
     either way, and an unguided prompt has no hop line anywhere.
+
+    ``ordering`` decides the order the exemplars are shown in (see
+    :data:`FEW_SHOT_ORDERINGS`). This is the ONE place it is applied, for every few-shot
+    source - reranked, bi-encoder and random alike - so that a run's ordering cannot be
+    applied twice and cancel itself.
     """
     if exemplar_hop_mode not in EXEMPLAR_HOP_MODES:
         raise SystemExit(
@@ -748,7 +834,7 @@ def format_few_shot_examples(
             f"{list(EXEMPLAR_HOP_MODES)})"
         )
     blocks = []
-    for ex in examples:
+    for ex in order_few_shot_examples(examples, ordering):
         if hop_count is not None:
             exemplar_hop = (
                 exemplar_gold_hop_count(ex)
@@ -1781,6 +1867,17 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--retrieval-k", type=int, default=None)
     p.add_argument("--quantization", default=None, choices=["none", "4bit", "8bit"])
     p.add_argument(
+        "--ordering",
+        default=None,
+        help="Order the k selected few-shot exemplars are shown in, overriding the config's "
+        "'few_shot.ordering' the way --quantization overrides loader.quantization. "
+        f"{list(FEW_SHOT_ORDERINGS)}: 'as_is' is retrieval-rank order (highest similarity "
+        "first, the behaviour of every run up to exp-015), 'reversed' is the same k "
+        f"exemplars lowest similarity first. {sorted(FEW_SHOT_ORDERINGS_RESERVED)} is a "
+        "reserved name and is refused - see ADR 0032 item 5. Selection is unaffected: both "
+        "orderings show the same k exemplars.",
+    )
+    p.add_argument(
         "--adapter",
         default=None,
         help="Trained LoRA adapter directory (the fine-tuned arm; see train_lora.py).",
@@ -2099,6 +2196,18 @@ def main() -> None:
     if retrieval_mode not in retrieval_modes:
         raise SystemExit(f"retrieval mode {retrieval_mode!r} not in {retrieval_modes}")
     quantization = args.quantization or require(model_cfg, "loader.quantization")
+    # Required in both shared configs rather than defaulted here, for the same reason
+    # few_shot_exemplar_hop_count is: the order exemplars are shown in is a design decision
+    # (supervisor assignment A5), and a run must not be able to get one by omission.
+    few_shot_ordering = resolve_few_shot_ordering(
+        args.ordering if args.ordering is not None else require(cfg, "few_shot.ordering"),
+        src=(
+            "--ordering"
+            if args.ordering is not None
+            else f"few_shot.ordering in {cfg.get('_config_path', '<config>')}"
+        ),
+    )
+    few_shot_ordering_source = "--ordering" if args.ordering is not None else "config"
     hops = [int(h) for h in require(cfg, "hops")]
     unguided_hop_placeholder = require(cfg, "unguided_hop_placeholder")
     # Required in every config rather than defaulted here: what an exemplar's hop line says is
@@ -2280,6 +2389,10 @@ def main() -> None:
         "sample_size": sample_size,
         "hops": hops,
         "few_shot_exemplar_hop_count": exemplar_hop_mode,
+        # The resolved ordering, after --ordering has had its say, so a run's exemplar order
+        # is checkable from the committed artifacts rather than from the command line.
+        "few_shot_ordering": few_shot_ordering,
+        "few_shot_ordering_source": few_shot_ordering_source,
         "questions_template_key": require(cfg, "questions_template_key"),
         "questions_format": require(cfg, "questions_format"),
         "device": device,
@@ -2645,7 +2758,10 @@ def main() -> None:
 
         few_shot_str = (
             format_few_shot_examples(
-                sampled, hop_input, exemplar_hop_mode=exemplar_hop_mode
+                sampled,
+                hop_input,
+                exemplar_hop_mode=exemplar_hop_mode,
+                ordering=few_shot_ordering,
             )
             if sampled
             else ""
@@ -2722,8 +2838,17 @@ def main() -> None:
                 f"Hop count in prompt: {hop_input} "
                 f"(source: {hop_source_record['source']})",
                 f"Few-shot source: {source} (k={len(sampled)})",
+                # So a single logged prompt is attributable to its ordering arm without
+                # opening metrics.json: the A5 arms differ in nothing else, and a prompt
+                # read on its own otherwise cannot say which one it came from.
+                f"Few-shot ordering: {few_shot_ordering} ({few_shot_ordering_source})",
             ]
-            for j, (item, score) in enumerate(sampled_with_scores, start=1):
+            # Ordered with the same function the prompt body uses, so the numbered list
+            # below is in the order the exemplars actually appear in the prompt rather than
+            # in selection order. Empty on the reranked path (no per-candidate scores).
+            for j, (item, score) in enumerate(
+                order_few_shot_examples(sampled_with_scores, few_shot_ordering), start=1
+            ):
                 header.append(
                     f"  {j}. sim={score:.4f} | masked={item.get('masked')} | question={item.get('question')}"
                 )
@@ -2847,6 +2972,10 @@ def main() -> None:
         # Which exemplar-hop rule produced these numbers. In the config snapshot too, but a
         # metrics file read on its own has to state the rule its numbers were scored under.
         "few_shot_exemplar_hop_count": exemplar_hop_mode,
+        # Same reasoning for the exemplar ORDER: the A5 arms differ in nothing else, so a
+        # metrics file that does not name its ordering cannot be told from its comparator.
+        "few_shot_ordering": few_shot_ordering,
+        "few_shot_ordering_source": few_shot_ordering_source,
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
         "adapter_base_model": adapter_base_model_record,
@@ -2930,6 +3059,7 @@ def main() -> None:
                 else "- Retrieval input: none (questions read from questions_template_key)"
             ),
             f"- Few-shot: enabled={few_shot_enabled} k={few_shot_k} mode={few_shot_source_mode}; "
+            f"ordering: {few_shot_ordering} ({few_shot_ordering_source}); "
             f"self-examples dropped: {self_excluded_examples}",
             (
                 f"- Truncation: {metrics['rows_at_max_new_tokens']} row(s) reached "
