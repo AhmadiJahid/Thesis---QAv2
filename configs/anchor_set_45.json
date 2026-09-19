@@ -1,0 +1,98 @@
+{
+  "_note": "FROZEN. The 45 anchor ids of supervisor item A4 (15 per hop count), drawn once at seed 42 from the ADR 0007 pinned 600 and fixed over all experiments. Ids and provenance only - no question text, no gold decompositions, no predictions (CLAUDE.md: data never enters git). Regenerate only with scripts/build_anchor_set.py --write --force, which changes what every experiment's manual inspection is looking at; scripts/build_anchor_set.py --verify re-derives this file and fails if it differs.",
+  "schema": "musique_anchor_set/1",
+  "generated_by": "scripts/build_anchor_set.py",
+  "generated_utc": "2026-09-19T22:56:49.167114+00:00",
+  "python_version": "3.13.9",
+  "seed": 42,
+  "hops": [
+    2,
+    3,
+    4
+  ],
+  "n_per_hop": 15,
+  "source": {
+    "description": "the ADR 0007 pinned MuSiQue evaluation set (600 ids, 200 per hop)",
+    "questions_template_key": "musique_eval_questions_template",
+    "id_field": "id",
+    "per_hop": {
+      "2": {
+        "file": "musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+        "id_count": 200,
+        "ids_sha256": "5d1afa304422dde5dfb3874b1b11335ebd5708ccc92ff7c7ac3a638146c2e7a0",
+        "file_sha256": "faa300e67c3ae345d6b4fe0036ee15283c5f5f369a8c4c8f5b6a7c1305b5b4d2"
+      },
+      "3": {
+        "file": "musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+        "id_count": 200,
+        "ids_sha256": "bf6aeac5a7408f9b09655dc0b17193440b13f3c4a2a813bbe8acaa0b8ac6e50a",
+        "file_sha256": "c33bb21a958ab5f5546f7da3a8c94e8cb5620f50d25dcd220adb339321f7cfac"
+      },
+      "4": {
+        "file": "musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl",
+        "id_count": 200,
+        "ids_sha256": "4b8595e97e1fa272d584c9a349fb0d73c6a6067e938af57ae3cb1838439f13f1",
+        "file_sha256": "e8cf2fd27076300b335ea6dad2765d6129bbd3fc920a4e6ab9ec471a36dcb49e"
+      }
+    }
+  },
+  "counts": {
+    "2": 15,
+    "3": 15,
+    "4": 15,
+    "total": 45
+  },
+  "ids_by_hop": {
+    "2": [
+      "2hop__115515_779396",
+      "2hop__152027_141308",
+      "2hop__156658_155922",
+      "2hop__157251_556157",
+      "2hop__168816_144857",
+      "2hop__28203_55840",
+      "2hop__30905_189318",
+      "2hop__358270_108549",
+      "2hop__551235_310309",
+      "2hop__678516_179720",
+      "2hop__73069_88165",
+      "2hop__776637_87295",
+      "2hop__814856_110882",
+      "2hop__89403_602275",
+      "2hop__89632_40480"
+    ],
+    "3": [
+      "3hop1__107195_160713_77246",
+      "3hop1__108881_720914_41132",
+      "3hop1__127821_157828_162309",
+      "3hop1__140786_2053_5289",
+      "3hop1__30240_740597_41132",
+      "3hop1__337705_132457_47686",
+      "3hop1__351696_42197_18397",
+      "3hop1__694534_160088_49779",
+      "3hop1__831162_831637_91775",
+      "3hop1__857_846_7870",
+      "3hop1__9285_5188_63702",
+      "3hop2__132957_379231_40768",
+      "3hop2__304722_747004_63959",
+      "3hop2__57233_11282_56883",
+      "3hop2__781093_467331_162182"
+    ],
+    "4": [
+      "4hop1__105401_17130_70784_79935",
+      "4hop1__199881_765799_282674_759393",
+      "4hop1__342858_131850_33952_34109",
+      "4hop1__343844_17130_70784_79935",
+      "4hop1__443274_17130_70784_79935",
+      "4hop1__482815_624859_355213_203322",
+      "4hop1__61681_53706_795904_580996",
+      "4hop1__767417_624859_355213_203322",
+      "4hop1__788226_32392_823060_610794",
+      "4hop1__9007_698949_157828_239539",
+      "4hop2__103790_14670_8987_8974",
+      "4hop3__129682_29339_508306_70744",
+      "4hop3__524186_219173_862998_72134",
+      "4hop3__813358_24325_125104_10557",
+      "4hop3__827497_354093_254885_76356"
+    ]
+  }
+}

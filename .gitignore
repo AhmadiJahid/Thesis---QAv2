@@ -39,6 +39,11 @@ runs/
 outputs/
 *.log
 
+# Throwaway git worktrees. Parallel agents build in their own worktree rather than
+# moving the shared HEAD; those checkouts are disposable and must not show up as
+# untracked files in the checkout everyone else is reading.
+.worktrees/
+
 # Embedding / feature caches — derived data, rebuilt on demand.
 .cache/
 cache/

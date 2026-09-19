@@ -1,0 +1,19 @@
+{
+  "_note": "INPUT of the draw (hand-edited, reviewed). Parameters of the FIXED 45-item anchor set (supervisor, 2026-08-27; item A4 of docs/plan/2026-09-14-post-supervisor-meeting-phase.md): 15 items per hop count, drawn once at random from the ADR 0007 pinned 600 and then inspected by hand in every experiment. Two files, two roles, and the filenames say which: THIS file (anchor_set_draw.json) holds the parameters and is the only one a human edits; configs/anchor_set_45.json is the GENERATED, frozen output of running those parameters and is never hand-edited - re-running scripts/build_anchor_set.py --write over it needs --force, and changing any value here invalidates the committed list (--verify will say so).",
+
+  "seed": 42,
+  "hops": [2, 3, 4],
+  "n_per_hop": 15,
+
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_jsonl": {
+    "_note": "The pinned ADR 0007 files are JSONL with one id field; the decomposer reads them through the same key name (configs/decomposer_musique.json questions_jsonl.id_field), so the two cannot drift on what an id is.",
+    "id_field": "id"
+  },
+
+  "_ids_file_note_is_a_template": "ids_file_note is formatted by scripts/build_anchor_set.py with {seed}, {total} and {n_per_hop} from THIS file, so the numbers in the generated note can never disagree with the draw that produced it. Keep the placeholders.",
+  "ids_file": "configs/anchor_set_45.json",
+  "ids_file_note": "FROZEN. The {total} anchor ids of supervisor item A4 ({n_per_hop} per hop count), drawn once at seed {seed} from the ADR 0007 pinned 600 and fixed over all experiments. Ids and provenance only - no question text, no gold decompositions, no predictions (CLAUDE.md: data never enters git). Regenerate only with scripts/build_anchor_set.py --write --force, which changes what every experiment's manual inspection is looking at; scripts/build_anchor_set.py --verify re-derives this file and fails if it differs.",
+
+  "paths_config": "paths.json"
+}

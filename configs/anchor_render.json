@@ -1,0 +1,29 @@
+{
+  "_note": "Parameters of scripts/render_anchor_set.py, the reader for the 45-item anchor set (supervisor item A4). It POST-FILTERS finished runs: it reads one or more '*_per_item.json' files the evaluator already wrote and renders the 45 anchor rows as one Markdown sheet for the hand inspection. It scores nothing, runs no model, and changes no run path - so an arm rendered here is the same arm, with the same numbers, as the run it came from.",
+
+  "ids_file": "configs/anchor_set_45.json",
+
+  "out_subdir": "anchor",
+  "_out_subdir_note": "Default output directory, under runs_root from paths.json. runs/ is gitignored: the sheet carries question text and gold decompositions, which never enter git (CLAUDE.md). The script enforces this rather than trusting it - an --out inside the working tree is refused unless 'git check-ignore' says the path is ignored.",
+
+  "structural_fields": ["item_id", "question", "pred_steps", "gold_steps"],
+  "_structural_fields_note": "Rendered as their own sections rather than as metric rows. Every OTHER field a per-item row carries is rendered in the metric table, in the order the evaluator emitted it - the sheet shows what the file says, and the script does not curate which metrics Jahid is allowed to look at.",
+
+  "arm_header_fields": [
+    "created_utc",
+    "gold_path",
+    "composite_score_weights",
+    "composite_step_count_error_scale"
+  ],
+  "_arm_header_fields_note": "Per-item FILE-level header fields (not per-item rows) carried into the 'Arms and coverage' table. These are the settings the arm's rows were scored under; without them on the page, two columns can be read side by side with no sign that they were produced against different gold or under different composite weights. A field a file does not carry renders as the empty marker, which is how an older artifact announces itself.",
+
+  "comparability_fields": ["composite_score_weights", "composite_step_count_error_scale", "gold_path"],
+  "_comparability_fields_note": "A subset of arm_header_fields. When two arms disagree on one of these, the sheet prints a banner saying so, in the same shape as the per-item question/gold disagreement banners: a difference that breaks comparability is stated, never silently rendered as a comparison.",
+
+  "float_format": "{:.4f}",
+  "empty_cell": "-",
+  "null_cell": "null",
+  "_cell_marker_note": "Two different absences, two different markers. empty_cell means the field is NOT IN the file (e.g. decomp_mean in an artifact written before that metric existed); null_cell means the field IS in the file with a null value (e.g. ged_fallback when no fallback was needed). Rendering both the same would let the first be read as the second.",
+
+  "paths_config": "paths.json"
+}
