@@ -38,8 +38,9 @@
 
 - Next free experiment id is exp-020 (G1a, Mistral 4-bit). Runs proceed one at a time under
   `runs/run.lock`; builders may share the GPU only for ≤5-row smoke tests and never take the lock.
-- `configs/model_limits.json` `default_max_params` goes to 1.5e10 on the model-folder branch,
-  with this ADR cited in its note.
+- `configs/model_limits.json` carries the raise as `decomposer_max_params: 1.5e10` while
+  `default_max_params` returns to 8e9 (ADR 0031 amendment of 2026-09-20), with this ADR cited in
+  its note.
 - Commits stay local: this box's `gh` credential cannot push, so review and merge happen in the
   local checkout and Jahid pushes.
 

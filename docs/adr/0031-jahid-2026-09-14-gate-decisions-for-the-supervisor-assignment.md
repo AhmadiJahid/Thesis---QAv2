@@ -111,3 +111,15 @@ later. Tracked as issue #51.
 - Issue #50 is updated to name the arms and the raised ceiling.
 - Nothing here unblocks a GPU run: the shared RTX 3090 is still held by another user's process
   (plan §1), and every arm above waits on it.
+
+**Amendment, 2026-09-20 (Gate 1 review of the model-folder branch, I-1): the raise is carried by a
+role-specific key, not by `default_max_params`.** Item 4 above says `default_max_params` goes
+1e10 → 1.5e10. The branch that landed does the tighter thing: `default_max_params` returns to
+**8e9** — the supervisor's standing number — and a new `decomposer_max_params: 1.5e10` carries
+the exception; `src/model_size.py` maps the `decomposer` component to it. `router_max_params`
+and `answerer_max_params` stay 8e9; retrieval, NER and reranker inherit 8e9 (largest model in
+those roles is ~355M, so nothing changes for them). Convention established: **a role granted an
+exception gets its own key; `default_max_params` is the supervisor's floor that any new role
+inherits.** If the supervisor reasserts 8B, reverting is one line. Consequence Jahid should know:
+`train_lora.py` asserts under `decomposer`, so a 14B LoRA arm is now admissible by the ceiling —
+nobody has costed one and none is planned.
