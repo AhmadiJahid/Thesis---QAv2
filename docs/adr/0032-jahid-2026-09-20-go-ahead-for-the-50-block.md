@@ -42,3 +42,19 @@
   with this ADR cited in its note.
 - Commits stay local: this box's `gh` credential cannot push, so review and merge happen in the
   local checkout and Jahid pushes.
+
+## Amendment, 2026-09-20 (Gate 1 review of the ordering knob, Minor 4) — two mechanisms behind item 5
+
+- **Reserved-but-refused option names.** An option the supervisor named but nobody has defined
+  ships as a *reserved* value that fails loudly at load time with a pointer to the ADR that left
+  it undefined — here `few_shot.ordering: complexity_asc` refuses with "undefined pending Jahid /
+  the supervisor (ADR 0032 item 5)". The name is in the config's legal-values message so the
+  reader knows it exists; no code path implements it. This is the standing pattern for "named,
+  not defined".
+- **Presentation ordering is applied at exactly one funnel and never at selection.**
+  `format_few_shot_examples()` is the single point where exemplar order is changed;
+  `examples_from_reranked_row()` and the bi-encoder/random selectors return their top-k in
+  retrieval-rank order, untouched. Applying the ordering at selection too would cancel on the
+  reranked path and not on the others. The A5 contrast (as_is vs reversed) rests on this
+  invariant: the two arms show the same k exemplars and differ only in order. A regression test
+  pins it. Any future edit that reorders at selection breaks A5 and needs a new ADR.
