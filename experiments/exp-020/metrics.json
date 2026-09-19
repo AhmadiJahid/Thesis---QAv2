@@ -1,0 +1,416 @@
+{
+  "_note": "Metrics for exp-020 (issue #50 GPU lane G1a): Mistral-7B-Instruct-v0.3, unguided, 4-bit, ADR 0007 pinned 600. Every number here is read off runs/exp-020/; nothing is inferred.",
+  "run": {
+    "status": "COMPLETE, rc=0 at all four steps",
+    "wall_clock_total_seconds": 2537,
+    "wall_clock_decompose_seconds": 2526,
+    "model_generate_seconds_total": 2469.5023081824183,
+    "mean_latency_seconds_per_query": 4.11583718030403,
+    "median_latency_seconds_per_query": 1.7393162176012993,
+    "peak_vram_mib": 4818,
+    "peak_vram_method": "nvidia-smi --query-compute-apps sampled every 10 s and filtered to THIS run's pid (2356936), so concurrent build-lane smoke tests on the same GPU are excluded. It is a sampled maximum of process-reserved memory, not torch.cuda.max_memory_allocated.",
+    "rows_loaded_total": 600,
+    "rows_loaded_per_hop": {
+      "2": 200,
+      "3": 200,
+      "4": 200
+    },
+    "rows_with_empty_decomposition": 0,
+    "rows_at_max_new_tokens": 26,
+    "step_lines_per_row_total": 2151,
+    "few_shot_source_counts": {
+      "reranked": 600
+    },
+    "mean_prompt_tokens_per_query": 395.21,
+    "mean_completion_tokens_per_query": 82.49166666666666
+  },
+  "eval": {
+    "n_items": 600,
+    "missing_gold_count": 0,
+    "decomposition_report_card_six_terms": {
+      "break_exact_match_rate": 0.04,
+      "sari_macro": 0.576626314815536,
+      "ged_macro": 0.48463988386617446,
+      "ged_fallback_counts": {
+        "node_cap": 2
+      },
+      "chain_validity_macro": 0.9626203703703703,
+      "hop_count_exact_match_rate": 0.5116666666666667,
+      "under_decomposition_rate": 0.16833333333333333,
+      "over_decomposition_rate": 0.32,
+      "_directions": "break_EM up, SARI up, GED DOWN, chain_validity up, hop_EM up, under DOWN, over DOWN (ADR 0029; the two length-error rates are a pair and are never summed)"
+    },
+    "other_reported": {
+      "exact_match_rate": 0.045,
+      "step_precision_macro": 0.18054685592185593,
+      "step_recall_macro": 0.18791666666666668,
+      "step_f1_macro": 0.1823354377104377,
+      "ordered_step_accuracy_macro": 0.16319444444444445,
+      "rouge_l_f1_macro": 0.5384994929359502,
+      "step_count_exact_rate": 0.5116666666666667,
+      "step_count_mae": 0.9616666666666667,
+      "mean_signed_step_count_error": 0.585,
+      "decomp_mean_macro_CONTINGENCY_not_in_suite": 0.521336156400497,
+      "composite_score_LEGACY_not_headlined_issue_40": 0.1898369528619529
+    },
+    "predicted_hop_distribution": {
+      "3": 171,
+      "2": 208,
+      "4": 112,
+      "10": 2,
+      "126": 1,
+      "13": 1,
+      "5": 64,
+      "6": 25,
+      "9": 1,
+      "19": 1,
+      "1": 1,
+      "7": 7,
+      "15": 1,
+      "14": 1,
+      "8": 2,
+      "11": 2
+    },
+    "per_gold_hop_report_card": {
+      "2": {
+        "num_rows": 200,
+        "break_exact_match_rate": 0.1,
+        "sari_macro": 0.6201345111032984,
+        "ged_macro": 0.3331572796616357,
+        "chain_validity_macro": 0.9869444444444444,
+        "hop_count_exact_match_rate": 0.77,
+        "under_decomposition_rate": 0.0,
+        "over_decomposition_rate": 0.23,
+        "exact_match_rate": 0.11,
+        "step_f1_macro": 0.29383333333333334,
+        "ordered_step_accuracy_macro": 0.2820833333333333,
+        "rouge_l_f1_macro": 0.6314689603098119
+      },
+      "3": {
+        "num_rows": 200,
+        "break_exact_match_rate": 0.01,
+        "sari_macro": 0.5514180033862754,
+        "ged_macro": 0.5372586262519662,
+        "chain_validity_macro": 0.9581666666666666,
+        "hop_count_exact_match_rate": 0.465,
+        "under_decomposition_rate": 0.22,
+        "over_decomposition_rate": 0.315,
+        "exact_match_rate": 0.015,
+        "step_f1_macro": 0.14690674603174603,
+        "ordered_step_accuracy_macro": 0.12308333333333334,
+        "rouge_l_f1_macro": 0.5174367031725964
+      },
+      "4": {
+        "num_rows": 200,
+        "break_exact_match_rate": 0.01,
+        "sari_macro": 0.558326429957034,
+        "ged_macro": 0.5835037456849216,
+        "chain_validity_macro": 0.9427500000000001,
+        "hop_count_exact_match_rate": 0.3,
+        "under_decomposition_rate": 0.285,
+        "over_decomposition_rate": 0.415,
+        "exact_match_rate": 0.01,
+        "step_f1_macro": 0.10626623376623376,
+        "ordered_step_accuracy_macro": 0.08441666666666667,
+        "rouge_l_f1_macro": 0.4665928153254426
+      }
+    }
+  },
+  "compare_vs_exp015_unguided_quantization_none": {
+    "_what_this_is": "The SAME arm at quantization: none (exp-015). Same eval set, same retrieval artifact, same prompt, same seed, same decoding - only weight precision differs. This is the 4-bit cost reading ADR 0031's 2026-09-14 precision amendment asked for.",
+    "system_a": "exp-020 (4bit)",
+    "system_b": "exp-015 (none)",
+    "num_aligned_items": 600,
+    "headline_statistics_significant": "3/13",
+    "statistics_not_available_in_inputs": [],
+    "bootstrap": {
+      "rouge_l_f1": {
+        "system_a_exp020": 0.5384994929359502,
+        "system_b": 0.5446538650842114,
+        "difference_a_minus_b": -0.0061543721482612,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.013831955302800823,
+        "ci_high": 0.0020152723107253415
+      },
+      "step_f1": {
+        "system_a_exp020": 0.1823354377104377,
+        "system_b": 0.18937942612942613,
+        "difference_a_minus_b": -0.007043988418988428,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.018213090150590146,
+        "ci_high": 0.003929773582898593
+      },
+      "ordered_step_accuracy": {
+        "system_a_exp020": 0.16319444444444442,
+        "system_b": 0.16621296296296295,
+        "difference_a_minus_b": -0.0030185185185185315,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.013824305555555553,
+        "ci_high": 0.007620601851851865
+      },
+      "sari": {
+        "system_a_exp020": 0.5766263148155361,
+        "system_b": 0.5785111845637435,
+        "difference_a_minus_b": -0.0018848697482074517,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.00890211420567343,
+        "ci_high": 0.005237874476830445
+      },
+      "ged": {
+        "system_a_exp020": 0.4846398838661745,
+        "system_b": 0.47139162229586484,
+        "difference_a_minus_b": 0.013248261570309672,
+        "significant": false,
+        "favours": null,
+        "direction": "lower_is_better",
+        "n": 600,
+        "ci_low": -3.425148404700687e-05,
+        "ci_high": 0.02664734632436805
+      },
+      "chain_validity": {
+        "system_a_exp020": 0.9626203703703705,
+        "system_b": 0.9693636363636364,
+        "difference_a_minus_b": -0.006743265993265912,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.021159995791245566,
+        "ci_high": 0.007383901515151622
+      },
+      "decomp_mean": {
+        "system_a_exp020": 0.521336156400497,
+        "system_b": 0.5303975984025152,
+        "difference_a_minus_b": -0.009061442002018194,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.019411557486180273,
+        "ci_high": 0.0012092097634657324
+      },
+      "composite_score": {
+        "system_a_exp020": 0.18983695286195287,
+        "system_b": 0.31322677045177044,
+        "difference_a_minus_b": -0.12338981758981757,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.1738915926203426,
+        "ci_high": -0.00682576065138565
+      }
+    },
+    "mcnemar": {
+      "exact_match": {
+        "system_a_exp020": 0.045,
+        "system_b": 0.045,
+        "difference_a_minus_b": 0.0,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 1.0,
+        "discordant_only_in_a": 5,
+        "discordant_only_in_b": 5
+      },
+      "hop_count_exact_match": {
+        "system_a_exp020": 0.5116666666666667,
+        "system_b": 0.54,
+        "difference_a_minus_b": -0.028333333333333332,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 0.14881624623838502,
+        "discordant_only_in_a": 53,
+        "discordant_only_in_b": 70
+      },
+      "break_exact_match": {
+        "system_a_exp020": 0.04,
+        "system_b": 0.035,
+        "difference_a_minus_b": 0.005,
+        "significant": false,
+        "favours": null,
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 0.375,
+        "discordant_only_in_a": 4,
+        "discordant_only_in_b": 1
+      },
+      "over_decomposition": {
+        "system_a_exp020": 0.32,
+        "system_b": 0.22833333333333333,
+        "difference_a_minus_b": 0.09166666666666666,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "lower_is_better",
+        "n": 600,
+        "p_value": 1.9569930350880073e-09,
+        "discordant_only_in_a": 71,
+        "discordant_only_in_b": 16
+      },
+      "under_decomposition": {
+        "system_a_exp020": 0.16833333333333333,
+        "system_b": 0.23166666666666666,
+        "difference_a_minus_b": -0.06333333333333334,
+        "significant": true,
+        "favours": "system_a",
+        "direction": "lower_is_better",
+        "n": 600,
+        "p_value": 1.2143807700186297e-06,
+        "discordant_only_in_a": 12,
+        "discordant_only_in_b": 50
+      }
+    }
+  },
+  "compare_vs_exp008_full_train": {
+    "_what_this_is": "The fine-tuned comparator, exactly as exp-015 ran it: runs/exp-011/exp008_full_train/eval_per_item.json (LoRA full_train, exp-008, not re-run).",
+    "system_a": "exp-020 (4bit prompting)",
+    "system_b": "exp-008 full_train (fine-tuned)",
+    "num_aligned_items": 600,
+    "headline_statistics_significant": "10/10",
+    "statistics_not_available_in_inputs": [
+      "decomp_mean",
+      "over_decomposition",
+      "under_decomposition"
+    ],
+    "_not_compared_caveat": "The exp-011 comparator file predates the over/under_decomposition and decomp_mean columns, so those three are NOT in this paired test (flagged in compare_notes.md). Same caveat exp-015's row carries.",
+    "bootstrap": {
+      "rouge_l_f1": {
+        "system_a_exp020": 0.5384994929359502,
+        "system_b": 0.6646664024857436,
+        "difference_a_minus_b": -0.12616690954979337,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.1415869178867654,
+        "ci_high": -0.1104908429790661
+      },
+      "step_f1": {
+        "system_a_exp020": 0.1823354377104377,
+        "system_b": 0.3411322751322751,
+        "difference_a_minus_b": -0.15879683742183742,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.1815760912698412,
+        "ci_high": -0.1363760386604137
+      },
+      "ordered_step_accuracy": {
+        "system_a_exp020": 0.16319444444444442,
+        "system_b": 0.3237222222222222,
+        "difference_a_minus_b": -0.16052777777777777,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.18333333333333326,
+        "ci_high": -0.13797222222222222
+      },
+      "sari": {
+        "system_a_exp020": 0.5766263148155361,
+        "system_b": 0.6822884470647773,
+        "difference_a_minus_b": -0.10566213224924126,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.12022866104422657,
+        "ci_high": -0.09071424229299245
+      },
+      "ged": {
+        "system_a_exp020": 0.4846398838661745,
+        "system_b": 0.30939302184449674,
+        "difference_a_minus_b": 0.17524686202167777,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "lower_is_better",
+        "n": 600,
+        "ci_low": 0.1548869739605437,
+        "ci_high": 0.19581033833777525
+      },
+      "chain_validity": {
+        "system_a_exp020": 0.9626203703703705,
+        "system_b": 0.9941666666666666,
+        "difference_a_minus_b": -0.03154629629629613,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.04592708333333312,
+        "ci_high": -0.0176479166666666
+      },
+      "composite_score": {
+        "system_a_exp020": 0.18983695286195287,
+        "system_b": 0.5235695767195767,
+        "difference_a_minus_b": -0.3337326238576238,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "ci_low": -0.357468030002405,
+        "ci_high": -0.3083037169312169
+      }
+    },
+    "mcnemar": {
+      "exact_match": {
+        "system_a_exp020": 0.045,
+        "system_b": 0.10833333333333334,
+        "difference_a_minus_b": -0.06333333333333334,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 6.973810151578164e-08,
+        "discordant_only_in_a": 7,
+        "discordant_only_in_b": 45
+      },
+      "hop_count_exact_match": {
+        "system_a_exp020": 0.5116666666666667,
+        "system_b": 0.71,
+        "difference_a_minus_b": -0.19833333333333333,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 6.1649420259053835e-15,
+        "discordant_only_in_a": 60,
+        "discordant_only_in_b": 179
+      },
+      "break_exact_match": {
+        "system_a_exp020": 0.04,
+        "system_b": 0.10166666666666667,
+        "difference_a_minus_b": -0.06166666666666667,
+        "significant": true,
+        "favours": "system_b",
+        "direction": "higher_is_better",
+        "n": 600,
+        "p_value": 5.7277652842913085e-08,
+        "discordant_only_in_a": 6,
+        "discordant_only_in_b": 43
+      }
+    }
+  },
+  "source_files": {
+    "eval": "runs/exp-020/eval/eval_metrics.json",
+    "compare_vs_exp015": "runs/exp-020/compare_vs_exp015_unguided_fp16/compare_metrics.json",
+    "compare_vs_exp008": "runs/exp-020/compare_vs_exp008_full_train/compare_metrics.json",
+    "run_metrics": "runs/exp-020/decomposer/20260919_223903/metrics.json",
+    "run_log": "runs/exp-020/run.log"
+  }
+}

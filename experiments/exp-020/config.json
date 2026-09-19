@@ -1,0 +1,41 @@
+{
+  "_note": "Config snapshot for exp-020 (issue #50 block, GPU lane run G1a): Mistral-7B-Instruct-v0.3, unguided, 4-bit, ADR 0007 pinned 600, few-shot from the size2000_imbalanced pool via exp-014's reranked top-5 artifact. exp-015's command sequence unchanged except for --quantization 4bit and the output root. configs/decomposer_musique.json and configs/musique_eval.json UNEDITED; no shared pipeline code touched by this lane.",
+  "step_1_decompose": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --quantization 4bit --retrieval-input runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --output-root runs/exp-020/decomposer",
+  "step_2_evaluate": ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions runs/exp-020/decomposer/20260919_223903/results.json --run-dir runs/exp-020/eval --out-prefix eval --seed 42",
+  "step_3_compare_vs_exp015": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-020/eval/eval_per_item.json runs/exp-015/eval/eval_per_item.json --run-dir runs/exp-020/compare_vs_exp015_unguided_fp16 --out-prefix compare --seed 42",
+  "step_4_compare_vs_exp008_full_train": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/exp-020/eval/eval_per_item.json runs/exp-011/exp008_full_train/eval_per_item.json --run-dir runs/exp-020/compare_vs_exp008_full_train --out-prefix compare --seed 42",
+  "quantization": {
+    "resolved": "4bit",
+    "resolved_recorded_in": "runs/exp-020/decomposer/20260919_223903/config.json -> loader.quantization",
+    "how": "command-line --quantization 4bit, which run_decomposer.py resolves over the model default (run_decomposer.py:2101). The model folder default is UNCHANGED: components/decomposer/models/mistral_7b_instruct/config.json still carries loader.quantization: \"none\". This is exactly where ADR 0031's 2026-09-14 precision amendment says the pinning must happen - in the run, not in the folder defaults.",
+    "kernel": "bitsandbytes NF4 (run_decomposer.py:992)"
+  },
+  "retrieval_artifact": "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl (sha256 3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0 - verified this session, exact match to the hash in experiments/exp-015/config.json; 600 rows; hop split re-counted 200/200/200 from query_id prefixes)",
+  "frozen_at_exp015_values": {
+    "condition": "unguided",
+    "prompt_file": "prompt_unguided.md",
+    "prompt_sha256": "e9fef279e7c21a313663e14e1884cda5aed9dc11d7f0134e828c1948be514ddf",
+    "unguided_prompt_invariant_checked": true,
+    "few_shot.k": 3,
+    "retrieval.mode": "typed",
+    "retrieval.k": 5,
+    "max_new_tokens": 1024,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "self_exclusion": "on (unconditional in run_decomposer.py)",
+    "seed": 42
+  },
+  "seed": 42,
+  "model": "mistralai/Mistral-7B-Instruct-v0.3 (mistral_7b_instruct), quantization 4bit, parameter_count 7248023552 against parameter_ceiling 1e10 asserted at run time (configs/model_limits.json was still at 1e10; B1's raise to 1.5e10 had not merged)",
+  "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop); run-time evaluation_set record: pinned true, ids_missing_count 0, ids_unexpected_count 0, rows_loaded_per_hop {2:200,3:200,4:200}",
+  "git": {
+    "pre_run_commit": "990be38",
+    "pre_run_commit_full": "990be38 (= b703100 for all pipeline code; 990be38 adds only this run's pre-run experiments/log.md row)",
+    "code_that_actually_executed_generation": "990be38 - run_decomposer.py and configs were read into the process at 01:39:02 +03, before any of the three build-lane merges landed",
+    "commit_recorded_inside_the_run_metrics": "cc13bee2f2e8836ccbb2e417f7327d780809397b",
+    "discrepancy_reason": "run_decomposer.py stamps git state when it WRITES metrics.json (02:21:08 +03), not when it starts. Three build-lane commits landed on main during the 42-minute generation: a6e439c (01:47, docs), e95e550 (02:00, B2 anchor set), 72538e1 (02:13, docs), cc13bee (02:19, B3 ordering knob). None of them can have affected this process: Python had already loaded run_decomposer.py and both configs at 01:39:02, and the run's own startup config dump in runs/exp-020/run.log contains NO 'ordering' key, which is direct evidence it read the pre-merge configs/decomposer_musique.json.",
+    "evaluator_and_compares_ran_at": "cc13bee - but `git diff 990be38 cc13bee -- scripts/musique_decompositions_evaluator.py configs/musique_eval.json` is EMPTY, so the scoring code and eval config are byte-identical to the pre-run state.",
+    "dirty_at_run_time": "3 untracked Slides/*.pdf only"
+  }
+}
