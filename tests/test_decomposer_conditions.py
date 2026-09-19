@@ -257,7 +257,13 @@ def check_prompt_invariant(cfg: dict) -> None:
     )
     check(
         "folders shipping an unguided prompt",
-        folders == ["mistral_7b_instruct", "qwen3_5_9b"],
+        folders
+        == [
+            "mistral_7b_instruct",
+            "qwen2_5_14b_instruct",
+            "qwen2_5_7b_instruct",
+            "qwen3_5_9b",
+        ],
         str(folders),
     )
     for folder in folders:
@@ -499,33 +505,69 @@ def check_prompt_selection(cfg: dict) -> None:
             check(f"guard rejects a hardcoded hop line {hardcoded.splitlines()[1]!r}", False)
 
     # Model folders that cannot run an unguided arm, stated so the smoke test and the
-    # experiment both pick a folder that can. Of the two that ship an unguided prompt,
-    # qwen3_5_9b is 9B - above the ceiling in configs/model_limits.json - so as configured
-    # exactly ONE folder can run these arms. Whether to add an unguided prompt to another
-    # <=8B folder is Jahid's call, not this test's.
+    # experiment both pick a folder that can. Four ship an unguided prompt since issue
+    # #50 (ADR 0031 item 5) added the two Qwen2.5 arms; qwen2_5_3b and
+    # phi_4_mini_instruct still do not. Whether to add an unguided prompt to another
+    # folder is Jahid's call, not this test's.
     models_with_unguided = sorted(
         d.name
         for d in models_dir.iterdir()
         if d.is_dir() and load_config(d / "config.json").get("unguided_prompt_file")
     )
     check(
-        "mistral_7b_instruct and qwen3_5_9b are the folders that ship an unguided prompt",
-        models_with_unguided == ["mistral_7b_instruct", "qwen3_5_9b"],
+        "the four expected folders ship an unguided prompt",
+        models_with_unguided
+        == [
+            "mistral_7b_instruct",
+            "qwen2_5_14b_instruct",
+            "qwen2_5_7b_instruct",
+            "qwen3_5_9b",
+        ],
         str(models_with_unguided),
     )
     limits = load_config(require(cfg, "model_limits_config"))
-    ceiling = int(require(limits, "default_max_params"))
-    check("the parameter ceiling is 1e10 (ADR 0015)", ceiling == 10_000_000_000, str(ceiling))
+    # The decomposer has its OWN key since 2026-09-14 (issue #50 PR review, I-1), so a raise
+    # for this role cannot lift the ceiling of a role that has no ADR behind it.
+    ceiling = int(require(limits, "decomposer_max_params"))
+    check("the decomposer ceiling is 1.5e10 (ADR 0031)", ceiling == 15_000_000_000, str(ceiling))
+    check(
+        "default_max_params is back to the supervisor's standing 8e9",
+        int(require(limits, "default_max_params")) == 8_000_000_000,
+        str(require(limits, "default_max_params")),
+    )
     check(
         "qwen3_5_9b's own config records the ADR 0015 admission",
         "ADR 0015"
         in load_config(models_dir / "qwen3_5_9b" / "config.json").get("notes", ""),
     )
     check(
-        "the musique config records the two runnable folders",
-        "TWO model folders: mistral_7b_instruct and qwen3_5_9b"
-        in require(cfg, "_runnable_models_note"),
+        "qwen2_5_14b_instruct's own config records the ADR 0031 admission",
+        "ADR 0031"
+        in load_config(models_dir / "qwen2_5_14b_instruct" / "config.json").get("notes", ""),
     )
+    # Name-level coverage, not just a count: a note that says "FOUR" and then lists the wrong
+    # four folders would have passed the count check (issue #50 PR review, N-1).
+    runnable_note = require(cfg, "_runnable_models_note")
+    for folder in models_with_unguided:
+        check(f"the musique config's note names {folder}", folder in runnable_note)
+    for folder in ("qwen2_5_3b", "phi_4_mini_instruct"):
+        check(
+            f"... and names {folder} as unable to run the unguided arms",
+            folder in runnable_note,
+        )
+    # ADR 0031 item 1 pins this block to the size2000_imbalanced pool, but retrieval.input_key
+    # still resolves to the v1 9,156-pool artifact ADR 0014 pinned for issue #12. An A1 arm
+    # that runs off the default is on the wrong pool and is not a comparison at all, so the
+    # note must name the artifact and the flag (issue #50 PR review, I-3).
+    check(
+        "the note names the A1 retrieval artifact explicitly",
+        "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl" in runnable_note,
+    )
+    check(
+        "... its sha256",
+        "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0" in runnable_note,
+    )
+    check("... and the flag that carries it", "--retrieval-input" in runnable_note)
 
 
 def check_guided_cli_cannot_override_a_condition(cfg: dict) -> None:

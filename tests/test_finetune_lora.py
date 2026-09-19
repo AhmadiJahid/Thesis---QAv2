@@ -524,7 +524,7 @@ class TestModelSizeGateWiring(unittest.TestCase):
     def setUp(self) -> None:
         cfg = load_config(CONFIG_NAME)
         self.limits = load_limits(require(cfg, "model_limits_config"))
-        self.ceiling = int(require(self.limits, "default_max_params"))
+        self.ceiling = int(require(self.limits, "decomposer_max_params"))
 
     def test_a_model_within_the_ceiling_is_asserted_and_recorded(self) -> None:
         record = train_lora.assert_base_model_within_ceiling(
@@ -546,10 +546,15 @@ class TestModelSizeGateWiring(unittest.TestCase):
         committed = json.loads(
             (REPO_ROOT / "configs" / "model_limits.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(self.ceiling, committed["default_max_params"])
-        # 1e10 since ADR 0015 (Qwen3.5-9B admitted, 2026-08-19); reverts to 8e9 if
-        # the supervisor reasserts the 8B ceiling.
-        self.assertEqual(self.ceiling, 10_000_000_000)
+        # The decomposer reads its OWN key since 2026-09-14 (issue #50 PR review, I-1);
+        # train_lora asserts against the same component, so it must follow that key and not
+        # default_max_params, which is back to the supervisor's standing 8e9.
+        self.assertEqual(self.ceiling, committed["decomposer_max_params"])
+        self.assertEqual(committed["default_max_params"], 8_000_000_000)
+        # 1e10 since ADR 0015 (Qwen3.5-9B admitted, 2026-08-19), 1.5e10 since ADR 0031
+        # (Qwen2.5-14B-Instruct admitted, 2026-09-14); both raises are pending supervisor
+        # confirmation and revert if he reasserts the 8B ceiling.
+        self.assertEqual(self.ceiling, 15_000_000_000)
 
     def test_trainable_parameter_record_counts_only_requires_grad(self) -> None:
         class _Param:

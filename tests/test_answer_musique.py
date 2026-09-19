@@ -591,10 +591,16 @@ class TestReaderCeiling(unittest.TestCase):
         self.assertEqual(ceiling_for("answerer", limits), 8_000_000_000)
 
     def test_it_is_tighter_than_the_decomposers(self) -> None:
-        """PR #32 review, I-3: ADR 0015 raised default_max_params to 1e10 for ONE role, so
-        the reader must not inherit that key."""
+        """PR #32 review, I-3: the decomposer's raises were granted for ONE role, so the
+        reader must not inherit them. Since 2026-09-14 (issue #50 PR review, I-1) the
+        decomposer has its own key too, so ``default_max_params`` is the supervisor's
+        standing 8e9 again and a role added later inherits the constraint, not the
+        exception."""
         limits = load_limits()
-        self.assertEqual(ceiling_for("decomposer", limits), 10_000_000_000)
+        self.assertEqual(ceiling_for("decomposer", limits), 15_000_000_000)
+        self.assertEqual(require(limits, "default_max_params"), 8_000_000_000)
+        for inheriting in ("retrieval", "ner", "reranker"):
+            self.assertEqual(ceiling_for(inheriting, limits), 8_000_000_000, inheriting)
         self.assertLess(ceiling_for("answerer", limits), ceiling_for("decomposer", limits))
 
     def test_a_nine_billion_reader_is_refused(self) -> None:
@@ -632,6 +638,25 @@ class TestReaderCeiling(unittest.TestCase):
             with self.assertRaises(SystemExit) as caught:
                 load_limits(probe)
         self.assertIn("answerer_max_params", str(caught.exception))
+
+    def test_load_limits_requires_the_decomposers_own_key(self) -> None:
+        """The key added by issue #50's review (I-1) is required at startup like the rest:
+        a limits config that forgot it must fail on a dry run, not after weights load."""
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT / "configs") as tmp:
+            probe = Path(tmp) / "limits_probe.json"
+            probe.write_text(
+                json.dumps(
+                    {
+                        "router_max_params": 1,
+                        "default_max_params": 2,
+                        "answerer_max_params": 3,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(SystemExit) as caught:
+                load_limits(probe)
+        self.assertIn("decomposer_max_params", str(caught.exception))
 
     def test_the_declared_keys_are_the_keys_generate_answer_reads(self) -> None:
         """The lists are only as good as their agreement with the source: parse it.

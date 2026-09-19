@@ -7,10 +7,14 @@ Jahid on 2026-08-17 — ADR 0008). The numbers live in
 constant buried in code; the assertion is hard, because a ceiling that is only
 assumed is not a ceiling.
 
-One component may carry a **tighter** ceiling than another on purpose: the
-decomposer's key was raised to 1e10 for Qwen3.5-9B (ADR 0015), while the
-answering backend's reader keeps the standing ~8B ceiling under its own key, so
-that exception does not spread to a role no ADR admits (ADR 0019).
+A role that has been granted an exception carries its **own** key, so the
+exception cannot spread to a role no ADR admits: the answering backend's reader
+(ADR 0019) and, since 2026-09-14, the decomposer, whose key was raised to 1e10
+for Qwen3.5-9B (ADR 0015) and to 1.5e10 for Qwen2.5-14B-Instruct (ADR 0031,
+confirmed by Jahid in ADR 0032 item 2) — both still pending supervisor
+confirmation. ``default_max_params`` is therefore the
+supervisor's standing 8e9 again, and a component added later inherits the
+constraint rather than the exception.
 
 Changing a limit is a human decision (Jahid with his supervisor), not an agent's.
 """
@@ -23,12 +27,17 @@ from run_config import load_config, require
 
 _LIMIT_KEY = {
     "router": "router_max_params",
-    "decomposer": "default_max_params",
+    # The decomposer's own key (1.5e10). It shared default_max_params until 2026-09-14,
+    # which meant ADR 0015's and ADR 0031's raises silently lifted the ceiling for the
+    # three roles below as well - inert in practice, but exactly the spread the answerer
+    # got its own key to prevent (issue #50 PR review, I-1). Splitting it also makes
+    # "the supervisor reasserts 8B" a one-line revert confined to one role.
+    "decomposer": "decomposer_max_params",
     # The MuSiQue answering backend's reader (issue #16, ADR 0019). Its own key, at the
-    # standing ~8B ceiling: ADR 0015 raised default_max_params to 1e10 for ONE role
-    # (Qwen3.5-9B as a decomposer), and sharing that key would extend the exception to a
-    # role no ADR admits (PR #32 review, I-3).
+    # standing ~8B ceiling: the decomposer's raises were granted for ONE role, and sharing
+    # a key would extend the exception to a role no ADR admits (PR #32 review, I-3).
     "answerer": "answerer_max_params",
+    # No exception recorded for these, so they inherit the supervisor's standing 8e9.
     "retrieval": "default_max_params",
     "ner": "default_max_params",
     "reranker": "default_max_params",

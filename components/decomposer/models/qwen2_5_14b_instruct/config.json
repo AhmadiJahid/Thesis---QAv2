@@ -1,0 +1,37 @@
+{
+  "component": "decomposer",
+  "model_name": "qwen2_5_14b_instruct",
+  "model_id": "Qwen/Qwen2.5-14B-Instruct",
+  "prompt_file": "prompt.md",
+  "unguided_prompt_file": "prompt_unguided.md",
+  "prompt_style": "chat_template",
+  "chat_template": {
+    "split_marker": "<<<USER>>>",
+    "enable_thinking": false
+  },
+  "generation": {
+    "max_new_tokens": 256,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "loader": {
+    "trust_remote_code": false,
+    "quantization": "4bit",
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto"
+  },
+  "few_shot": {
+    "enabled": true,
+    "k": 3
+  },
+  "post_process": {
+    "strip_think": false,
+    "truncate_at": ["Question:"]
+  },
+  "logging": {
+    "prompt_log_every": 5
+  },
+  "notes": "Registered for ADR 0031 item 5: the size contrast at a held Qwen2.5 family, Qwen2.5-7B-Instruct vs this model. Every field mirrors qwen2_5_7b_instruct except quantization. NOTE: 14.77B parameters is above the ~8B standing ceiling AND above ADR 0015's 1e10; Jahid raised the decomposer ceiling to 1.5e10 on 2026-09-14 to admit it (ADR 0031 item 4, PENDING SUPERVISOR CONFIRMATION), so run_decomposer.py loads this folder. The raise lives on decomposer_max_params in configs/model_limits.json, the decomposer's own key, so it does not lift the ceiling for any other role (issue #50 PR review, I-1) - if the supervisor reasserts 8B or 10B, this arm becomes out-of-scope. 14,770,033,664 parameters, 1.5% under the raised ceiling - measured from safetensors metadata, weights not fetched. Re-derive it with scripts/print_model_params.py --model qwen2_5_14b_instruct (ADR 0027); it reads the hub's safetensors index for an uncached model and downloads nothing. quantization 4bit NF4, for the same reason qwen3_5_9b uses it: bfloat16 weights are 29.54 GB and the box's RTX 3090 has 24 GiB, so this model CANNOT be loaded unquantized here. Left to the folder defaults that would make the 7B-vs-14B size contrast move precision too (7B none, 14B 4bit). RESOLVED, and not here: ADR 0031's 2026-09-14 amendment pins ALL THREE issue #50 arms to 4-bit in the RUN INVOCATION (--quantization 4bit), leaving the folder defaults alone, so both contrasts move exactly one factor; Jahid did not veto it and ADR 0032 records the block going ahead on that basis. The resolved value is recorded in each run's metrics, so which precision an arm actually ran at is checkable from the committed artifacts rather than inferred from this default. WEIGHTS ARE CACHED: the 8 safetensors shards (28 GB) were downloaded on 2026-09-20 and the model loads offline (verified by a 5-row 4-bit smoke run the same day; see runs/downloads/qwen2_5_14b_instruct.log, EXIT 0). RECOVERY ONLY - if the cache is cleared or the model is wanted on another box, re-fetch with, from the repo root: .venv/bin/python -c \"from huggingface_hub import snapshot_download; print(snapshot_download('Qwen/Qwen2.5-14B-Instruct'))\" - the .venv's hf/huggingface-cli entry point is broken (no click module), so the Python call is the working form. The id, revision cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8, gated=false, and the 8 safetensors shards were verified against the hub API on 2026-09-14; config.json and model.safetensors.index.json are already in the cache from that check."
+}

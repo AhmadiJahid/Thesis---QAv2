@@ -107,17 +107,67 @@ are not identity: a decoy 600 has the right arithmetic and the wrong questions.
 `evaluation_set.pinned: false` with the id-mismatch counts. `configs/decomposer.json` sets none of this and the MetaQA
 behaviour is unchanged.
 
-**Model availability.** As configured, exactly one model folder can run these arms:
-`mistral_7b_instruct`. `qwen3_5_9b` also ships an unguided prompt but is 9B, above the ~8B
-ceiling in `configs/model_limits.json`, so it is refused at load; `qwen2_5_3b` and
-`phi_4_mini_instruct` are within the ceiling but ship no unguided prompt. Whether to add an
-unguided prompt to another ≤8B folder is Jahid's decision.
+**Model availability.** Four model folders ship a parity-guarded unguided prompt and can run
+these arms: `mistral_7b_instruct` (7.25B), `qwen2_5_7b_instruct` (7.62B), `qwen3_5_9b` (9.65B) and
+`qwen2_5_14b_instruct` (14.77B). The last two are above the ~8B standing ceiling and load only
+because **`decomposer_max_params`** in `configs/model_limits.json` was raised — to `1e10` for
+Qwen3.5-9B (ADR 0015) and to `1.5e10` for Qwen2.5-14B-Instruct (ADR 0031), **both pending
+supervisor confirmation**; if the 8B ceiling is reasserted, both are refused at load. That is the
+decomposer's *own* key: `default_max_params` stays at the supervisor's standing 8e9, so a raise
+for this role cannot lift the ceiling of a role no ADR admits.
+`qwen2_5_3b` and `phi_4_mini_instruct` are within the ceiling but ship no unguided prompt.
+Whether to add an unguided prompt to another folder is Jahid's decision.
+
+All four are in the local HF cache: `qwen2_5_14b_instruct`'s 8 shards (28 GB) landed on
+2026-09-20 (`runs/downloads/qwen2_5_14b_instruct.log`, `EXIT 0`). Its `config.json` `notes`
+field keeps the exact fetch command as recovery instructions, for a fresh box or a cache that
+has been cleared. `scripts/print_model_params.py` prints every registered model's parameter
+count against the committed ceiling, from safetensors metadata only — no weights loaded,
+nothing downloaded (ADR 0027). On a sharded snapshot it counts the files
+`model.safetensors.index.json` names, not every `*.safetensors` in the directory, so a
+`consolidated.safetensors` left beside the shards cannot double the reported total.
+
+**Which pool an arm runs on is a flag, not a default.** `retrieval.input_key` in
+`configs/decomposer_musique.json` resolves to the v1 9,156-example-pool artifact that ADR 0014
+pinned for issue #12. An issue #50 / A1 arm is pinned by ADR 0031 item 1 to the
+`size2000_imbalanced` pool instead and **must** pass `--retrieval-input` explicitly; the exact
+path and sha256 are in that config's `_runnable_models_note`. An arm that runs off the default
+is on a different pool from the Mistral baseline it is being compared against, which makes it
+not a comparison.
 
 Two prompt styles, set per model by `prompt_style`:
 
 - `plain` — the template is formatted directly.
 - `chat_template` — the template is split on `chat_template.split_marker` into a system and a
   user half and rendered with the tokenizer's chat template (`enable_thinking` from config).
+
+**Adding a model folder: generate `prompt_unguided.md`, never hand-write it.** The parity guard
+(`tests/test_decomposer_conditions.py`, `check_prompt_invariant`) demands that the unguided
+prompt equal the guided one minus its hop-bearing lines, *byte for byte* — that is what makes the
+guided and unguided arms differ in the hop count and nothing else (ADR 0013). Hand-editing a copy
+reintroduces exactly the residual deltas v1 had. So derive it with the same function the guard
+checks against, and the guard passes by construction:
+
+```python
+import run_decomposer as rd  # components/decomposer/
+guided = (folder / "prompt.md").read_bytes().decode("utf-8")
+(folder / "prompt_unguided.md").write_bytes(rd.derive_unguided_template(guided).encode("utf-8"))
+```
+
+Both Qwen2.5 folders were built this way. Match the prompt of a folder in the same model family
+(Qwen folders use the `<<<USER>>>` chat-template form, `mistral_7b_instruct` the plain one)
+rather than inventing wording: a prompt difference between arms is a second moving factor.
+
+**The family contrast holds prompt *content*, not prompt *bytes*.** `mistral_7b_instruct`'s
+`prompt.md` and `prompt_unguided.md` have **CRLF** line terminators (19 CR in the guided file);
+all three Qwen folders' are **LF**. Strip the `<<<USER>>>` marker line and the two are the same
+text line for line, which is what the Mistral-vs-Qwen2.5-7B contrast rests on — but they are not
+the same bytes, so `prompt_sha256` differs between those arms by construction and is not evidence
+of a prompt edit. The line endings are **deliberately left alone**: `mistral_7b_instruct/prompt.md`
+is the exact file exp-015 and every earlier Mistral arm ran on, and normalising it now would make
+this block's Mistral baseline a different artifact from the one its own history was measured with.
+The parity guard is unaffected — it compares each folder's unguided prompt against *its own*
+guided one, never across folders.
 
 Few-shot examples come from the reranked retrieval file when `--retrieval-input` is given,
 otherwise from masked-similarity selection over the committed exemplar pool, otherwise from a
@@ -131,8 +181,9 @@ under the configured runs root. The snapshot content-addresses what the run read
 `retrieval.input_sha256`) so two arms' comparability is checkable after the fact, and every arm
 reports `rows_at_max_new_tokens` — in the uncapped arms the token budget is the only bound on a
 runaway decomposition, so a truncated output has to be distinguishable from a finished one.
-The runner prints and asserts the parameter count against `default_max_params` in
-`configs/model_limits.json` (~8B, per CLAUDE.md).
+The runner prints and asserts the parameter count against `decomposer_max_params` in
+`configs/model_limits.json` (1.5e10; the standing constraint in CLAUDE.md is ~8B, and every role
+without its own key still inherits that).
 
 Every run also records **cost next to quality**: per row `prompt_tokens`, `completion_tokens`
 and `latency_seconds` in `results.json`, and their per-query means/medians in the metrics
