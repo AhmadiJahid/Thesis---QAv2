@@ -45,3 +45,29 @@ exact match, both length rates), so as of exp-021 the condition has not fired.
   already write it), Gate 1 delta review, then G2 as one experiment id (train + eval + compares).
 - G3 is three experiment ids, one per model, each comparing against its own A1 twin.
 - Total remaining GPU after exp-022: roughly 2.5–3.5 hours, extrapolated from exp-001/020/021.
+
+## Amendment, 2026-09-20 (Gate 1 review of the pool-arm branch) — three things the G2 write-up must carry
+
+- **The exp-008 comparison moves training-set size and hop mix, not only identity.** exp-001
+  trained `full_train` on 19,938 examples (2,494 optimizer steps, 15,497 s). `pool_2000_imbalanced`
+  trains on 2,000 examples at the same 2 epochs — roughly 250 steps, about a tenth of the compute —
+  with the pool's own hop mix (1461/413/126, 73% two-hop) instead of the split's. So "training data
+  is the one moving factor" means identity, volume and hop mix together. Every G2-vs-exp-008 claim
+  states 2,000 vs 19,938 and ~250 vs 2,494 steps beside the delta. The seeded hop-stratified
+  `pool_2000` arm, the only clean same-size-different-draw control, has never been trained
+  (issue #13) and is not in this block.
+- **G2 passes `--retrieval-input runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl`
+  at evaluation.** exp-008 took the config default (the v1 artifact). The reviewer diffed the two:
+  identical 600 query ids, identical order, identical question text, and with `--no-few-shot` the
+  exemplar block is empty in both, so the prompts are byte-identical and nothing measurable moves.
+  Passing the flag makes G2's recorded provenance name this block's pool like every other #50 arm
+  and removes a silent dependency on `retrieval.input_key`.
+- **A relative `train_source_path` resolves against the paths config's `runs_root`**, because it
+  names a produced artifact, mirroring `--retrieval-input`. This supersedes ADR 0012's line that a
+  pool is pinned by editing `arms.pool_2000.train_source_path` "with no code change": the pin is a
+  separate arm, and it took a resolution-root change. ADR 0012 is amended by reference here.
+- **G2 launch preconditions** (the block's practice, issue #50): at train time the record's
+  `training_source_sha256` equals `cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646`
+  and `quantization` is `4bit`; at eval time `quantization` is `none`, adapter parity is
+  `checked: true` with 0 mismatches, and `evaluation_set.pinned` is true over 600. A mismatch
+  aborts before tokens are spent.

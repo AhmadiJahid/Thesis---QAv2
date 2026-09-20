@@ -44,3 +44,5 @@ Records the conventions the LoRA fine-tuning arm of issue #13 was built on (PR #
 - **Loss over the whole sequence** instead of completion-only. Rejected: it spends capacity on reproducing a fixed instruction block that is identical in every example.
 - **Counting the disagreement of hop signals for every arm instead of failing** (the behaviour before this PR). Kept for arms with no hop filter, where the label does not decide what the model sees; rejected for hop-filtered arms.
 - **Treating an arm's `eval_hops` as documentation** and relying on the operator to hand each arm the right evaluation input. Rejected: the generalisation claim is exactly the thing an unenforced convention would quietly void.
+
+*Amended 2026-09-20 by ADR 0034: the specific pool is pinned by a separate arm (`pool_2000_imbalanced`) whose relative `train_source_path` resolves against `runs_root`; that took a resolution-root change in `src/finetune_data.py`, so the earlier "no code change" wording no longer holds. `pool_2000` is unchanged and still untrained.*
