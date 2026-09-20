@@ -59,3 +59,13 @@
   reranked path and not on the others. The A5 contrast (as_is vs reversed) rests on this
   invariant: the two arms show the same k exemplars and differ only in order. A regression test
   pins it. Any future edit that reorders at selection breaks A5 and needs a new ADR.
+
+## Amendment, 2026-09-20 (Jahid) — item 6 reversed: Qwen3.5-9B runs
+
+Jahid: *"I need you to run Qwen 9B parameter one. Why haven't you run that one?"* The lead's
+default in item 6 (not in this block) is overturned. Ahmmad named "QN 9 billion" as the third
+model on 2026-08-27; the confound with the Qwen2.5 size rung (different generation and different
+size at once) stands as a caveat on how it is compared, not as a reason to omit it. It runs as
+exp-027 (`as_is`) and exp-028 (`reversed`) on the block's exact recipe — unguided, 4-bit, pinned
+600, the exp-014 retrieval artifact — so it sits on the same axis as exp-020/021/022. exp-005
+(Qwen3.5-9B on the v1 9,156 pool) is not on that axis and is not its comparator.
