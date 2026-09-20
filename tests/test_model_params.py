@@ -56,7 +56,9 @@ class TestHeaderArithmetic(unittest.TestCase):
         """The 8-byte little-endian length prefix is the format; the body after it is never
         read, so a shard with a truncated tensor section still counts."""
         blob = json.dumps(self.HEADER).encode("utf-8")
-        path = Path(self.enterContext(__import__("tempfile").TemporaryDirectory()))
+        tmp = __import__("tempfile").TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name)
         shard = path / "model-00001-of-00001.safetensors"
         shard.write_bytes(struct.pack("<Q", len(blob)) + blob)  # no tensor bytes at all
         self.assertEqual(pmp.count_from_header(pmp.safetensors_header(shard)), self.EXPECTED)
@@ -91,7 +93,9 @@ class TestTheIndexDecidesWhichFilesAreCounted(unittest.TestCase):
         path.write_bytes(struct.pack("<Q", len(blob)) + blob)
 
     def _snapshot(self, *, with_index: bool, with_extra: bool) -> Path:
-        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
         self._write(root / "model-00001-of-00002.safetensors", self.SHARD_A)
         self._write(root / "model-00002-of-00002.safetensors", self.SHARD_B)
         if with_extra:
