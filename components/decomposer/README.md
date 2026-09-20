@@ -210,6 +210,14 @@ weights**: `--dry-run` rebuilds each prompt from the committed config snapshot a
 retrieval artifact, and it writes the anchor files too. Read the finished run's own
 `config.json` snapshot for `model`, `condition` and `retrieval.input_resolved`, then:
 
+> **`chat_template` arms (the Qwen folders): one extra step.** A `--dry-run` loads no tokenizer, so
+> for a `prompt_style: chat_template` model it logs the chat *messages as JSON*, whereas the real
+> run logged `apply_chat_template(...)` of those same messages. The two are not byte-equal as text.
+> Load the arm's own tokenizer on CPU, apply its chat template to the regenerated messages, and
+> compare that — measured 2026-09-20 for exp-021 and exp-022 at 120/120 byte-identical each
+> (exp-025's log row). For `plain` arms such as Mistral the dry-run bodies compare directly
+> (exp-020: 120/120).
+
 ```bash
 # exp-020 (Mistral-7B-Instruct-v0.3, unguided, ADR 0007 pinned 600).
 # --quantization is irrelevant here: a dry run loads no model. The seed comes from the config.
