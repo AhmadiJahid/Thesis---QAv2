@@ -177,7 +177,71 @@ text after normalization) is dropped before the top-k is taken, and the count of
 recorded in `metrics.json`.
 
 Every run writes `results.json`, `config.json`, `metrics.json`, `notes.md` and a `prompts_log/`
-under the configured runs root. The snapshot content-addresses what the run read (`prompt_sha256`,
+under the configured runs root.
+
+### What lands in `prompts_log/`
+
+Two selectors, additive — a row can produce one file, two, or none:
+
+| file | written for | controlled by |
+|---|---|---|
+| `prompt_idx{position:04d}_hop{h}.txt` | every Nth row **by position** (`position = i + 1`), and every row on a `--dry-run` | `logging.prompt_log_every` in `components/decomposer/models/<model>/config.json` |
+| `anchor_{query_id}_hop{h}.txt` | every row whose `query_id` is in the frozen 45-item anchor set, **whatever position it sits at** | `logging.anchor_ids_file` in the shared config (`configs/decomposer_musique.json`; `null` in `configs/decomposer.json`, which turns it off) |
+
+The two answer different questions and neither replaces the other. The positional sample
+says what a typical prompt looked like. The anchor files answer *"show me these same 45
+items' prompts in every run"* (supervisor item A4, ADR 0033), which position cannot: a run
+over a different retrieval artifact orders the rows differently, so the every-Nth sample
+catches a different subset each time. An anchor row that also lands on the Nth boundary is
+written to **both** names, byte-identical, so existing parity checks over `prompt_idx*.txt`
+see exactly the files they saw before. `metrics.json` records `anchor_prompts_logged` and
+`anchor_prompts_expected` (the anchor ids actually among this run's rows), and the runner
+refuses to finish if they disagree.
+
+The prompt text is deliberately **not** copied into `results.json` — that file keeps its
+schema and its size, and `prompts_log/` is the prompt's home. `scripts/render_anchor_set.py`
+joins the two on `query_id`.
+
+### Recovering the prompts of a run that finished before anchor logging existed
+
+Every run up to and including exp-020 logged only the positional sample, so most anchor
+items have no prompt file. Those prompts are recoverable **on CPU, with no GPU and no model
+weights**: `--dry-run` rebuilds each prompt from the committed config snapshot and the same
+retrieval artifact, and it writes the anchor files too. Read the finished run's own
+`config.json` snapshot for `model`, `condition` and `retrieval.input_resolved`, then:
+
+```bash
+# exp-020 (Mistral-7B-Instruct-v0.3, unguided, ADR 0007 pinned 600).
+# --quantization is irrelevant here: a dry run loads no model. The seed comes from the config.
+.venv/bin/python components/decomposer/run_decomposer.py \
+    --model mistral_7b_instruct --config decomposer_musique.json \
+    --condition unguided \
+    --retrieval-input runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl \
+    --dry-run --dry-run-limit 600 \
+    --output-root runs/anchor/exp-020-prompts
+```
+
+That writes all 600 positional prompts plus the 45 `anchor_*.txt`. Measured 2026-09-20 on
+exp-020, exp-015 and exp-008 `full_train`: **120/120** of each run's own logged prompt
+bodies are byte-identical to the regeneration (the regenerated *header* additionally carries
+the `Few-shot ordering:` line those runs predate). Point the renderer at the regenerated
+directory while keeping the real run as the source of `decomposition_raw`:
+
+```bash
+python scripts/render_anchor_set.py \
+    --arm "exp-020=runs/exp-020/eval/eval_per_item.json@runs/exp-020/decomposer/<run id>" \
+    --prompts-dir "exp-020=runs/anchor/exp-020-prompts/<run id>/prompts_log" \
+    --out runs/anchor/<date>-exp020.md
+```
+
+The sheet states, per arm and in words, whether a prompt was *written by this run* or is
+*regenerated (CPU dry run, not written by this run)*, and renders an explicit *prompt not
+logged for this run* marker where there is none. When an arm carries both `--prompts-dir`
+and `@<run dir>`, the renderer compares the regeneration's config snapshot against the
+run's on `model`, `condition`, `prompt_sha256` and `retrieval.input_sha256` and **refuses**
+on any mismatch: pointing at the wrong regeneration would put one arm's prompt beside
+another arm's generation, and the page would look correct. A `--prompts-dir` with no run
+directory to check against is marked *unverified against a run*. The snapshot content-addresses what the run read (`prompt_sha256`,
 `retrieval.input_sha256`) so two arms' comparability is checkable after the fact, and every arm
 reports `rows_at_max_new_tokens` — in the uncapped arms the token budget is the only bound on a
 runaway decomposition, so a truncated output has to be distinguishable from a finished one.

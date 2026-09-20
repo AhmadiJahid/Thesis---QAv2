@@ -70,6 +70,12 @@ from typing import Any, Callable, Sequence, TypeVar
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from anchor_set import (  # noqa: E402
+    ANCHOR_PROMPT_PREFIX,
+    AnchorSetError,
+    anchor_prompt_filename,
+    load_anchor_ids_for_logging,
+)
 from hop_matching import HOP_SOURCES, load_predicted_hops  # noqa: E402
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
 from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
@@ -802,6 +808,49 @@ def exemplar_gold_hop_count(example: dict) -> int:
             "pool_few_shot_decomposition_musique)."
         )
     return len(steps)
+
+
+def select_prompt_log_paths(
+    prompts_dir: Path,
+    *,
+    position: int,
+    gold_hop: Any,
+    query_id: Any,
+    prompt_log_every: int,
+    anchor_ids: frozenset[str],
+    dry_run: bool,
+) -> list[Path]:
+    """Every prompt-log file this row is written to. Empty list means "do not log it".
+
+    Two independent selectors, deliberately additive rather than exclusive:
+
+    1. **The every-Nth sample**, unchanged in behaviour and unchanged in file name
+       (``prompt_idx{position:04d}_hop{h}.txt``, ``position`` being ``i + 1``). A
+       ``--dry-run`` logs every row, as it always has. Existing parity checks read these
+       files by name, so nothing about them may move.
+    2. **The anchor set** (ADR 0033): every row whose ``query_id`` is one of the frozen 45
+       is logged *whatever position it sits at*, under a name that carries the id
+       (``anchor_<query_id>_hop<h>.txt``). Position is not stable across arms - a run over
+       a different retrieval artifact orders the rows differently - so the every-Nth sample
+       cannot answer "show me the prompt for this item in every run", which is the question
+       the anchor set exists to answer.
+
+    An anchor row that also lands on the every-Nth boundary is written twice, to both
+    names. That duplication is the point: the positional file keeps the old sample intact
+    and the id-named file is what the renderer joins on.
+
+    ``anchor_ids`` empty (``logging.anchor_ids_file: null``, which is the MetaQA config)
+    disables the second selector entirely; a row with no ``query_id`` - the ``lines``
+    question format has none - can never be an anchor.
+    """
+    paths: list[Path] = []
+    if dry_run or position % prompt_log_every == 0:
+        # Filed under the gold depth, so the log file names are the same across arms
+        # (the router's prediction is stated inside the header instead).
+        paths.append(prompts_dir / f"prompt_idx{position:04d}_hop{gold_hop}.txt")
+    if anchor_ids and query_id is not None and str(query_id) in anchor_ids:
+        paths.append(prompts_dir / anchor_prompt_filename(str(query_id), gold_hop))
+    return paths
 
 
 def format_few_shot_examples(
@@ -2230,6 +2279,20 @@ def main() -> None:
     few_shot_cfg = dict(require(model_cfg, "few_shot"))
     post_cfg = dict(require(model_cfg, "post_process"))
     prompt_log_every = int(require(model_cfg, "logging.prompt_log_every"))
+    # Which items get a prompt logged BY ID, on top of the every-Nth positional sample
+    # (ADR 0033, supervisor item A4). Required in the shared config rather than defaulted
+    # here, for the same reason as few_shot.ordering: a run must not acquire an inspection
+    # set by omission. null disables it - that is what the MetaQA config sets, since the 45
+    # are MuSiQue ids and its questions carry no ids at all.
+    try:
+        anchor_ids, anchor_ids_path = load_anchor_ids_for_logging(
+            require(cfg, "logging.anchor_ids_file"), _REPO_ROOT
+        )
+    except AnchorSetError as exc:
+        raise SystemExit(
+            f"[decomposer] logging.anchor_ids_file in "
+            f"{cfg.get('_config_path', '<config>')}: {exc}"
+        ) from exc
 
     device = "cpu"
     if not args.dry_run:
@@ -2421,6 +2484,20 @@ def main() -> None:
         "post_process": post_cfg,
         "shared_config": cfg.get("_config_path"),
         "model_config": model_cfg.get("_config_path"),
+        # What the prompts_log of this run contains, so a later reader can tell an empty
+        # anchor lookup ("this run predates anchor logging") from a failed one.
+        "logging": {
+            "prompt_log_every": prompt_log_every,
+            "anchor_ids_file": require(cfg, "logging.anchor_ids_file"),
+            "anchor_ids_file_resolved": str(anchor_ids_path) if anchor_ids_path else None,
+            # Content address, as for every other consumed input (prompt_sha256,
+            # retrieval.input_sha256): the anchor list is frozen (ADR 0033) and a run that
+            # silently inspected a different 45 must be detectable from its snapshot alone.
+            "anchor_ids_file_sha256": (
+                sha256_file(anchor_ids_path) if anchor_ids_path else None
+            ),
+            "anchor_ids_count": len(anchor_ids),
+        },
         "output_root": str(output_root),
         "dry_run": args.dry_run,
     }
@@ -2712,6 +2789,17 @@ def main() -> None:
     print("Assembling prompts..." if args.dry_run else "Running inference...")
     progress_every = int(require(cfg, "progress_every"))
 
+    # How many anchor prompts this run OUGHT to write: the anchor ids that are actually
+    # among the rows it will process. Not 45 on a --dry-run-limit smoke run, and not 45 for
+    # a run over a different question set. Asserted against the count actually written once
+    # the loop finishes, so a silent naming or join drift cannot pass as coverage.
+    anchor_ids_in_rows = {
+        str(r.get("query_id"))
+        for r in inference_rows
+        if r.get("query_id") is not None and str(r.get("query_id")) in anchor_ids
+    }
+    anchor_prompts_logged = 0
+
     for i, row in enumerate(inference_rows):
         question = row["question"]
         # The hop count the prompt states (the gold depth, or the router's prediction);
@@ -2825,10 +2913,16 @@ def main() -> None:
         if gen:
             cost = {k: gen[k] for k in cost}
 
-        if args.dry_run or (i + 1) % prompt_log_every == 0:
-            # Filed under the gold depth, so the log file names are the same across arms
-            # (the router's prediction is stated inside the header instead).
-            log_path = prompts_dir / f"prompt_idx{i + 1:04d}_hop{gold_hop}.txt"
+        log_paths = select_prompt_log_paths(
+            prompts_dir,
+            position=i + 1,
+            gold_hop=gold_hop,
+            query_id=row.get("query_id"),
+            prompt_log_every=prompt_log_every,
+            anchor_ids=anchor_ids,
+            dry_run=args.dry_run,
+        )
+        if log_paths:
             masked_q = mask_fn(question) if mask_fn else "N/A"
             header = [
                 "--- Log Header ---",
@@ -2858,7 +2952,7 @@ def main() -> None:
             # decomposition. Without the raw text, an output that the token budget cut off
             # cannot be told from one the model chose to end - and only one of those is
             # evidence about hop ignorance.
-            log_path.write_text(
+            log_text = (
                 "\n".join(header)
                 + f"\n\n--- Prompt ({prompt_style}) ---\n"
                 + rendered
@@ -2866,9 +2960,15 @@ def main() -> None:
                 + (gen["text"] if gen else "")
                 + "\n--- Response ---\n"
                 + decomposition
-                + "\n",
-                encoding="utf-8",
+                + "\n"
             )
+            # The positional file and the anchor file are byte-identical by construction:
+            # one text, written to both names. An anchor prompt can therefore never drift
+            # from the every-Nth prompt of the same row.
+            for log_path in log_paths:
+                log_path.write_text(log_text, encoding="utf-8")
+                if log_path.name.startswith(ANCHOR_PROMPT_PREFIX):
+                    anchor_prompts_logged += 1
 
         results.append(
             {
@@ -2892,6 +2992,20 @@ def main() -> None:
             }
         )
 
+    # The anchor sheet's coverage claim is only worth something if it is checked. It is
+    # checked, but NOT here: the refusal is deferred to the very end of the run, after
+    # results.json and the run artifacts are on disk. A mismatch means the anchor *naming*
+    # drifted, which says nothing about the generations - and on a real (non-dry) run those
+    # generations are hours of GPU time that must not be thrown away to report a logging
+    # defect. The counts go into metrics.json either way, so the defect is recorded in the
+    # artifact even for the run that then exits non-zero.
+    anchor_count_mismatch = anchor_prompts_logged != len(anchor_ids_in_rows)
+    print(
+        f"[decomposer] anchor prompts logged: {anchor_prompts_logged}/"
+        f"{len(anchor_ids_in_rows)} anchor ids present in this run's "
+        f"{len(inference_rows)} rows (anchor list: {anchor_ids_path or 'disabled'})"
+    )
+
     (output_dir / "results.json").write_text(
         json.dumps(results, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
@@ -2906,6 +3020,15 @@ def main() -> None:
         "distinct_query_ids": distinct_query_ids,
         "evaluation_set": eval_set_record,
         "rows_with_empty_decomposition": empty,
+        # The 45-item hand-inspection set (ADR 0033). `anchor_prompts_logged` is how many
+        # of this run's rows had their full prompt written to prompts_log under their query
+        # id; `anchor_prompts_expected` is how many anchor ids were in the rows at all, so
+        # the two disagreeing is a defect and not a smaller eval set. 0/0 with a null
+        # `logging.anchor_ids_file` means anchor logging is off for this config, which is
+        # the MetaQA case - the 45 are MuSiQue ids.
+        "anchor_prompts_logged": anchor_prompts_logged,
+        "anchor_prompts_expected": len(anchor_ids_in_rows),
+        "anchor_ids_total": len(anchor_ids),
         "few_shot_enabled": few_shot_enabled,
         "few_shot_source_mode": few_shot_source_mode,
         "few_shot_source_counts": {
@@ -3088,6 +3211,24 @@ def main() -> None:
         ],
     )
     print(f"\nResults saved to: {output_dir}")
+
+    # Deferred to here on purpose (see where anchor_count_mismatch is computed): everything
+    # this run produced - results.json, the config snapshot, metrics.json with the two
+    # counts in it, the run note - is already on disk, so refusing now costs a reader
+    # nothing and costs a GPU run nothing. The non-zero exit is still a refusal: the anchor
+    # coverage of this run may not be trusted, and no sheet should be rendered from it
+    # until the cause is found.
+    if anchor_count_mismatch:
+        raise SystemExit(
+            f"[decomposer] wrote {anchor_prompts_logged} anchor prompt file(s) but "
+            f"{len(anchor_ids_in_rows)} of the {len(anchor_ids)} anchor ids are among this "
+            "run's rows. Anchor prompts are named by query id, so this means two rows share "
+            "an id or an id could not be turned into a file name. The run's outputs are "
+            f"complete and were written to {output_dir} (metrics.json records "
+            f"anchor_prompts_logged={anchor_prompts_logged} against "
+            f"anchor_prompts_expected={len(anchor_ids_in_rows)}); it is the ANCHOR COVERAGE "
+            "that is not to be trusted, not the generations."
+        )
 
 
 if __name__ == "__main__":

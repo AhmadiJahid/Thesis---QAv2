@@ -43,6 +43,11 @@
   "embedding_cache_key": "embedding_cache_dir",
   "masking_config": "masking.json",
 
+  "logging": {
+    "anchor_ids_file": null,
+    "_anchor_ids_file_note": "Anchor prompt logging is OFF on the MetaQA path, and null is the way to say so rather than the way to leave it unsaid - the runner requires this key in every shared config. The 45 anchor ids (ADR 0033) are MuSiQue ids drawn from the ADR 0007 pinned 600, and this path's questions come from a 'lines' file that carries no ids at all, so there is nothing to join them onto. A MetaQA run therefore logs exactly what it logged before: the every-Nth prompt sample of the per-model 'logging.prompt_log_every'. Its metrics record anchor_prompts_logged 0 / anchor_prompts_expected 0. If an anchor set is ever drawn for MetaQA, point this key at it."
+  },
+
   "output_subdir": "decomposer",
   "progress_every": 10,
   "model_limits_config": "model_limits.json",

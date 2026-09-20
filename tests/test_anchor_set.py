@@ -360,11 +360,11 @@ class TestRendererHelpers(unittest.TestCase):
     def test_arm_spec_takes_a_label_or_falls_back_to_the_parent_directory(self) -> None:
         self.assertEqual(
             RENDER.parse_arm_spec("exp-015 unguided=runs/exp-015/eval/eval_per_item.json"),
-            ("exp-015 unguided", Path("runs/exp-015/eval/eval_per_item.json")),
+            ("exp-015 unguided", Path("runs/exp-015/eval/eval_per_item.json"), None),
         )
         self.assertEqual(
             RENDER.parse_arm_spec("runs/exp-011/exp008_full_train/eval_per_item.json"),
-            ("exp008_full_train", Path("runs/exp-011/exp008_full_train/eval_per_item.json")),
+            ("exp008_full_train", Path("runs/exp-011/exp008_full_train/eval_per_item.json"), None),
         )
 
     def test_a_pipe_in_a_step_cannot_break_the_table(self) -> None:
