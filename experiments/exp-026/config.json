@@ -1,0 +1,464 @@
+{
+  "_note": "exp-026 (issue #50 G2, supervisor item A2 / issue #13): the POOL-ONLY fine-tune. Config snapshots copied verbatim from the run directories under the gitignored runs/ tree. Two GPU steps in one experiment id: train_lora.py --arm pool_2000_imbalanced --quantization 4bit (QLoRA on a 4-bit base, exactly as exp-001 trained full_train), then run_decomposer.py with that adapter at --quantization none (fp16 base), --no-few-shot, on the ADR 0007 pinned 600 - exp-008's evaluation in every respect except the explicit --retrieval-input the ADR 0034 amendment requires. Nothing in this file is a measured result.",
+  "training_run_config": {
+    "script": "train_lora.py",
+    "created_utc": "2026-09-20T02:45:37.095116+00:00",
+    "run_id": "20260920_024535",
+    "component": "decomposer",
+    "task": "lora_finetune",
+    "arm": "pool_2000_imbalanced",
+    "arm_spec": {
+      "_note": "G2 of the issue #50 block (supervisor item A2, issue #13): the pool-only fine-tune. Trains on EXACTLY the pinned size-2000 imbalanced pool artifact the prompting arms of this block retrieve their exemplars from (ADR 0031 item 1; ADR 0034 item 2 pins it here rather than by editing pool_2000, so that arm's definition does not change under anyone). train_source_path is an explicit path RELATIVE TO runs_root (configs/paths.json: runs, so this resolves to runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl in the repo), and it overrides train_source_key; no cap and no hop filter, so the arm inherits the pool's own imbalanced hop mix rather than re-drawing or re-stratifying it. Measured on the file on 2026-09-20: 2000 rows, 2000 distinct ids, hop split 1461 x 2-hop / 413 x 3-hop / 126 x 4-hop (by id prefix; step count agrees on every row), 0 ids in common with the ADR 0007 pinned 600 (the assertion in src/finetune_data.py runs it again every run), sha256 cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646 - the same pool hash configs/decomposer_musique.json records for the retrieval artifact of this block. The rows carry no 'question_decomposition', so data.step_fields resolves to 'few_shot_decomposition_musique'. The training run records the resolved path AND that sha256, so a later reader can tell a regenerated pool from this one.",
+      "train_source_key": null,
+      "train_source_path": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "train_hops": null,
+      "max_examples": null,
+      "stratify_cap_by_hop": false,
+      "eval_hops": [
+        2,
+        3,
+        4
+      ]
+    },
+    "model": "mistral_7b_instruct",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+    "quantization": "4bit",
+    "seed": 42,
+    "seeded": {
+      "seed": 42,
+      "python_random": true,
+      "pythonhashseed_exported_for_subprocesses": "42",
+      "numpy": true,
+      "torch": true,
+      "torch_cuda": true
+    },
+    "prompt": {
+      "_note": "The training prompt is built from the SAME per-model prompt file the prompting arm uses (components/decomposer/models/<model>/), with the few-shot block empty: the fine-tuned arm is meant to answer zero-shot, and inference must see the string shape training saw (run_decomposer.py --adapter ... --no-few-shot). target_reference_style 'as_is' trains on the gold step text verbatim; 'bracketed' rewrites '#1' to '[#1]' to match the convention the prompt file states. The choice is not neutral and is Jahid's to make: the evaluator strips brackets before matching steps (so exact-match and step-F1 are unaffected), but reference_validity_micro is vacuously 1.0 for predictions with no [#k] references, and ROUGE-L tokenises before punctuation stripping, so '#1' and '[#1]' are different tokens there.",
+      "_unguided_hop_placeholder_note": "Not duplicated here: it is read from decomposer_config below, so the training prompt and the inference prompt cannot drift apart on it.",
+      "guided": false,
+      "few_shot_examples": "",
+      "target_reference_style": "as_is",
+      "number_target_lines": false,
+      "prompt_file": "prompt_unguided.md",
+      "prompt_path": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/prompt_unguided.md",
+      "prompt_sha256": "e9fef279e7c21a313663e14e1884cda5aed9dc11d7f0134e828c1948be514ddf",
+      "prompt_style": "plain",
+      "unguided_hop_placeholder": "Unknown"
+    },
+    "loader": {
+      "_note": "Base-model loading for training. QLoRA is the 4bit path (bitsandbytes NF4 + double quantization); 'none' loads in dtype. device_map 'auto' needs accelerate.",
+      "trust_remote_code": false,
+      "device_map": "auto",
+      "dtype": "bfloat16",
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_compute_dtype": "bfloat16",
+      "bnb_4bit_use_double_quant": true,
+      "attn_implementation": null
+    },
+    "lora": {
+      "_note": "target_modules are the attention/MLP projection names of Llama/Mistral-family models. A different base architecture uses different names, so this list is a config value, not a default buried in code; peft raises if a name is absent.",
+      "r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "bias": "none",
+      "task_type": "CAUSAL_LM",
+      "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+      ]
+    },
+    "training": {
+      "_note": "trl SFTConfig fields. The dataset is prompt/completion typed and completion_only_loss masks the prompt out of the loss, so the model is trained on the decomposition text only. Batch 1 x grad-accum 16 with gradient checkpointing and max_length 1024 is what keeps a 4-bit 7B base inside 24 GiB on the RTX 3090 of docs/compute.md - an estimate until a run measures peak_gpu_memory_bytes, which the metrics JSON records. bf16 is supported on Ampere.",
+      "num_train_epochs": 2,
+      "max_steps": -1,
+      "per_device_train_batch_size": 1,
+      "gradient_accumulation_steps": 16,
+      "learning_rate": 0.0002,
+      "lr_scheduler_type": "cosine",
+      "_warmup_note": "warmup_steps, not warmup_ratio: transformers 5.5.4 warns that warmup_ratio is deprecated and slated for removal, so the run would emit a deprecation warning and eventually break.",
+      "warmup_steps": 10,
+      "weight_decay": 0.0,
+      "max_grad_norm": 1.0,
+      "optim": "paged_adamw_8bit",
+      "max_length": 1024,
+      "packing": false,
+      "completion_only_loss": true,
+      "gradient_checkpointing": true,
+      "bf16": true,
+      "fp16": false,
+      "logging_steps": 10,
+      "save_strategy": "epoch",
+      "save_total_limit": 2,
+      "report_to": "none",
+      "dataloader_num_workers": 0
+    },
+    "eval_set": {
+      "questions_template_key": "musique_eval_questions_template",
+      "hops": [
+        2,
+        3,
+        4
+      ],
+      "files": [
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+      ],
+      "ids_per_hop": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "num_ids": 600,
+      "expected_ids_per_hop": 200,
+      "expected_total_ids": 600,
+      "expected_counts_source": "eval_set.expected in /cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+      "expected_counts_asserted": true
+    },
+    "training_source": "/cta/users/fyilmaz/Thesis---QAv2/runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "training_source_sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+    "training_data": {
+      "source_rows": 2000,
+      "num_examples": 2000,
+      "hop_counts": {
+        "2": 1461,
+        "3": 413,
+        "4": 126
+      }
+    },
+    "limit": null,
+    "config": "/cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+    "model_config": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/config.json",
+    "decomposer_config": "/cta/users/fyilmaz/Thesis---QAv2/configs/decomposer.json",
+    "output_root": "runs/exp-026",
+    "adapter_dir": "runs/exp-026/20260920_024535/adapter",
+    "dry_run": false,
+    "git": {
+      "commit": "f2fe7d24aa0d8e9ed2029b5f22aeb074ad5ab78c",
+      "branch": "main",
+      "dirty": true,
+      "dirty_file_count": 3,
+      "dirty_files": [
+        "?? \"Slides/Artifact slides review.pdf\"",
+        "?? \"Slides/Final Slide before meeting.pdf\"",
+        "?? Slides/Thesis_QA_Slide_Deck.pdf"
+      ]
+    }
+  },
+  "decomposer_run_config": {
+    "script": "run_decomposer.py",
+    "created_utc": "2026-09-20T03:13:50.677227+00:00",
+    "run_id": "20260920_031350",
+    "component": "decomposer",
+    "model": "mistral_7b_instruct",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+    "model_name": "mistral_7b_instruct",
+    "prompt_style": "plain",
+    "prompt_file": "prompt_unguided.md",
+    "prompt_path": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/prompt_unguided.md",
+    "prompt_sha256": "e9fef279e7c21a313663e14e1884cda5aed9dc11d7f0134e828c1948be514ddf",
+    "unguided_prompt_invariant": {
+      "checked": true,
+      "guided_prompt": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/prompt.md",
+      "unguided_prompt": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/prompt_unguided.md",
+      "hop_lines_removed": [
+        "- The number of steps MUST equal the hop count.",
+        "Hop count: {hop_count}"
+      ]
+    },
+    "condition": "unguided",
+    "condition_settings": {
+      "guided": false,
+      "_note": "No hop count in the prompt: the model decides how many steps to emit."
+    },
+    "guided": false,
+    "hop_source": {
+      "source": "gold",
+      "condition": "unguided",
+      "predictions_file": null,
+      "predictions_file_sha256": null,
+      "id_field": "query_id",
+      "hop_field": "predicted_hop",
+      "note": "the query's gold hop depth (from its id on the retrieval path, or from the per-hop file it was read from) - never a prediction"
+    },
+    "stop_after_step_lines": null,
+    "seed": 42,
+    "seeded": {
+      "seed": 42,
+      "python_random": true,
+      "pythonhashseed_exported_for_subprocesses": "42",
+      "numpy": true,
+      "torch": true,
+      "torch_cuda": true
+    },
+    "sample_size": null,
+    "hops": [
+      2,
+      3,
+      4
+    ],
+    "few_shot_exemplar_hop_count": "exemplar_gold",
+    "few_shot_ordering": "as_is",
+    "few_shot_ordering_source": "config",
+    "questions_template_key": "musique_eval_questions_template",
+    "questions_format": "jsonl",
+    "device": "cuda",
+    "quantization": "none",
+    "adapter": "runs/exp-026/20260920_024535/adapter",
+    "no_few_shot": true,
+    "adapter_few_shot_override": false,
+    "adapter_prompt_parity": {
+      "checked": true,
+      "override": false,
+      "run": {
+        "guided": false,
+        "prompt_file": "prompt_unguided.md",
+        "prompt_style": "plain",
+        "few_shot_examples_in_prompt": false,
+        "prompt_sha256": "e9fef279e7c21a313663e14e1884cda5aed9dc11d7f0134e828c1948be514ddf"
+      },
+      "mismatches": [],
+      "training_record": {
+        "found": true,
+        "source": "adapter_provenance",
+        "path": "runs/exp-026/20260920_024535/adapter/training_provenance.json",
+        "training_run_id": "20260920_024535",
+        "training_arm": "pool_2000_imbalanced",
+        "model_id_cross_check": {
+          "checked": true,
+          "record_model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+          "adapter_base_model": "mistralai/Mistral-7B-Instruct-v0.3"
+        },
+        "looked_at": [
+          "runs/exp-026/20260920_024535/adapter/training_provenance.json",
+          "runs/exp-026/20260920_024535/config.json"
+        ],
+        "problems": []
+      },
+      "trained_on": {
+        "guided": false,
+        "prompt_file": "prompt_unguided.md",
+        "prompt_style": "plain",
+        "few_shot_examples_in_prompt": false,
+        "prompt_sha256": "e9fef279e7c21a313663e14e1884cda5aed9dc11d7f0134e828c1948be514ddf"
+      },
+      "fields_compared": [
+        "guided",
+        "prompt_file",
+        "prompt_style",
+        "few_shot_examples_in_prompt",
+        "prompt_sha256"
+      ],
+      "fields_not_in_training_record": []
+    },
+    "embed_model": "e5-small",
+    "embed_model_id": "intfloat/e5-small-v2",
+    "retrieval": {
+      "input": null,
+      "input_key": "musique_few_shot_top5_pinned600",
+      "input_resolved": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "input_sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+      "mode": "typed",
+      "k": 5,
+      "require_input": true
+    },
+    "generation": {
+      "max_new_tokens": 1024,
+      "do_sample": false,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "generation_overrides": {
+      "max_new_tokens": 1024
+    },
+    "loader": {
+      "trust_remote_code": false,
+      "quantization": "none",
+      "cuda_dtype": "float16",
+      "cpu_dtype": "float32",
+      "device_map_cuda": "auto"
+    },
+    "few_shot": {
+      "enabled": true,
+      "k": 3
+    },
+    "post_process": {
+      "strip_think": false,
+      "truncate_at": [
+        "Question:"
+      ]
+    },
+    "shared_config": "/cta/users/fyilmaz/Thesis---QAv2/configs/decomposer_musique.json",
+    "model_config": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/mistral_7b_instruct/config.json",
+    "logging": {
+      "prompt_log_every": 5,
+      "anchor_ids_file": "configs/anchor_set_45.json",
+      "anchor_ids_file_resolved": "/cta/users/fyilmaz/Thesis---QAv2/configs/anchor_set_45.json",
+      "anchor_ids_file_sha256": "c03aa351377894b2b1e371af0e2802365868b7ee39aac18e296572a699da7111",
+      "anchor_ids_count": 45
+    },
+    "output_root": "runs/exp-026/decomposer",
+    "dry_run": false,
+    "evaluation_set": {
+      "expected_rows_per_hop": 200,
+      "expected_hops": [
+        2,
+        3,
+        4
+      ],
+      "rows_source": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "pinned": true,
+      "allow_unpinned_flag": false,
+      "id_identity_checked": true,
+      "pinned_id_files": [
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_2_hop_200.jsonl",
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_3_hop_200.jsonl",
+        "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_sample_4_hop_200.jsonl"
+      ],
+      "pinned_id_count": 600,
+      "ids_missing_count": 0,
+      "ids_unexpected_count": 0,
+      "rows_loaded_total": 600,
+      "rows_loaded_per_hop": {
+        "2": 200,
+        "3": 200,
+        "4": 200
+      },
+      "distinct_query_ids": 600
+    },
+    "few_shot_self_exclusion": {
+      "enabled": false,
+      "by": [
+        "pool_id == query_id",
+        "normalized pool_question == normalized query"
+      ],
+      "note": "no few-shot examples were selected in this run, so there was nothing to self-exclude"
+    },
+    "git": {
+      "commit": "f2fe7d24aa0d8e9ed2029b5f22aeb074ad5ab78c",
+      "branch": "main",
+      "dirty": true,
+      "dirty_file_count": 3,
+      "dirty_files": [
+        "?? \"Slides/Artifact slides review.pdf\"",
+        "?? \"Slides/Final Slide before meeting.pdf\"",
+        "?? Slides/Thesis_QA_Slide_Deck.pdf"
+      ]
+    }
+  },
+  "evaluator_config": {
+    "script": "musique_decompositions_evaluator.py",
+    "created_utc": "2026-09-20T03:28:06.360373+00:00",
+    "config_path": "/cta/users/fyilmaz/Thesis---QAv2/configs/musique_eval.json",
+    "predictions": "runs/exp-026/decomposer/20260920_031350/results.json",
+    "gold": "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+    "run_dir": "runs/exp-026/eval",
+    "seed": 42,
+    "limit": null,
+    "out_prefix": "eval",
+    "composite_score_weights": {
+      "step_f1_macro": 0.4,
+      "ordered_step_accuracy_macro": 0.3,
+      "reference_validity_micro": 0.2,
+      "step_count_error": 0.1
+    },
+    "composite_step_count_error_scale": 3.0,
+    "composite_score_status": "legacy",
+    "ged_policy": {
+      "max_nodes_for_optimizer": 16,
+      "per_item_time_budget_seconds": 20.0,
+      "cost_bound": "max_nodes_for_optimizer is the guard that bounds cost: it is checked before any search starts and is deterministic. per_item_time_budget_seconds is a backstop only - the deadline is tested between the optimizer's successive approximations, so a single long-running approximation (including the first) cannot be interrupted",
+      "on_exhaustion": "the item is reported with a documented upper bound and flagged in ged_fallback, never dropped (dropping would break the paired battery; Break's own evaluator drops such items) \u2014 ADR 0026",
+      "node_substitution_cost": "1 - the edit-distance match ratio over lowercased whitespace tokens; Break lemmatizes with spaCy en_core_web_sm, so absolute values are not comparable to published Break GED",
+      "direction": "lower is better (it is a distance)",
+      "machine_dependence": "ged_fallback_counts['time_budget'] is machine-dependent, and so are the values of the items it counts (the last approximation before the deadline); every other path, including 'node_cap' and 'no_optimizer_result', is deterministic. An empty ged_fallback_counts means no machine-dependent value in the run"
+    },
+    "decomp_mean_policy": {
+      "components": [
+        "break_exact_match",
+        "sari",
+        "ged",
+        "chain_validity",
+        "hop_count_exact_match"
+      ],
+      "ged_clamp": 1.0,
+      "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+      "weights": "all equal by construction; there is no weighted variant",
+      "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+      "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+    },
+    "git": {
+      "commit": "f2fe7d24aa0d8e9ed2029b5f22aeb074ad5ab78c",
+      "branch": "main",
+      "dirty": true,
+      "dirty_file_count": 3,
+      "dirty_files": [
+        "?? \"Slides/Artifact slides review.pdf\"",
+        "?? \"Slides/Final Slide before meeting.pdf\"",
+        "?? Slides/Thesis_QA_Slide_Deck.pdf"
+      ]
+    }
+  },
+  "arm_comparison_config": {
+    "script": "compare_decomposer_arms.py",
+    "created_utc": "2026-09-20T03:28:29.930349+00:00",
+    "run_id": "20260920_032814",
+    "config": "/cta/users/fyilmaz/Thesis---QAv2/configs/finetune_decomposer.json",
+    "evaluator_config": "/cta/users/fyilmaz/Thesis---QAv2/configs/musique_eval.json",
+    "arms": {
+      "prompting_fp16_exp015": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-015/decomposer/20260823_055045",
+      "finetuned_pool_2000_imbalanced_exp026": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-026/decomposer/20260920_031350",
+      "finetuned_full_train_exp008": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-008/20260822_100745"
+    },
+    "baseline": "prompting_fp16_exp015",
+    "eval_arm": "pool_2000_imbalanced",
+    "eval_arm_spec": {
+      "_note": "G2 of the issue #50 block (supervisor item A2, issue #13): the pool-only fine-tune. Trains on EXACTLY the pinned size-2000 imbalanced pool artifact the prompting arms of this block retrieve their exemplars from (ADR 0031 item 1; ADR 0034 item 2 pins it here rather than by editing pool_2000, so that arm's definition does not change under anyone). train_source_path is an explicit path RELATIVE TO runs_root (configs/paths.json: runs, so this resolves to runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl in the repo), and it overrides train_source_key; no cap and no hop filter, so the arm inherits the pool's own imbalanced hop mix rather than re-drawing or re-stratifying it. Measured on the file on 2026-09-20: 2000 rows, 2000 distinct ids, hop split 1461 x 2-hop / 413 x 3-hop / 126 x 4-hop (by id prefix; step count agrees on every row), 0 ids in common with the ADR 0007 pinned 600 (the assertion in src/finetune_data.py runs it again every run), sha256 cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646 - the same pool hash configs/decomposer_musique.json records for the retrieval artifact of this block. The rows carry no 'question_decomposition', so data.step_fields resolves to 'few_shot_decomposition_musique'. The training run records the resolved path AND that sha256, so a later reader can tell a regenerated pool from this one.",
+      "train_source_key": null,
+      "train_source_path": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "train_hops": null,
+      "max_examples": null,
+      "stratify_cap_by_hop": false,
+      "eval_hops": [
+        2,
+        3,
+        4
+      ]
+    },
+    "eval_hops": [
+      2,
+      3,
+      4
+    ],
+    "out_dir": "runs/exp-026/arm_comparison",
+    "git": {
+      "commit": "f2fe7d24aa0d8e9ed2029b5f22aeb074ad5ab78c",
+      "branch": "main",
+      "dirty": true,
+      "dirty_file_count": 3,
+      "dirty_files": [
+        "?? \"Slides/Artifact slides review.pdf\"",
+        "?? \"Slides/Final Slide before meeting.pdf\"",
+        "?? Slides/Thesis_QA_Slide_Deck.pdf"
+      ]
+    }
+  },
+  "finetune_decomposer_arm": {
+    "_note": "G2 of the issue #50 block (supervisor item A2, issue #13): the pool-only fine-tune. Trains on EXACTLY the pinned size-2000 imbalanced pool artifact the prompting arms of this block retrieve their exemplars from (ADR 0031 item 1; ADR 0034 item 2 pins it here rather than by editing pool_2000, so that arm's definition does not change under anyone). train_source_path is an explicit path RELATIVE TO runs_root (configs/paths.json: runs, so this resolves to runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl in the repo), and it overrides train_source_key; no cap and no hop filter, so the arm inherits the pool's own imbalanced hop mix rather than re-drawing or re-stratifying it. Measured on the file on 2026-09-20: 2000 rows, 2000 distinct ids, hop split 1461 x 2-hop / 413 x 3-hop / 126 x 4-hop (by id prefix; step count agrees on every row), 0 ids in common with the ADR 0007 pinned 600 (the assertion in src/finetune_data.py runs it again every run), sha256 cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646 - the same pool hash configs/decomposer_musique.json records for the retrieval artifact of this block. The rows carry no 'question_decomposition', so data.step_fields resolves to 'few_shot_decomposition_musique'. The training run records the resolved path AND that sha256, so a later reader can tell a regenerated pool from this one.",
+    "train_source_key": null,
+    "train_source_path": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+    "train_hops": null,
+    "max_examples": null,
+    "stratify_cap_by_hop": false,
+    "eval_hops": [
+      2,
+      3,
+      4
+    ]
+  }
+}
