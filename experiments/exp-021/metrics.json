@@ -1,0 +1,413 @@
+{
+ "_note": "Metrics for exp-021 (issue #50 GPU lane G1b): Qwen2.5-7B-Instruct, unguided, 4-bit, ADR 0007 pinned 600. The family contrast against exp-020 (Mistral-7B-Instruct-v0.3) holds size at 7B and precision at 4-bit, so the only factor moving is the model family. Every number here is read off runs/exp-021/; nothing is inferred.",
+ "run": {
+  "status": "complete (rc=0 at every step)",
+  "wall_clock_total_seconds": 833,
+  "wall_clock_decompose_seconds": 824,
+  "model_generate_seconds_total": 812.8677551858127,
+  "mean_latency_seconds_per_query": 1.3547795919763546,
+  "median_latency_seconds_per_query": 1.3320538997650146,
+  "peak_vram_mib": 6082,
+  "peak_vram_method": "nvidia-smi --query-compute-apps sampled every 5 s and filtered to this run's own pid; a sampled process-reserved maximum, not torch.cuda.max_memory_allocated",
+  "model_size": {
+   "component": "decomposer",
+   "model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "parameter_count": 7615616512,
+   "parameter_ceiling": 15000000000,
+   "ceiling_asserted": true
+  },
+  "launch_gate": "PASS - the five issue #50 preconditions (retrieval sha256, quantization 4bit, few_shot_ordering as_is, evaluation_set.pinned true, model_size.ceiling_asserted true) checked from the startup dump 10 s after launch (before generation) and re-checked against the written config.json/metrics.json before the evaluator ran",
+  "rows_loaded_total": 600,
+  "rows_loaded_per_hop": {
+   "2": 200,
+   "3": 200,
+   "4": 200
+  },
+  "rows_with_empty_decomposition": 0,
+  "rows_at_max_new_tokens": 0,
+  "step_lines_per_row_total": 1710,
+  "few_shot_source_counts": {
+   "reranked": 600
+  },
+  "few_shot_ordering": "as_is",
+  "mean_prompt_tokens_per_query": 348.99833333333333,
+  "mean_completion_tokens_per_query": 28.226666666666667
+ },
+ "eval": {
+  "n_items": 600,
+  "missing_gold_count": 0,
+  "decomposition_report_card_six_terms": {
+   "break_exact_match_rate": 0.055,
+   "sari_macro": 0.572033130236507,
+   "ged_macro": 0.4694386092774358,
+   "chain_validity_macro": 0.921,
+   "hop_count_exact_match_rate": 0.5533333333333333,
+   "under_decomposition_rate": 0.29333333333333333,
+   "over_decomposition_rate": 0.15333333333333332
+  },
+  "ged_fallback_counts": {},
+  "other_reported": {
+   "exact_match_rate": 0.06333333333333334,
+   "step_precision_macro": 0.19454166666666667,
+   "step_recall_macro": 0.19361111111111112,
+   "step_f1_macro": 0.1929153439153439,
+   "ordered_step_accuracy_macro": 0.177125,
+   "rouge_l_f1_macro": 0.5412245962331016,
+   "step_count_exact_rate": 0.5533333333333333,
+   "step_count_mae": 0.5766666666666667,
+   "mean_signed_step_count_error": -0.15,
+   "decomp_mean_macro_CONTINGENCY_not_in_suite": 0.5264456272042515,
+   "composite_score_LEGACY_not_headlined_issue_40": 0.41108141534391535
+  },
+  "predicted_hop_distribution": {
+   "2": 262,
+   "3": 168,
+   "1": 24,
+   "4": 97,
+   "5": 31,
+   "7": 5,
+   "6": 12,
+   "8": 1
+  },
+  "per_gold_hop_report_card": {
+   "2": {
+    "num_rows": 200,
+    "break_exact_match_rate": 0.14,
+    "sari_macro": 0.6429280009128463,
+    "ged_macro": 0.3330996028132689,
+    "chain_validity_macro": 0.8775,
+    "hop_count_exact_match_rate": 0.81,
+    "under_decomposition_rate": 0.105,
+    "over_decomposition_rate": 0.085,
+    "exact_match_rate": 0.155,
+    "step_f1_macro": 0.32466666666666666,
+    "ordered_step_accuracy_macro": 0.32,
+    "rouge_l_f1_macro": 0.6517933841153253
+   },
+   "3": {
+    "num_rows": 200,
+    "break_exact_match_rate": 0.01,
+    "sari_macro": 0.5288603334224905,
+    "ged_macro": 0.5067571155492331,
+    "chain_validity_macro": 0.9316666666666668,
+    "hop_count_exact_match_rate": 0.525,
+    "under_decomposition_rate": 0.32,
+    "over_decomposition_rate": 0.155,
+    "exact_match_rate": 0.02,
+    "step_f1_macro": 0.14873809523809522,
+    "ordered_step_accuracy_macro": 0.1235,
+    "rouge_l_f1_macro": 0.5058407372235656
+   },
+   "4": {
+    "num_rows": 200,
+    "break_exact_match_rate": 0.015,
+    "sari_macro": 0.5443110563741841,
+    "ged_macro": 0.5684591094698055,
+    "chain_validity_macro": 0.9538333333333334,
+    "hop_count_exact_match_rate": 0.325,
+    "under_decomposition_rate": 0.455,
+    "over_decomposition_rate": 0.22,
+    "exact_match_rate": 0.015,
+    "step_f1_macro": 0.10534126984126985,
+    "ordered_step_accuracy_macro": 0.087875,
+    "rouge_l_f1_macro": 0.4660396673604138
+   }
+  }
+ },
+ "compare_vs_exp020_mistral_7b_4bit": {
+  "_what_this_is": "THE FAMILY CONTRAST the supervisor asked for on 2026-08-27: Qwen2.5-7B-Instruct vs Mistral-7B-Instruct-v0.3, size held at 7B, precision held at 4-bit, same eval set, same retrieval artifact and therefore the same exemplars, same prompt derivation, same seed, same decoding. Model family is the only factor that moves.",
+  "system_a": "runs/exp-021/eval/eval_per_item.json",
+  "system_b": "runs/exp-020/eval/eval_per_item.json",
+  "num_aligned_items": 600,
+  "headline_statistics_significant": "6/13",
+  "statistics_not_available_in_inputs": [],
+  "bootstrap": {
+   "rouge_l_f1": {
+    "system_a_exp021": 0.5412245962331016,
+    "system_b": 0.5384994929359502,
+    "difference_a_minus_b": 0.0027251032971513656,
+    "ci_low": -0.00957135709489292,
+    "ci_high": 0.014772420722385314,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "step_f1": {
+    "system_a_exp021": 0.1929153439153439,
+    "system_b": 0.1823354377104377,
+    "difference_a_minus_b": 0.010579906204906203,
+    "ci_low": -0.00602343223905723,
+    "ci_high": 0.027430968915343922,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "ordered_step_accuracy": {
+    "system_a_exp021": 0.177125,
+    "system_b": 0.16319444444444442,
+    "difference_a_minus_b": 0.013930555555555585,
+    "ci_low": -0.002514236111111148,
+    "ci_high": 0.030861458333333334,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "sari": {
+    "system_a_exp021": 0.572033130236507,
+    "system_b": 0.5766263148155361,
+    "difference_a_minus_b": -0.004593184579029019,
+    "ci_low": -0.01651304942749947,
+    "ci_high": 0.0074125091941181906,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "ged": {
+    "system_a_exp021": 0.4694386092774358,
+    "system_b": 0.4846398838661745,
+    "difference_a_minus_b": -0.015201274588738711,
+    "ci_low": -0.03408483904823607,
+    "ci_high": 0.003552236561199582,
+    "significant": false,
+    "favours": null,
+    "direction": "lower_is_better",
+    "n": 600
+   },
+   "chain_validity": {
+    "system_a_exp021": 0.9209999999999998,
+    "system_b": 0.9626203703703705,
+    "difference_a_minus_b": -0.041620370370370696,
+    "ci_low": -0.06580578703703704,
+    "ci_high": -0.018795370370370504,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "decomp_mean": {
+    "system_a_exp021": 0.5264456272042515,
+    "system_b": 0.521336156400497,
+    "difference_a_minus_b": 0.005109470803754457,
+    "ci_low": -0.010910651448071582,
+    "ci_high": 0.02085290670710438,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "composite_score": {
+    "system_a_exp021": 0.41108141534391535,
+    "system_b": 0.18983695286195287,
+    "difference_a_minus_b": 0.22124446248196247,
+    "ci_low": 0.2005866487794613,
+    "ci_high": 0.24324325712481967,
+    "significant": true,
+    "favours": "system_a",
+    "direction": "higher_is_better",
+    "n": 600
+   }
+  },
+  "mcnemar": {
+   "exact_match": {
+    "system_a_exp021": 0.06333333333333334,
+    "system_b": 0.045,
+    "difference_a_minus_b": 0.018333333333333333,
+    "significant": true,
+    "favours": "system_a",
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 0.0192108154296875,
+    "discordant_only_in_a": 15,
+    "discordant_only_in_b": 4
+   },
+   "hop_count_exact_match": {
+    "system_a_exp021": 0.5533333333333333,
+    "system_b": 0.5116666666666667,
+    "difference_a_minus_b": 0.041666666666666664,
+    "significant": false,
+    "favours": null,
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 0.1078109722261487,
+    "discordant_only_in_a": 124,
+    "discordant_only_in_b": 99
+   },
+   "break_exact_match": {
+    "system_a_exp021": 0.055,
+    "system_b": 0.04,
+    "difference_a_minus_b": 0.015,
+    "significant": true,
+    "favours": "system_a",
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 0.03515625,
+    "discordant_only_in_a": 12,
+    "discordant_only_in_b": 3
+   },
+   "over_decomposition": {
+    "system_a_exp021": 0.15333333333333332,
+    "system_b": 0.32,
+    "difference_a_minus_b": -0.16666666666666666,
+    "significant": true,
+    "favours": "system_a",
+    "direction": "lower_is_better",
+    "n": 600,
+    "p_value": 1.2535526556506857e-15,
+    "discordant_only_in_a": 32,
+    "discordant_only_in_b": 132
+   },
+   "under_decomposition": {
+    "system_a_exp021": 0.29333333333333333,
+    "system_b": 0.16833333333333333,
+    "difference_a_minus_b": 0.125,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "lower_is_better",
+    "n": 600,
+    "p_value": 2.846498058913575e-09,
+    "discordant_only_in_a": 118,
+    "discordant_only_in_b": 43
+   }
+  }
+ },
+ "compare_vs_exp008_full_train": {
+  "_what_this_is": "The fine-tuned comparator (exp-008 LoRA full_train, evaluated in exp-011 at quantization: none, not re-run). Prompting vs fine-tuning, read for a second model family on the same 600. The comparator's per-item file predates the over/under-decomposition and decomp_mean columns, so those three are NOT in this paired test.",
+  "system_a": "runs/exp-021/eval/eval_per_item.json",
+  "system_b": "runs/exp-011/exp008_full_train/eval_per_item.json",
+  "num_aligned_items": 600,
+  "headline_statistics_significant": "10/10",
+  "statistics_not_available_in_inputs": [
+   "decomp_mean",
+   "over_decomposition",
+   "under_decomposition"
+  ],
+  "bootstrap": {
+   "rouge_l_f1": {
+    "system_a_exp021": 0.5412245962331016,
+    "system_b": 0.6646664024857436,
+    "difference_a_minus_b": -0.123441806252642,
+    "ci_low": -0.13934570643967695,
+    "ci_high": -0.1077135601386585,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "step_f1": {
+    "system_a_exp021": 0.1929153439153439,
+    "system_b": 0.3411322751322751,
+    "difference_a_minus_b": -0.14821693121693122,
+    "ci_low": -0.1710280423280423,
+    "ci_high": -0.1255034722222222,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "ordered_step_accuracy": {
+    "system_a_exp021": 0.177125,
+    "system_b": 0.3237222222222222,
+    "difference_a_minus_b": -0.14659722222222218,
+    "ci_low": -0.1695006944444445,
+    "ci_high": -0.12322152777777783,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "sari": {
+    "system_a_exp021": 0.572033130236507,
+    "system_b": 0.6822884470647773,
+    "difference_a_minus_b": -0.11025531682827028,
+    "ci_low": -0.1254249198369765,
+    "ci_high": -0.09523544299222349,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "ged": {
+    "system_a_exp021": 0.4694386092774358,
+    "system_b": 0.30939302184449674,
+    "difference_a_minus_b": 0.16004558743293906,
+    "ci_low": 0.13899334762366708,
+    "ci_high": 0.18091899859971342,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "lower_is_better",
+    "n": 600
+   },
+   "chain_validity": {
+    "system_a_exp021": 0.9209999999999998,
+    "system_b": 0.9941666666666666,
+    "difference_a_minus_b": -0.07316666666666682,
+    "ci_low": -0.09424999999999994,
+    "ci_high": -0.05261111111111127,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   },
+   "composite_score": {
+    "system_a_exp021": 0.41108141534391535,
+    "system_b": 0.5235695767195767,
+    "difference_a_minus_b": -0.11248816137566137,
+    "ci_low": -0.12900230158730155,
+    "ci_high": -0.0956653273809524,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600
+   }
+  },
+  "mcnemar": {
+   "exact_match": {
+    "system_a_exp021": 0.06333333333333334,
+    "system_b": 0.10833333333333334,
+    "difference_a_minus_b": -0.045,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 0.0001980394513374506,
+    "discordant_only_in_a": 12,
+    "discordant_only_in_b": 39
+   },
+   "hop_count_exact_match": {
+    "system_a_exp021": 0.5533333333333333,
+    "system_b": 0.71,
+    "difference_a_minus_b": -0.15666666666666668,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 1.5677750707617797e-10,
+    "discordant_only_in_a": 62,
+    "discordant_only_in_b": 156
+   },
+   "break_exact_match": {
+    "system_a_exp021": 0.055,
+    "system_b": 0.10166666666666667,
+    "difference_a_minus_b": -0.04666666666666667,
+    "significant": true,
+    "favours": "system_b",
+    "direction": "higher_is_better",
+    "n": 600,
+    "p_value": 9.021490107130603e-05,
+    "discordant_only_in_a": 11,
+    "discordant_only_in_b": 39
+   }
+  }
+ },
+ "source_files": {
+  "eval": "runs/exp-021/eval/eval_metrics.json",
+  "compare_vs_exp020": "runs/exp-021/compare_vs_exp020_mistral_4bit/compare_metrics.json",
+  "compare_vs_exp008": "runs/exp-021/compare_vs_exp008_full_train/compare_metrics.json",
+  "run_metrics": "runs/exp-021/decomposer/20260920_001740/metrics.json",
+  "run_log": "runs/exp-021/run.log"
+ }
+}
