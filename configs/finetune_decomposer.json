@@ -9,7 +9,7 @@
   "default_arm": "pool_2000",
 
   "arms": {
-    "_note": "Training-data arms. --arm selects one by key; each arm names its source (a datasets key in configs/paths.json, or an explicit path), an optional hop filter, and an optional cap. eval_hops says which hop depths of the ADR 0007 evaluation set that arm is evaluated on, and it is enforced: scripts/compare_decomposer_arms.py --eval-arm <key> refuses when either side's scored items carry a hop the arm is not evaluated on, so a generalisation run cannot be scored on 2/3-hop rows. The train/eval id-overlap assertion always runs against ALL of eval_set.hops regardless, so a hop-restricted arm cannot dodge it. An arm with a non-null train_hops also makes a hop-signal disagreement in the source fatal (src/finetune_data.py): the hop filter is only as trustworthy as the hop labels it filters on.",
+    "_note": "Training-data arms. --arm selects one by key; each arm names its source (a datasets key in configs/paths.json, resolved against data_root; or an explicit path, resolved against RUNS_ROOT when relative, because a pinned artifact is produced by this repo and lands under the gitignored runs root - which also means a smoke paths config, whose runs_root is runs/smoke, cannot reach a real artifact through this field), an optional hop filter, and an optional cap. eval_hops says which hop depths of the ADR 0007 evaluation set that arm is evaluated on, and it is enforced: scripts/compare_decomposer_arms.py --eval-arm <key> refuses when either side's scored items carry a hop the arm is not evaluated on, so a generalisation run cannot be scored on 2/3-hop rows. The train/eval id-overlap assertion always runs against ALL of eval_set.hops regardless, so a hop-restricted arm cannot dodge it. An arm with a non-null train_hops also makes a hop-signal disagreement in the source fatal (src/finetune_data.py): the hop filter is only as trustworthy as the hop labels it filters on.",
 
     "pool_2000": {
       "_note": "The 2000-example pool arm. WHICH 2000-example pool is 'the best pool' is not settled by any measured v2 result - the pool sweep has not been run in v2 - so this arm draws 2000 rows with the fixed seed from the enriched MuSiQue training pool named below, spread across hop buckets. To pin a specific pool artifact instead, set train_source_path to it (it overrides train_source_key); max_examples still applies.",
@@ -18,6 +18,16 @@
       "train_hops": null,
       "max_examples": 2000,
       "stratify_cap_by_hop": true,
+      "eval_hops": [2, 3, 4]
+    },
+
+    "pool_2000_imbalanced": {
+      "_note": "G2 of the issue #50 block (supervisor item A2, issue #13): the pool-only fine-tune. Trains on EXACTLY the pinned size-2000 imbalanced pool artifact the prompting arms of this block retrieve their exemplars from (ADR 0031 item 1; ADR 0034 item 2 pins it here rather than by editing pool_2000, so that arm's definition does not change under anyone). train_source_path is an explicit path RELATIVE TO runs_root (configs/paths.json: runs, so this resolves to runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl in the repo), and it overrides train_source_key; no cap and no hop filter, so the arm inherits the pool's own imbalanced hop mix rather than re-drawing or re-stratifying it. Measured on the file on 2026-09-20: 2000 rows, 2000 distinct ids, hop split 1461 x 2-hop / 413 x 3-hop / 126 x 4-hop (by id prefix; step count agrees on every row), 0 ids in common with the ADR 0007 pinned 600 (the assertion in src/finetune_data.py runs it again every run), sha256 cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646 - the same pool hash configs/decomposer_musique.json records for the retrieval artifact of this block. The rows carry no 'question_decomposition', so data.step_fields resolves to 'few_shot_decomposition_musique'. The training run records the resolved path AND that sha256, so a later reader can tell a regenerated pool from this one.",
+      "train_source_key": null,
+      "train_source_path": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "train_hops": null,
+      "max_examples": null,
+      "stratify_cap_by_hop": false,
       "eval_hops": [2, 3, 4]
     },
 

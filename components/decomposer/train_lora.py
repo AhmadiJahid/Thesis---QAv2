@@ -6,9 +6,11 @@ defines a run - base model, quantization, LoRA rank, optimizer settings, which t
 data - comes from ``configs/finetune_decomposer.json``; the only CLI arguments are the arm
 to train and the usual overrides.
 
-Three training-data arms, selected with ``--arm``:
+Four training-data arms, selected with ``--arm``:
 
 - ``pool_2000``            - 2000 examples drawn (seeded) from the enriched MuSiQue pool
+- ``pool_2000_imbalanced`` - the pinned size-2000 imbalanced pool artifact, as built
+  (ADR 0031 item 1, ADR 0034 item 2): no re-draw, no cap
 - ``full_train``           - the full MuSiQue training split
 - ``generalisation_2_3hop`` - 2-hop and 3-hop only, for evaluation on 4-hop
 
@@ -60,6 +62,7 @@ from finetune_data import (  # noqa: E402
     arm_source_path,
     assert_no_eval_overlap,
     build_training_rows,
+    file_sha256,
     load_eval_ids,
     load_jsonl,
     prompt_file_sha256,
@@ -264,6 +267,14 @@ def adapter_provenance(snapshot: dict[str, Any]) -> dict[str, Any]:
         "model": snapshot.get("model"),
         "model_id": snapshot.get("model_id"),
         "prompt": prompt,
+        # The training *data*, travelling with the weights for the same reason the prompt
+        # does: an adapter is a directory that gets copied, and an arm that pins a produced
+        # artifact (ADR 0034 item 2) is only checkable later if the file's content hash is
+        # recorded next to the weights. Not compared by the parity guard, which is about the
+        # prompt; this is provenance a reader verifies with sha256sum.
+        "training_source": snapshot.get("training_source"),
+        "training_source_sha256": snapshot.get("training_source_sha256"),
+        "training_data": snapshot.get("training_data"),
         "_note": (
             "What this adapter was trained on, for run_decomposer.py's adapter prompt-parity "
             "guard. The base model is checked separately, from adapter_config.json's "
@@ -367,13 +378,27 @@ def main() -> None:
     # ---- training data ----
     source_path = arm_source_path(arm, paths_cfg)
     if not source_path.exists():
-        raise SystemExit(
-            f"training source not found: {source_path} (arm {arm_name!r}); set "
-            f"datasets.{arm.get('train_source_key')} or data_root in the paths config"
-        )
+        explicit = arm.get("train_source_path")
+        # The two source forms fail for different reasons, so they get different hints: a
+        # pinned artifact is missing from runs_root (it is gitignored, so it is machine-local
+        # and may simply never have been built here), while a datasets key is a paths-config
+        # question.
+        if isinstance(explicit, str) and explicit.strip():
+            hint = (
+                f"the artifact named by train_source_path ({explicit.strip()!r}) is missing "
+                f"under runs_root ({paths_cfg['runs_root_resolved']}). runs/ is gitignored, "
+                "so this artifact is machine-local: build it, or point the arm at one that "
+                "exists on this box"
+            )
+        else:
+            hint = (
+                f"set datasets.{arm.get('train_source_key')} or data_root in the paths config"
+            )
+        raise SystemExit(f"training source not found: {source_path} (arm {arm_name!r}); {hint}")
     rows = load_jsonl(source_path)
     if not rows:
         raise SystemExit(f"training source is empty: {source_path}")
+    source_sha256 = file_sha256(source_path)
 
     examples, selection = select_arm_examples(
         arm,
@@ -401,6 +426,7 @@ def main() -> None:
         f"hops={selection['selected_hop_counts']} eval_ids={eval_set_record['num_ids']} "
         f"overlap={overlap_record['overlap_count']}"
     )
+    print(f"[finetune] source={source_path} rows={len(rows)} sha256={source_sha256}")
 
     snapshot = {
         "script": Path(__file__).name,
@@ -432,6 +458,16 @@ def main() -> None:
         "training": training_cfg,
         "eval_set": eval_set_record,
         "training_source": str(source_path),
+        # Content address of the training file itself. An arm may pin a produced artifact by
+        # path (ADR 0034 item 2), and a path says which file was read, not which bytes: the
+        # hash is what lets a later reader confirm the adapter was trained on that pool and
+        # not on a regenerated one.
+        "training_source_sha256": source_sha256,
+        "training_data": {
+            "source_rows": len(rows),
+            "num_examples": len(examples),
+            "hop_counts": selection["selected_hop_counts"],
+        },
         "limit": args.limit,
         "config": cfg.get("_config_path"),
         "model_config": model_cfg.get("_config_path"),
@@ -555,6 +591,8 @@ def main() -> None:
         "seed": seed,
         "seeded": seeded,
         "training_source": str(source_path),
+        "training_source_sha256": source_sha256,
+        "training_source_rows": len(rows),
         "dataset": {
             "num_examples": len(training_rows),
             "hop_counts": selection["selected_hop_counts"],
@@ -601,7 +639,8 @@ def main() -> None:
         metrics=metrics,
         note_title=f"Decomposer LoRA {'dry run' if args.dry_run else 'run'} - {current_run_id}",
         note_lines=[
-            f"- Arm: `{arm_name}` (source `{source_path}`)",
+            f"- Arm: `{arm_name}` (source `{source_path}`, {len(rows)} rows, "
+            f"sha256 `{source_sha256}`)",
             f"- Base model: `{model_folder}` / `{model_id}`; quantization: {quantization}"
             + ("" if not args.dry_run else " (not loaded)"),
             f"- Prompt: `{prompt_path}` (style {prompt_style}, guided {guided}, "

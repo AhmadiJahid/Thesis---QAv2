@@ -394,10 +394,22 @@ def resolve_arm(cfg: dict[str, Any], arm_name: str) -> dict[str, Any]:
 
 
 def arm_source_path(arm: dict[str, Any], paths_cfg: dict[str, Any]) -> Path:
-    """The arm's training source: an explicit path if set, else its datasets key."""
+    """The arm's training source: an explicit path if set, else its datasets key.
+
+    The two forms resolve against different roots, and deliberately so. A
+    ``train_source_key`` names a *dataset*, and datasets live under ``data_root`` (outside
+    the working tree, because data never enters git). A ``train_source_path`` pins a
+    *produced artifact* - a pool built by this repo's own sweep (ADR 0034 item 2) - and those
+    land under ``runs_root``, so a relative explicit path resolves against **runs_root**,
+    which is a value of the paths config like any other. Under ``configs/paths.json`` that is
+    ``<repo>/runs/...``, the real artifact; under ``configs/smoke_paths.json`` it is
+    ``<repo>/runs/smoke/...``, so a smoke run cannot reach a real pool through this field any
+    more than it can reach a real dataset through ``data_root``. An absolute explicit path is
+    used as given.
+    """
     explicit = arm.get("train_source_path")
     if isinstance(explicit, str) and explicit.strip():
-        return resolve_path(explicit.strip(), Path(paths_cfg["data_root_resolved"]))
+        return resolve_path(explicit.strip(), Path(paths_cfg["runs_root_resolved"]))
     return resolve_path(
         require(paths_cfg, "datasets." + require(arm, "train_source_key")),
         Path(paths_cfg["data_root_resolved"]),
@@ -490,15 +502,23 @@ def _run_decomposer():
     return run_decomposer
 
 
-def prompt_file_sha256(prompt_path: Path) -> str:
-    """Content address of a prompt file, through the runner's own hash helper.
+def file_sha256(path: Path) -> str:
+    """Content address of a file, through the runner's own ``sha256_file``.
 
-    Delegated rather than reimplemented for the same reason the template helpers are: the
-    training record's ``prompt_sha256`` is compared against the evaluation run's by
-    ``run_decomposer.check_adapter_prompt_parity``, so the two numbers have to come from one
-    function.
+    Delegated rather than reimplemented for the same reason the template helpers are: a hash
+    that is compared across scripts has to come from one function.
     """
-    return str(_run_decomposer().sha256_file(Path(prompt_path)))
+    return str(_run_decomposer().sha256_file(Path(path)))
+
+
+def prompt_file_sha256(prompt_path: Path) -> str:
+    """Content address of a prompt file.
+
+    The training record's ``prompt_sha256`` is compared against the evaluation run's by
+    ``run_decomposer.check_adapter_prompt_parity``, so the two numbers have to come from one
+    function - see :func:`file_sha256`.
+    """
+    return file_sha256(Path(prompt_path))
 
 
 def select_prompt_file(model_cfg: dict[str, Any], *, guided: bool) -> str:

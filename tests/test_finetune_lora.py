@@ -45,12 +45,42 @@ from musique_decompositions_evaluator import _decomp_to_steps  # noqa: E402
 from run_config import load_config, load_paths, require  # noqa: E402
 
 CONFIG_NAME = "finetune_decomposer.json"
-ARM_NAMES = ("pool_2000", "full_train", "generalisation_2_3hop")
+ARM_NAMES = ("pool_2000", "pool_2000_imbalanced", "full_train", "generalisation_2_3hop")
+
+#: The arms whose source is a datasets *key*, so the smoke paths config can redirect them at
+#: the fabricated fixture tree. ``pool_2000_imbalanced`` pins an explicit artifact under
+#: ``runs_root`` (ADR 0034 item 2), which the smoke paths config redirects to ``runs/smoke``
+#: rather than to the fixture tree, and which is absent on a machine that never built it -
+#: the tests that read a source file therefore run over these three, and the pinned arm gets
+#: its own checks (``TestPinnedPoolArm``), which skip when the artifact is not on this
+#: machine.
+FIXTURE_BACKED_ARM_NAMES = ("pool_2000", "full_train", "generalisation_2_3hop")
+
+#: The artifact ``pool_2000_imbalanced`` pins, as written in the config: relative to
+#: ``runs_root``, not to the repo. With configs/paths.json that is ``<repo>/runs/`` + this.
+PINNED_POOL_PATH = "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl"
+PINNED_POOL_SHA = "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646"
+PINNED_POOL_HOP_COUNTS = {"2": 1461, "3": 413, "4": 126}
 
 #: Data paths are read through the smoke paths config, whose data_root is the fabricated
 #: fixture tree — so no test here can reach the real dataset location. It is passed
 #: explicitly rather than through QAV2_PATHS_CONFIG, which would leak into other modules.
 SMOKE_PATHS_CONFIG = "smoke_paths.json"
+
+
+def _paths_cfg_for(config_name: str) -> dict[str, Any]:
+    """The roots a named paths config declares, immune to QAV2_PATHS_CONFIG.
+
+    ``load_paths`` honours the environment override, which ``scripts/smoke_test.py`` sets for
+    the whole suite; a test that is *about* the difference between two paths configs has to
+    read the committed files themselves.
+    """
+    cfg = load_config(config_name)
+    return {
+        "runs_root_resolved": str(REPO_ROOT / require(cfg, "runs_root")),
+        "data_root_resolved": str(REPO_ROOT / require(cfg, "data_root")),
+        "repo_root_resolved": str(REPO_ROOT),
+    }
 
 
 def _rows(*specs: tuple[str, int]) -> list[dict[str, Any]]:
@@ -120,7 +150,7 @@ class TestConfigLoads(unittest.TestCase):
 
     def test_arm_sources_resolve_to_paths_config_keys(self) -> None:
         paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
-        for name in ARM_NAMES:
+        for name in FIXTURE_BACKED_ARM_NAMES:
             arm = fd.resolve_arm(self.cfg, name)
             path = fd.arm_source_path(arm, paths_cfg)
             self.assertTrue(str(path).endswith(".jsonl"), path)
@@ -144,6 +174,169 @@ class TestConfigLoads(unittest.TestCase):
             require(evaluation, "evaluator_script"),
             "scripts/musique_decompositions_evaluator.py",
         )
+
+
+class TestPinnedPoolArm(unittest.TestCase):
+    """``pool_2000_imbalanced``: the arm that trains on a pinned artifact, as built.
+
+    ADR 0034 item 2. Three things make this arm different from the other three, and each is
+    checked here: its source is an explicit path rather than a datasets key, no cap and no
+    hop filter touch it (so it carries the pool's own imbalanced hop mix), and the training
+    record has to carry the source file's content hash - a path names a file, not the bytes
+    in it.
+    """
+
+    ARM = "pool_2000_imbalanced"
+
+    def setUp(self) -> None:
+        self.cfg = load_config(CONFIG_NAME)
+        self.arm = fd.resolve_arm(self.cfg, self.ARM)
+
+    def _pool_rows(self, *specs: tuple[str, int]) -> list[dict[str, Any]]:
+        """Rows in the pinned pool's own shape: steps under the few-shot field, no hop_count."""
+        return [
+            {
+                "id": row_id,
+                "index": i,
+                "question": f"question for {row_id}?",
+                "few_shot_decomposition_musique": [
+                    f"step {k} of {row_id}?" for k in range(1, steps + 1)
+                ],
+            }
+            for i, (row_id, steps) in enumerate(specs)
+        ]
+
+    def test_the_arm_pins_the_artifact_with_no_cap_and_no_hop_filter(self) -> None:
+        self.assertEqual(self.arm["train_source_path"], PINNED_POOL_PATH)
+        self.assertIsNone(self.arm["train_source_key"])
+        self.assertIsNone(self.arm["train_hops"])
+        self.assertIsNone(self.arm["max_examples"])
+        self.assertFalse(self.arm["stratify_cap_by_hop"])
+        self.assertEqual(self.arm["eval_hops"], [2, 3, 4])
+
+    def test_pool_2000_is_untouched_by_this_arm(self) -> None:
+        pool = fd.resolve_arm(self.cfg, "pool_2000")
+        self.assertIsNone(pool["train_source_path"])
+        self.assertEqual(pool["max_examples"], 2000)
+        self.assertEqual(require(self.cfg, "default_arm"), "pool_2000")
+
+    def test_the_explicit_path_wins_over_the_datasets_key(self) -> None:
+        paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
+        arm = {**self.arm, "train_source_key": "musique_train"}
+        path = fd.arm_source_path(arm, paths_cfg)
+        self.assertEqual(path, Path(paths_cfg["runs_root_resolved"]) / PINNED_POOL_PATH)
+
+    def test_a_relative_explicit_path_is_runs_root_relative_not_data_relative(self) -> None:
+        """The artifact is produced output: it lives under runs_root, not under data_root."""
+        paths_cfg = {
+            "runs_root_resolved": "/fabricated/runs-root",
+            "data_root_resolved": "/fabricated/data-root",
+            "repo_root_resolved": str(REPO_ROOT),
+        }
+        path = fd.arm_source_path(self.arm, paths_cfg)
+        self.assertEqual(path, Path("/fabricated/runs-root") / PINNED_POOL_PATH)
+        self.assertFalse(str(path).startswith("/fabricated/data-root"), str(path))
+
+    def test_under_the_smoke_paths_config_the_arm_cannot_reach_the_real_artifact(self) -> None:
+        """runs_root is a config value, so a smoke run is redirected here too.
+
+        The committed runs_root values are read with ``load_config`` rather than
+        ``load_paths``: under ``scripts/smoke_test.py`` the whole suite runs with
+        QAV2_PATHS_CONFIG set, which would redirect both sides of the comparison.
+        """
+        smoke_cfg = _paths_cfg_for(SMOKE_PATHS_CONFIG)
+        real_cfg = _paths_cfg_for("paths.json")
+        smoke_path = fd.arm_source_path(self.arm, smoke_cfg)
+        self.assertEqual(smoke_path, REPO_ROOT / "runs" / "smoke" / PINNED_POOL_PATH)
+        self.assertEqual(fd.arm_source_path(self.arm, real_cfg), REPO_ROOT / "runs" / PINNED_POOL_PATH)
+        self.assertNotEqual(smoke_path, fd.arm_source_path(self.arm, real_cfg))
+
+    def test_an_absolute_explicit_path_is_used_as_given(self) -> None:
+        paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
+        arm = {**self.arm, "train_source_path": "/tmp/somewhere/pool.jsonl"}
+        self.assertEqual(fd.arm_source_path(arm, paths_cfg), Path("/tmp/somewhere/pool.jsonl"))
+
+    def test_pool_shaped_rows_resolve_to_the_few_shot_field(self) -> None:
+        """The pinned pool carries no 'question_decomposition'; step_fields falls through."""
+        row = self._pool_rows(("3hop1__a", 3))[0]
+        self.assertNotIn("question_decomposition", row)
+        self.assertEqual(
+            fd.steps_from_row(row, list(require(self.cfg, "data.step_fields"))),
+            [f"step {k} of 3hop1__a?" for k in (1, 2, 3)],
+        )
+
+    def test_no_cap_is_applied_and_the_hop_mix_is_kept_as_built(self) -> None:
+        rows = self._pool_rows(
+            *[(f"2hop__r{i}", 2) for i in range(7)],
+            *[(f"3hop1__r{i}", 3) for i in range(3)],
+            ("4hop2__r0", 4),
+        )
+        examples, record = fd.select_arm_examples(
+            self.arm,
+            rows,
+            require(self.cfg, "data"),
+            seed=int(require(self.cfg, "seed")),
+            max_reported_ids=MAX_LOAD_IDS,
+        )
+        self.assertEqual(len(examples), len(rows))
+        self.assertIsNone(record["max_examples"])
+        self.assertFalse(record["stratify_cap_by_hop"])
+        self.assertEqual(record["selected_hop_counts"], {"2": 7, "3": 3, "4": 1})
+        self.assertEqual(record["source_rows"]["hop_disagreement_count"], 0)
+
+    def test_the_training_record_carries_the_source_path_and_its_hash(self) -> None:
+        """What travels with the weights: which file, which bytes, how many rows."""
+        snapshot = {
+            "script": "train_lora.py",
+            "run_id": "20260920_000000",
+            "arm": self.ARM,
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "prompt": {"guided": False, "few_shot_examples": ""},
+            "training_source": str(REPO_ROOT / "runs" / PINNED_POOL_PATH),
+            "training_source_sha256": PINNED_POOL_SHA,
+            "training_data": {
+                "source_rows": 2000,
+                "num_examples": 2000,
+                "hop_counts": PINNED_POOL_HOP_COUNTS,
+            },
+        }
+        payload = train_lora.adapter_provenance(snapshot)
+        self.assertEqual(payload["training_source_sha256"], PINNED_POOL_SHA)
+        self.assertEqual(payload["training_source"], snapshot["training_source"])
+        self.assertEqual(payload["training_data"]["hop_counts"], PINNED_POOL_HOP_COUNTS)
+
+    def test_file_sha256_is_the_runners_hash_function(self) -> None:
+        import hashlib
+
+        import run_decomposer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pool.jsonl"
+            path.write_bytes(b'{"id": "2hop__a"}\n')
+            self.assertEqual(fd.file_sha256(path), run_decomposer.sha256_file(path))
+            self.assertEqual(
+                fd.file_sha256(path), hashlib.sha256(path.read_bytes()).hexdigest()
+            )
+
+    def test_the_pinned_artifact_on_disk_is_the_one_the_arm_describes(self) -> None:
+        """Skipped where the artifact is absent: runs/ is gitignored, so it is machine-local."""
+        path = fd.arm_source_path(self.arm, _paths_cfg_for("paths.json"))
+        if not path.exists():
+            self.skipTest(f"pinned pool artifact not on this machine: {path}")
+        self.assertEqual(fd.file_sha256(path), PINNED_POOL_SHA)
+        rows = fd.load_jsonl(path)
+        self.assertEqual(len(rows), 2000)
+        self.assertEqual(len({r["id"] for r in rows}), 2000)
+        self.assertEqual(sum("question_decomposition" in r for r in rows), 0)
+        examples, record = fd.select_arm_examples(
+            self.arm,
+            rows,
+            require(self.cfg, "data"),
+            seed=int(require(self.cfg, "seed")),
+            max_reported_ids=MAX_LOAD_IDS,
+        )
+        self.assertEqual(len(examples), 2000)
+        self.assertEqual(record["selected_hop_counts"], PINNED_POOL_HOP_COUNTS)
 
 
 class TestOverlapAssertion(unittest.TestCase):
@@ -252,7 +445,7 @@ class TestOverlapAssertion(unittest.TestCase):
         cfg = load_config(CONFIG_NAME)
         paths_cfg = load_paths(SMOKE_PATHS_CONFIG)
         eval_ids, _ = fd.load_eval_ids(paths_cfg, require(cfg, "eval_set"))
-        for name in ARM_NAMES:
+        for name in FIXTURE_BACKED_ARM_NAMES:
             arm = fd.resolve_arm(cfg, name)
             rows = fd.load_jsonl(fd.arm_source_path(arm, paths_cfg))
             examples, _ = fd.select_arm_examples(
