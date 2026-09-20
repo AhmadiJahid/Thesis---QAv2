@@ -46,10 +46,12 @@ Three detectors differ and the differences are stated wherever they are used:
   so they are comparable to each other but not to the published table row by row.
 - **step alignment** — 2–6 fewer unmatched steps per arm than the published block; the positional
   shares agree in shape.
-- **verbatim recovery** — my counts reproduce the first note's **§4 table** exactly and differ from
-  that note's own JSON block, which runs 1–6 higher per arm. **The first note's markdown and JSON
-  disagree with each other on this one table**; the markdown is what it argues from, so that is what
-  I replicate against.
+- **verbatim recovery** — my counts reproduce the first note's **§4 table** exactly and differed
+  from that note's own JSON block, which ran 1–6 higher per arm. The markdown is what that note
+  argues from, so it is what I replicate against. **That JSON block has since been corrected to
+  match its table** (`verbatim_recovery_of_gold_wording._corrected_2026-09-20`); the cause of the
+  original overstatement is not established — the script is gone and none of six tested looser match
+  rules reproduces the old numbers.
 
 ---
 

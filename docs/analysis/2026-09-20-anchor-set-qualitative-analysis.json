@@ -1796,59 +1796,60 @@
  "verbatim_recovery_of_gold_wording": {
   "exp-020": {
    "whole_plan_exact_of_45": 1,
-   "at_least_one_gold_step_verbatim_of_45": 17,
-   "gold_steps_reproduced_verbatim": 22,
+   "at_least_one_gold_step_verbatim_of_45": 16,
+   "gold_steps_reproduced_verbatim": 20,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 5
   },
   "exp-023": {
    "whole_plan_exact_of_45": 3,
-   "at_least_one_gold_step_verbatim_of_45": 18,
-   "gold_steps_reproduced_verbatim": 25,
+   "at_least_one_gold_step_verbatim_of_45": 17,
+   "gold_steps_reproduced_verbatim": 24,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 5
   },
   "exp-021": {
    "whole_plan_exact_of_45": 5,
-   "at_least_one_gold_step_verbatim_of_45": 18,
-   "gold_steps_reproduced_verbatim": 27,
+   "at_least_one_gold_step_verbatim_of_45": 15,
+   "gold_steps_reproduced_verbatim": 24,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 5
   },
   "exp-024": {
    "whole_plan_exact_of_45": 3,
-   "at_least_one_gold_step_verbatim_of_45": 18,
-   "gold_steps_reproduced_verbatim": 26,
+   "at_least_one_gold_step_verbatim_of_45": 15,
+   "gold_steps_reproduced_verbatim": 23,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 3
   },
   "exp-022": {
    "whole_plan_exact_of_45": 2,
-   "at_least_one_gold_step_verbatim_of_45": 23,
-   "gold_steps_reproduced_verbatim": 29,
+   "at_least_one_gold_step_verbatim_of_45": 19,
+   "gold_steps_reproduced_verbatim": 25,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 5
   },
   "exp-025": {
    "whole_plan_exact_of_45": 2,
-   "at_least_one_gold_step_verbatim_of_45": 21,
-   "gold_steps_reproduced_verbatim": 28,
+   "at_least_one_gold_step_verbatim_of_45": 18,
+   "gold_steps_reproduced_verbatim": 25,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 5
   },
   "exp-008": {
    "whole_plan_exact_of_45": 4,
-   "at_least_one_gold_step_verbatim_of_45": 30,
-   "gold_steps_reproduced_verbatim": 44,
+   "at_least_one_gold_step_verbatim_of_45": 29,
+   "gold_steps_reproduced_verbatim": 38,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 10
   },
   "exp-026": {
    "whole_plan_exact_of_45": 6,
-   "at_least_one_gold_step_verbatim_of_45": 28,
-   "gold_steps_reproduced_verbatim": 41,
+   "at_least_one_gold_step_verbatim_of_45": 26,
+   "gold_steps_reproduced_verbatim": 37,
    "gold_steps_total": 135,
    "items_rouge_l_f1_ge_0.80_of_45": 12
-  }
+  },
+  "_corrected_2026-09-20": "CORRECTED. The two fields `at_least_one_gold_step_verbatim_of_45` and `gold_steps_reproduced_verbatim` previously carried values 1-4 and 1-6 higher per arm than section 4 of the note they belong to, and the note argues from its table, not from this block. They now match that table. `whole_plan_exact_of_45`, `gold_steps_total` and `items_rouge_l_f1_ge_0.80_of_45` were already correct and are unchanged, as is every other block in this file. The corrected values were recomputed on 2026-09-20 from the same per-item files listed under `sources`, by a rebuild of the note's detectors that reproduces every other count in this JSON exactly (see docs/analysis/2026-09-20-validation-45-seed43-analysis.md, 'How the comparison was made honest'); a gold step counts as reproduced when it equals some predicted step after lowercasing, punctuation stripping and whitespace collapse. CAUSE NOT ESTABLISHED: the original script is gone, and none of six tested looser match rules (containment, reference collapsing #k -> #, reference dropping, token-set and token-multiset equality, whitespace removal) reproduces the previous numbers, though every relaxation tested moves the counts in the direction they were wrong. Per-arm overstatement removed [at_least_one, gold_steps]: {\"exp-008\": [1, 6], \"exp-020\": [1, 2], \"exp-021\": [3, 3], \"exp-022\": [4, 4], \"exp-023\": [1, 1], \"exp-024\": [3, 3], \"exp-025\": [3, 3], \"exp-026\": [2, 4]}."
  }
 }
