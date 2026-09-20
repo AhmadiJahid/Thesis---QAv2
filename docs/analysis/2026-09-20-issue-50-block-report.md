@@ -1039,3 +1039,74 @@ enter git):**
 **Two numbers in this report are not directly copied from a file:** the total GPU time (3 h 24 m,
 a sum of the wall-clock column) and the token-share figure (32%, a division of two token counts).
 Both are arithmetic over the committed numbers immediately above them.
+
+## 9. Addendum, later on 2026-09-20 — Qwen3.5-9B, and two corrections from the hand-inspection notes
+
+Written by the lead after the report above was committed. Sources: the exp-027 and exp-028 rows in
+`experiments/log.md`, `experiments/exp-027|028/metrics.json`, `runs/exp-027/compare_*/`,
+`runs/exp-028/compare_vs_exp027*/`, and the two analysis notes
+`2026-09-20-anchor-set-qualitative-analysis.md` and `2026-09-20-validation-45-seed43-analysis.md`.
+
+### 9.1 Qwen3.5-9B joins the axis (exp-027 as_is, exp-028 reversed)
+
+Jahid asked for Ahmmad's "QN 9 billion" to be run. Same recipe as every other arm: unguided, 4-bit,
+the pinned 600, the same five retrieved examples. **One caveat travels with every comparison
+below:** against the two Qwen2.5 arms, Qwen3.5-9B changes the model *generation* and the *size* at
+the same time, so nothing here says which of the two did the work (ADR 0031 item 5).
+
+| metric | Mistral-7B (020) | Qwen2.5-7B (021) | Qwen2.5-14B (022) | **Qwen3.5-9B (027)** | good direction |
+|---|---|---|---|---|---|
+| step F1 | 0.1823 | 0.1929 | 0.1969 | **0.2135** | high |
+| ROUGE-L F1 | 0.5385 | 0.5412 | 0.5453 | **0.5625** | high |
+| SARI | 0.5766 | 0.5720 | 0.5795 | **0.5984** | high |
+| GED | 0.4846 | 0.4694 | 0.4605 | 0.4838 | low |
+| chain validity | 0.9626 | 0.9210 | 0.9838 | **0.8471** | high |
+| hop-count exact match | 0.5117 | 0.5533 | 0.6167 | 0.5700 | high |
+| Break exact match | 0.0400 | 0.0550 | 0.0333 | 0.0550 | high |
+| under-decomposition | 0.1683 | 0.2933 | 0.1017 | 0.1350 | low |
+| over-decomposition | 0.3200 | 0.1533 | 0.2817 | 0.2950 | low |
+
+What the tests say (same 600 in every pair):
+
+- **vs Qwen2.5-7B: 7 of 13 significant.** Qwen3.5-9B is better on the wording metrics (SARI,
+  ROUGE-L, step F1, ordered accuracy) and writes far fewer too-short plans. Qwen2.5-7B is better on
+  chaining and writes fewer too-long plans. *Confounded: generation and size both move.*
+- **vs Qwen2.5-14B: 10 of 13 significant.** Qwen3.5-9B is better on the wording metrics and on
+  the two verbatim-match metrics. The 14B is much better on chaining (0.9838 vs 0.8471) and on GED.
+  *Confounded.*
+- **vs Mistral-7B: 8 of 13.** Qwen3.5-9B is better on seven, Mistral on one (chaining).
+- **vs the full fine-tune exp-008: 10 of 10, all favouring the fine-tune.** The fourth prompting arm
+  in a row to lose on every statistic.
+
+In one sentence: **Qwen3.5-9B is the best of the four prompting models at writing the step text
+and the worst at making the steps refer to each other.** It also produced the block's only empty
+output (one row, where the model wrote "Question:" and the parser cut everything) and two runaway
+plans of 141 and 91 steps. Its weights hold no "thinking" tags, so that setting never fired.
+
+**Reversed order on this model (exp-028 vs exp-027): 3 of 13 significant, all favouring reversed**
+— chain validity up 3.5 points, GED down 1.9 points, and the legacy composite. This is the first
+model in the block where reversing the example order moved a report-card term. It is still about
+a third of Ahmmad's "up to 10%", and no multiple-comparison correction was applied. G3 now reads
+0/13, 1/13, 0/13, 3/13 across four models: 4 of 52 statistics.
+
+Cost: 28 minutes for as_is, 25 for reversed, peak VRAM about 8.0 GiB.
+
+### 9.2 Two corrections to the sections above
+
+1. **§5.4 (ordering) is right about the averages and incomplete about the mechanism.** The
+   hand-inspection notes show the models rewrite roughly 82% of their plans when the example
+   order is reversed (37, 37 and 41 of the 45 anchors; 491, 496 and 492 of the 600). The per-item
+   scores swing up and down by amounts as large as the family and size effects, and the swings
+   cancel. "Order does not matter" is true of the report card and false of any single question.
+2. **§5.1 mentions Mistral's 126-step plan; that item is not an anchor.** But the same failure is
+   in the anchor set: the reversed Mistral run (exp-023) produced a 79-step plan on one three-hop
+   anchor that the as-is run answered in three steps. And the second random 45 (seed 43) showed a
+   ten-step plan for a four-step gold from the reversed 14B run, so runaways are not Mistral-only.
+
+### 9.3 What the two 45-item draws add
+
+Any random 45 is biased by item difficulty, in the same direction for every model: the frozen 45
+are harder than the other 555 for seven of eight arms, the seed-43 draw easier for eight of eight.
+That does not weaken the 600-item paired tests, where the same items sit on both sides. It bounds
+what a 45-item sheet can show: it can show *how* a model fails, never *how much better* one model
+is than another. Read per-hop conclusions off the 600, not the sheet.
