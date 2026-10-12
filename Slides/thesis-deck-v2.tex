@@ -228,7 +228,6 @@
   director with \textbf{The Matrix}?''}
 \end{column}
 \end{columns}
-\srcline{The plan is the object of study here --- not the final answer.}
 \end{frame}
 
 % ================================================= 3 -- the chain ======
@@ -239,9 +238,6 @@
 \chainnum{2} & \textcolor{ink}{\fontsize{10.5}{13}\selectfont Which other films did \plc{[\#1]} direct?}\\[2.2mm]
 \chainnum{3} & \textcolor{ink}{\fontsize{10.5}{13}\selectfont What languages are spoken in \plc{[\#2]}?}
 \end{tabular}
-\callout{The \plc{[\#k]} placeholders are what make this a \textbf{plan} rather than
- three unrelated questions. They also make it machine-checkable: a step that references a
- nonexistent earlier step is detectably broken.}
 \srcline{Ordered $\cdot$ atomic $\cdot$ explicitly linked}
 \end{frame}
 
@@ -355,9 +351,6 @@
 \defrow[32mm]{On the pool}{Masked once, in advance. The masked pool is a maintained artifact,
  never re-masked while a query is served.}
 \defrow[32mm]{On the question}{Masked at lookup time, on every question, before it meets the pool.}
-\calloutwarn{{\ttfamily Stars} is itself a title in the knowledge base: re-masking the pool would
- turn {\ttfamily who stars in Baby Face} into {\ttfamily who [MOVIE] in [MOVIE]}. A bad pool item
- costs every lookup after it.}
 \srcmono{ADR 0003 $\cdot$ src/entity\_masking.py $\cdot$ placeholders: [MOVIE] and [PERSON]}
 \end{frame}
 
@@ -390,8 +383,6 @@
 \defrow[30mm]{Clustered}{k-means over the pool, one example per centroid --- covers the spread
  rather than the frequency.}
 \vspace{4mm}
-\calloutwarn{MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
- so the harder multi-hop examples are the scarcest thing in the prompt.}
 \srcmono{configs/pool\_sweep.json $\cdot$ MuSiQue-Ans v1.0 train}
 \end{frame}
 
@@ -441,8 +432,6 @@
   \node[anchor=west,text=muted,font=\fontsize{5.4}{6.4}\selectfont] at (120.5,10.4) {similarity first};
 \end{tikzpicture}
 \end{center}
-\calloutopen{\textbf{Open:} the order in which those five are placed has never been varied. Whether
- highest-similarity-first is the right end to start from is an untested assumption.}
 \srcmono{bi-encoder e5-small-v2 $\cdot$ cross-encoder rerank over top-20}
 \end{frame}
 
@@ -535,9 +524,6 @@
   whole-plan match.}
 \end{column}
 \end{columns}
-\calloutwarn{\textbf{Why not one blended score:} a content-perfect but \emph{reversed} plan scores at
- the top of the table on both GED and SARI. Only the strict match and the ordering terms
- catch it. Six unblended terms are reported; a report quoting fewer is not reporting it.}
 \srcmono{ADR 0029 $\cdot$ validated against a six-system junk battery}
 \end{frame}
 
@@ -592,29 +578,6 @@ step 3 --- no gold step & \textcolor{bad}{counted against}\\
 \end{frame}
 
 % ========================================== 17 -- metric retired ======
-\begin{frame}[t]
-\slidehead{SETUP \textperiodcentered\ METRICS}{The score that used to rank these runs has been retired}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.52\textwidth}
- \vspace{-2.6mm}
- \calloutbg{bad}{badsoft}{\textbf{Composite score} --- a hand-weighted blend:\par\vspace{1mm}
-  {\ttfamily\scriptsize 0.4$\cdot$step F1 + 0.3$\cdot$ordered + 0.2$\cdot$ref validity
-  + 0.1$\cdot$count error}}
- {\color{inktwo}\footnotesize
-  Its 0.2-weight reference-validity term was decided by a bracket-format mismatch: the
-  scorer looked for {\ttfamily [\#k]}, the evaluation data writes {\ttfamily \#k}.
-  The term was effectively settled by 2 of 600 items.\par}
-\end{column}
-\begin{column}{0.42\textwidth}
- \stat{bad}{$\pm$0.2}{how far the composite swung across nine pairs on which graph edit
-  distance moved a stable +0.01 to +0.02 in one direction}
- \vspace{2mm}
- \callout{It stays computed and stamped \textbf{legacy} so older tables remain reproducible ---
-  and it ranks nothing from here on.}
-\end{column}
-\end{columns}
-\srcmono{issue \#40 $\cdot$ frozen 2026-08-23 $\cdot$ superseded by the report card}
-\end{frame}
 
 % ============================================== 18 -- statistics ======
 \begin{frame}[t]
