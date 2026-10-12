@@ -534,10 +534,10 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
     <div class="split">
       <div>
         <table>
-          <tr><th>MuSiQue</th><th>Train</th><th>Dev used</th></tr>
-          <tr><td>2-hop</td><td class="num">14,376</td><td class="num">200</td></tr>
-          <tr><td>3-hop</td><td class="num">4,387</td><td class="num">200</td></tr>
-          <tr><td>4-hop</td><td class="num">1,175</td><td class="num">200</td></tr>
+          <tr><th>MuSiQue</th><th>Train</th><th>Dev avail.</th><th>Dev used</th></tr>
+          <tr><td>2-hop</td><td class="num">14,376</td><td class="num">1,252</td><td class="num">200</td></tr>
+          <tr><td>3-hop</td><td class="num">4,387</td><td class="num">760</td><td class="num">200</td></tr>
+          <tr><td>4-hop</td><td class="num">1,175</td><td class="num">405</td><td class="num">200</td></tr>
         </table>
         <p class="sub" style="font-size:1.26cqw">
           Ships <b>human-written gold decompositions</b> — so the plan itself can be scored.
@@ -558,11 +558,12 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       </div>
     </div>
     <div class="callout">
-      The evaluation set is <b>600 MuSiQue dev questions, 200 per hop</b>, pinned by id and
-      identical in every arm — so every comparison in this deck is paired on the same questions.
+      The main MuSiQue evaluation set is <b>600 dev questions, 200 per hop</b>, pinned by id (ADR 0007);
+      a comparison is only claimed between arms scored on the <em>same</em> questions. MetaQA uses
+      <b>100 questions per hop (300)</b>, identified by a question-set fingerprint, not an ADR-pinned id list.
     </div>
   </div>
-  <footer><span class="src">ADR 0007 pinned evaluation set</span></footer>
+  <footer><span class="src">ADR 0007 · ADR 0025 · train counts from the MuSiQue-Ans train file; dev counts from the dev-sample stats</span></footer>
 </section>
 
 <!-- 14 ────────────────────────────── metrics: the three jobs -->

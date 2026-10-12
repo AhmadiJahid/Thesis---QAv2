@@ -484,12 +484,12 @@
 \begin{columns}[T,onlytextwidth]
 \begin{column}{0.47\textwidth}
 \footnotesize
-\begin{tabular}{@{}p{16mm}R{20mm}R{18mm}@{}}
-\colhead{MUSIQUE} & \colhead{TRAIN} & \colhead{DEV USED}\\
+\begin{tabular}{@{}p{14mm}R{16mm}R{18mm}R{16mm}@{}}
+\colhead{MUSIQUE} & \colhead{TRAIN} & \colhead{DEV AVAIL.} & \colhead{DEV USED}\\
 \midrule
-2-hop & \textcolor{inktwo}{14,376} & \textcolor{inktwo}{200}\\
-3-hop & \textcolor{inktwo}{4,387} & \textcolor{inktwo}{200}\\
-4-hop & \textcolor{inktwo}{1,175} & \textcolor{inktwo}{200}\\
+2-hop & \textcolor{inktwo}{14,376} & \textcolor{inktwo}{1,252} & \textcolor{inktwo}{200}\\
+3-hop & \textcolor{inktwo}{4,387} & \textcolor{inktwo}{760} & \textcolor{inktwo}{200}\\
+4-hop & \textcolor{inktwo}{1,175} & \textcolor{inktwo}{405} & \textcolor{inktwo}{200}\\
 \bottomrule
 \end{tabular}
 \par\vspace{3.5mm}
@@ -513,9 +513,6 @@
  only by whether it executes and returns the right answer.\par}
 \end{column}
 \end{columns}
-\callout{The evaluation set is \textbf{600 MuSiQue dev questions, 200 per hop}, pinned by id and
- identical in every arm --- so every comparison in this deck is paired on the same questions.}
-\srcmono{ADR 0007 pinned evaluation set}
 \end{frame}
 
 % ================================ 14 -- metrics: the three jobs ======
