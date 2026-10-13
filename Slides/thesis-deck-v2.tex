@@ -16,12 +16,41 @@
 \usepackage{tikz}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{amsmath}
 
 % ---------------------------------------------------------------- fonts
 % If plex-sans is unavailable, comment the two lines below and uncomment this:
 % \usepackage{lmodern}
 \usepackage{plex-sans}
 \usepackage{plex-mono}
+
+% Math in Plex.  Beamer already sets math letters in the sans text font; this
+% pins the digits, the decimal point and \mathrm to Plex Sans as well, so a
+% number reads the same inside and outside a formula.  The T1 IBMPlexSans-TLF
+% family ships with plex-sans and exists under pdflatex and XeTeX alike.
+% Learnings (metric formulas, 2026-10-14):
+%  - under XeTeX, fontspec moves math digits to the serif \rmdefault at
+%    \begin{document}; re-declaring the digit math symbols (and \mathbf,
+%    \operator@font for max/min) in \AtBeginDocument
+%    is the only fix that held (mathastext and \DeclareSymbolFont{operators}
+%    did not), and it is plain pdflatex-legal LaTeX;
+%  - metric slides use a 0.42/0.54 split: plans + WHY left, FORMULA / WORKED /
+%    BLIND SPOT right; a metric needing more (SARI, GED) gets a second slide;
+%  - every worked number is printed by Slides/score_metric_examples.py.
+% If plex-sans is swapped for lmodern, delete this block.
+\makeatletter
+\AtBeginDocument{%
+  \DeclareSymbolFont{plexdigits}{T1}{IBMPlexSans-TLF}{m}{n}%
+  \SetMathAlphabet{\mathrm}{normal}{T1}{IBMPlexSans-TLF}{m}{n}%
+  \DeclareMathSymbol{0}{\mathalpha}{plexdigits}{`0}\DeclareMathSymbol{1}{\mathalpha}{plexdigits}{`1}%
+  \DeclareMathSymbol{2}{\mathalpha}{plexdigits}{`2}\DeclareMathSymbol{3}{\mathalpha}{plexdigits}{`3}%
+  \DeclareMathSymbol{4}{\mathalpha}{plexdigits}{`4}\DeclareMathSymbol{5}{\mathalpha}{plexdigits}{`5}%
+  \DeclareMathSymbol{6}{\mathalpha}{plexdigits}{`6}\DeclareMathSymbol{7}{\mathalpha}{plexdigits}{`7}%
+  \DeclareMathSymbol{8}{\mathalpha}{plexdigits}{`8}\DeclareMathSymbol{9}{\mathalpha}{plexdigits}{`9}%
+  \DeclareMathSymbol{.}{\mathord}{plexdigits}{`.}%
+  \SetMathAlphabet{\mathbf}{normal}{T1}{IBMPlexSans-TLF}{b}{n}%
+  \def\operator@font{\mathgroup\symplexdigits}}
+\makeatother
 
 % Letter-spacing for the small uppercase eyebrows.  microtype supplies
 % \textls under pdflatex; the \providecommand below is a harmless no-op
@@ -135,6 +164,16 @@
   \parbox[t]{\dimexpr\linewidth-#1\relax}{\raggedright\textcolor{inktwo}{#3}}%
   \par\vspace{2.6mm}}
 
+% \defrow whose body may hold several paragraphs (formula lines): \color
+% inside the \parbox instead of \textcolor, which cannot take a \par.
+% \leavevmode first: a \color in vertical mode becomes the [t] box's first
+% item and drops the body a line below its label.
+\newcommand{\defrowpar}[3][30mm]{%
+  \par\noindent\footnotesize
+  \parbox[t]{#1}{\raggedright\bfseries\textcolor{ink}{#2}}%
+  \parbox[t]{\dimexpr\linewidth-#1\relax}{\raggedright\leavevmode\color{inktwo}#3}%
+  \par\vspace{2.6mm}}
+
 % right-aligned label + sublabel beside a tinted example box.  Same rule as
 % \defrow: the size is set outside both boxes so their first lines share a
 % baseline.  Used by the masking and normalisation ladders.
@@ -157,6 +196,25 @@
 \newcommand{\colhead}[1]{{\color{accent}\fontsize{6.5}{8}\selectfont\bfseries\lsp{#1}}}
 \newcommand{\plc}[1]{{\ttfamily\color{gold}#1}}
 \newcommand{\hlt}[1]{{\setlength{\fboxsep}{1pt}\colorbox{accentsoft}{\textcolor{accentink}{#1}}}}
+% gold plan shared by every metric-example slide (all example numbers are scored on it)
+\newcommand{\xx}{\textcolor{bad}{$\times$}}
+% a labelled block of stacked plan lines: label in the table-header style, then the steps
+\newcommand{\planblock}[2]{\colhead{#1}\par\vspace{0.8mm}{\footnotesize\color{inktwo}#2\par}\vspace{2.4mm}}
+% gold plan on the left, one predicted plan on the right, both stacked
+\newcommand{\planpair}[4]{%  left label, left lines, right label, right lines
+ \begin{columns}[T,onlytextwidth]
+ \begin{column}{0.47\textwidth}\planblock{#1}{#2}\end{column}
+ \begin{column}{0.47\textwidth}\planblock{#3}{#4}\end{column}
+ \end{columns}}
+\newcommand{\goldlines}{1~Who directed \textbf{The Matrix}?\par 2~Which other films did \plc{[\#1]} direct?\par 3~What languages are spoken in \plc{[\#2]}?}
+% the five example plans (scored by Slides/score_metric_examples.py)
+\newcommand{\revlines}{1~What languages are spoken in \plc{[\#2]}?\par 2~Which other films did \plc{[\#1]} direct?\par 3~Who directed \textbf{The Matrix}?}
+\newcommand{\mergedlines}{1~Who directed \textbf{The Matrix}?\par 2~What languages are spoken in films \plc{[\#1]} directed?}
+\newcommand{\unlinkedlines}{1~Who directed \textbf{The Matrix}?\par 2~Which other films did that director direct?\par 3~What languages are spoken in those films?}
+\newcommand{\extralines}{1~Who directed \textbf{The Matrix}?\par 2~Which other films did \plc{[\#1]} direct?\par 3~What are the titles of those films?\par 4~What languages are spoken in \plc{[\#2]}?}
+\newcommand{\punctlines}{1~Who directed \textbf{The Matrix}\hlt{.}\par 2~Which other films did \plc{[\#1]} direct?\par 3~What languages are spoken in \plc{[\#2]}?}
+% HOW / WHY block: label above text, same label style as the calculation beside it
+\newcommand{\hw}[2]{\colhead{#1}\par\vspace{0.8mm}{\footnotesize\color{inktwo}#2\par}\vspace{2.6mm}}
 % tick mark, drawn rather than taken from a symbol font.
 % If it misbehaves, replace this definition with:  \newcommand{\ck}{$\surd$}
 \newcommand{\ck}{\tikz[baseline=0pt]{\draw[line width=.8pt,line cap=round,line join=round]
@@ -504,32 +562,46 @@
 \end{columns}
 \end{frame}
 
-% ================================ 14 -- metrics: the three jobs ======
+% ================ 14-16 -- metrics block: overview x2, normalisation, one slide per metric ======
 \begin{frame}[t]
-\slidehead{SETUP \textperiodcentered\ METRICS}{One number cannot catch three different failures}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.30\textwidth}
- \ptag{IS THE LENGTH RIGHT}\phead{Hop-count EM}
- \pbody{Predicted step count equals gold. Reported with under- and over-decomposition as a
-  pair, never summed --- too few steps is worse than too many.}
-\end{column}
-\begin{column}{0.31\textwidth}
- \ptag{IS THE CHAIN INTACT}\phead{Chain validity}
- \pbody{Do the \plc{[\#k]} links resolve into one connected chain with no orphans?
-  Junk scores zero.}
-\end{column}
-\begin{column}{0.31\textwidth}
- \ptag{IS THE CONTENT RIGHT}\phead{SARI \textperiodcentered\ GED \textperiodcentered\ Break EM}
- \pbody{N-gram overlap against gold, graph edit distance between step graphs, and the strict
-  whole-plan match.}
-\end{column}
-\end{columns}
-\srcmono{ADR 0029 $\cdot$ validated against a six-system junk battery}
+\slidehead{SETUP \textperiodcentered\ METRICS}{The report card: six numbers, never blended}
+\footnotesize
+\begin{tabular}{@{}p{34mm}p{86mm}R{14mm}@{}}
+\colhead{METRIC} & \colhead{WHAT IT CHECKS} & \colhead{BETTER}\\
+\midrule
+\textbf{Break EM} & \textcolor{inktwo}{The whole plan is identical to gold.} & $\uparrow$\\
+\textbf{SARI} & \textcolor{inktwo}{N-gram edits against gold, relative to the question.} & $\uparrow$\\
+\textbf{GED} & \textcolor{inktwo}{Graph distance to gold: wording, links, length.} & $\downarrow$\\
+\textbf{Chain validity} & \textcolor{inktwo}{Every \plc{[\#k]} points to an earlier step.} & $\uparrow$\\
+\textbf{Hop-count EM} & \textcolor{inktwo}{The number of steps equals gold's.} & $\uparrow$\\
+\textbf{Under / over rate} & \textcolor{inktwo}{Too few or too many steps, as a pair.} & $\downarrow$\\
+\bottomrule
+\end{tabular}
+\srcmono{ADR 0029 $\cdot$ a plan can score well on some and fail others, so all six are reported}
 \end{frame}
 
-% ============================================ 15 -- normalisation ======
 \begin{frame}[t]
-\slidehead{SETUP \textperiodcentered\ METRICS}{``After normalisation'' means exactly three operations}
+\slidehead{SETUP \textperiodcentered\ METRICS}{Also reported, and the end-to-end pair}
+\footnotesize
+\begin{tabular}{@{}p{34mm}p{86mm}R{14mm}@{}}
+\colhead{PLAN QUALITY} & \colhead{WHAT IT CHECKS} & \colhead{BETTER}\\
+\midrule
+\textbf{Exact match} & \textcolor{inktwo}{Every step identical to gold.} & $\uparrow$\\
+\textbf{Step F1} & \textcolor{inktwo}{The right steps are present; order ignored.} & $\uparrow$\\
+\textbf{Ordered step acc.} & \textcolor{inktwo}{The right step in the right place.} & $\uparrow$\\
+\textbf{ROUGE-L F1} & \textcolor{inktwo}{Longest common word sequence with gold.} & $\uparrow$\\
+\midrule
+\colhead{END TO END} & & \\
+\midrule
+\textbf{Answer EM} & \textcolor{inktwo}{The final answer equals gold's.} & $\uparrow$\\
+\textbf{Answer F1} & \textcolor{inktwo}{Word overlap with gold's final answer.} & $\uparrow$\\
+\bottomrule
+\end{tabular}
+\srcline{The old weighted composite score is legacy: it appears in older tables only and ranks nothing here.}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Normalisation: what it is, where it is used, why}
 \ladderrow{as generated}{raw step}{sunk}%
  {\textcolor{inktwo}{Which well-known films did \plc{[\#2]} direct?}}
 \ladderrow{1 $\cdot$ lower}{+ strip outer space}{sunk}%
@@ -538,43 +610,300 @@
  {\textcolor{inktwo}{which wellknown films did \plc{\#2} direct}}
 \ladderrow{3 $\cdot$ collapse}{whitespace runs}{accentsoft}%
  {\textcolor{accentink}{which wellknown films did \plc{\#2} direct}}
-\calloutwarn{Punctuation is \textbf{deleted, not spaced}: {\ttfamily well-known} becomes
- {\ttfamily wellknown}. {\ttfamily \#} is exempt but brackets are not, so \textbf{{\ttfamily [\#2]}
- and {\ttfamily \#2} compare equal}. Articles, digits and Unicode are left alone.}
-\srcpair{Shared by exact match, step F1 and ordered accuracy}{Break EM is the exception --- it lowercases only}
-\end{frame}
-
-% ==================================== 16 -- ordered step accuracy ======
-\begin{frame}[t]
-\slidehead{SETUP \textperiodcentered\ METRICS}{Ordered step accuracy, when the two lengths disagree}
 \begin{columns}[T,onlytextwidth]
-\begin{column}{0.50\textwidth}
- {\color{inktwo}\small
-  Steps are compared \textbf{position against position} --- there is no alignment step. The
-  denominator is the \textbf{longer} of the two:\par}
- \vspace{1mm}
- \calloutbg{accent}{sunk}{\centering\normalsize
-  $\displaystyle\frac{\mbox{\footnotesize\ttfamily matches at the same index}}%
-  {\mbox{\footnotesize\ttfamily max(}n_{\mathrm{pred}},\,n_{\mathrm{gold}}\mbox{\footnotesize\ttfamily )}}$\par}
+\begin{column}{0.47\textwidth}
+ \ptag{USED BY}
+ \pbody{Exact match, step F1, ordered step accuracy. Not ROUGE-L, Break EM, SARI or GED: each has its own rule.}
 \end{column}
-\begin{column}{0.44\textwidth}
-\footnotesize
-\begin{tabular}{@{}p{36mm}r@{}}
-\colhead{PREDICTED 3, GOLD 2} & \\
-\midrule
-step 1 matches & \textcolor{ink}{\ck}\\
-step 2 matches & \textcolor{ink}{\ck}\\
-step 3 --- no gold step & \textcolor{bad}{counted against}\\
-\midrule
-\textbf{Score} & \textcolor{ink}{\normalsize 2 / 3}
-\end{tabular}
+\begin{column}{0.47\textwidth}
+ \ptag{WHY}
+ \pbody{So a capital letter, or \plc{[\#2]} versus \plc{\#2}, never counts as a wrong step.}
 \end{column}
 \end{columns}
-\callout{A surplus step is never compared, but it still enlarges the denominator --- so it costs the
- same as a wrong one. \textbf{The metric cannot reach 1.0 unless the lengths match}, which is
- what makes it an ordering \emph{and} length measure at once. A fully reversed 3-step plan
- scores 1/3 while step F1 scores 1.0.}
-\srcline{Exact string equality after normalisation --- no partial credit per step}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{The example every metric is scored on}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{MERGED: STEPS 2 AND 3 AS ONE}{\mergedlines}
+\planblock{PUNCTUATION ONLY: STEP 1 ENDS IN A FULL STOP}{\punctlines}
+\end{column}
+\begin{column}{0.47\textwidth}
+\planblock{REVERSED: STEPS 3, 2, 1}{\revlines}
+\planblock{EXTRA STEP ADDED}{\extralines}
+\planblock{UNLINKED: NO \plc{[\#k]} LINKS}{\unlinkedlines}
+\end{column}
+\end{columns}
+\srcline{Each metric slide that follows scores one of these five plans against the gold plan.}
+\end{frame}
+
+% ---- per-metric slides.  Every number below is printed by
+% ---- Slides/score_metric_examples.py, which calls the evaluator's own score_item.
+% ---- Notation used throughout: p, g = predicted and gold steps; nu = step normalisation;
+% ---- N = evaluated items; run score = mean of the per-item value.
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Exact match: is every step identical?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{REVERSED PLAN}{\revlines}
+\hw{WHY}{The strictest step-by-step check. One slip scores 0.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{EM}(p,g)=\mathbf{1}\big[\,|p|=|g|\ \wedge\ \nu(p_i)=\nu(g_i)\ \forall i\,\big]$\par\vspace{1.2mm}
+ $\displaystyle \overline{\mathrm{EM}}=\tfrac{1}{N}\textstyle\sum_{j=1}^{N}\mathrm{EM}(p^{(j)},g^{(j)})$\par\vspace{1mm}
+ $p,g$: predicted, gold steps. $\nu$: normalisation. $N$: items.}
+\hw{WORKED: REVERSED}{$|p|=|g|=3$\ \ck\par
+ $i=1$ \xx\quad $i=2$ \ck\quad $i=3$ \xx\par
+ Steps 1 and 3 differ, so $\mathrm{EM}=\mathbf{0}$.}
+\hw{BLIND SPOT}{Four flawed plans score 0; punctuation-only scores 1.}
+\end{column}
+\end{columns}
+\srcmono{exact\_match\_rate $\cdot$ $\nu$ as on the normalisation slide}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Step F1: are the right steps there?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{MERGED PLAN}{\mergedlines}
+\hw{WHY}{Partial credit for a plan that is mostly right.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle P=\frac{|S_p\cap S_g|}{|S_p|},\quad R=\frac{|S_p\cap S_g|}{|S_g|},\quad F_1=\frac{2PR}{P+R}$\par\vspace{1mm}
+ $S_x=\{\nu(x_i)\}$: set of normalised steps. Run score: mean over $N$.}
+\hw{WORKED: MERGED}{$S_p\cap S_g=\{$who directed the matrix$\}$\par
+ $P=\tfrac12$,\quad $R=\tfrac13$\par
+ $2PR=\tfrac13$,\quad $P+R=\tfrac56$,\quad $F_1=\mathbf{0.40}$}
+\hw{BLIND SPOT}{Reversed scores 1.00: a set cannot see order.}
+\end{column}
+\end{columns}
+\srcmono{step\_f1\_macro $\cdot$ $F_1=0$ when $P+R=0$; 1 when both plans are empty}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Ordered step accuracy: right step, right place?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{EXTRA STEP ADDED}{\extralines}
+\hw{WHY}{Catches wrong order and wrong length.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{OA}=\frac{1}{\max(|p|,|g|)}\sum_{i=1}^{\min(|p|,|g|)}\mathbf{1}\big[\nu(p_i)=\nu(g_i)\big]$\par\vspace{1mm}
+ Position $i$ against position $i$. Run score: mean over $N$.}
+\hw{WORKED: EXTRA}{$i=1$ \ck\quad $i=2$ \ck\quad $i=3$ \xx\quad ($i=4$: no gold step)\par
+ $\mathrm{OA}=2\,/\max(4,3)=\mathbf{0.50}$}
+\hw{BLIND SPOT}{Reversed has all three gold steps, yet scores 0.33.}
+\end{column}
+\end{columns}
+\srcmono{ordered\_step\_accuracy\_macro $\cdot$ merged and unlinked also score 0.33}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{ROUGE-L F1: how much wording overlaps?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{UNLINKED PLAN}{\unlinkedlines}
+\hw{WHY}{Credit for near-miss wording inside a step.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle P=\frac{|\mathrm{LCS}|}{|t(p)|},\quad R=\frac{|\mathrm{LCS}|}{|t(g)|},\quad F=\frac{2PR}{P+R}$\par\vspace{1mm}
+ $t(x)$: all steps' words, lowercased, punctuation kept. LCS: longest common word subsequence.}
+\hw{WORKED: UNLINKED}{$|t(p)|=18$,\quad $|t(g)|=16$,\quad $|\mathrm{LCS}|=14$\par
+ $P=14/18=0.778$,\quad $R=14/16=0.875$\par
+ $F=\mathbf{0.82}$}
+\hw{BLIND SPOT}{Reversed has every gold word but scores 0.38.}
+\end{column}
+\end{columns}
+\srcmono{rouge\_l\_f1\_macro $\cdot$ own tokeniser, not $\nu$ $\cdot$ run score: mean over $N$}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Hop-count EM and under/over: is the length right?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{MERGED PLAN}{\mergedlines}
+\hw{WHY}{Wrong length is wrong granularity. Never summed: too few is worse.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{HEM}=\mathbf{1}\big[|p|=|g|\big]$\par\vspace{0.6mm}
+ $\displaystyle \mathrm{U}=\mathbf{1}\big[|p|<|g|\big],\quad \mathrm{O}=\mathbf{1}\big[|p|>|g|\big]$\par\vspace{1mm}
+ $|x|$: step count. Each is a rate: mean over $N$.}
+\hw{WORKED: MERGED}{$|p|=2$,\quad $|g|=3$\par
+ $\mathrm{HEM}=\mathbf{0}$,\quad $\mathrm{U}=\mathbf{1}$,\quad $\mathrm{O}=\mathbf{0}$}
+\hw{BLIND SPOT}{Reversed scores HEM = 1: right length, broken plan.}
+\end{column}
+\end{columns}
+\srcmono{hop\_count\_exact\_match\_rate $\cdot$ under\_ / over\_decomposition\_rate $\cdot$ ADR 0017}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Chain validity: do the steps link up?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{REVERSED PLAN}{\revlines}
+\hw{WHY}{Links make it a plan. No free credit for silence.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{CV}=\begin{cases}1 & L_g=0\\ 0 & L_g>0,\ L_p=0\\ V_p/L_p & \text{otherwise}\end{cases}$\par\vspace{1mm}
+ $L_x$: \plc{\#k} links emitted. $V_p$: links in step $i$ with $1\le k<i$.}
+\hw{WORKED: REVERSED}{Step 1 cites \plc{\#2}: $2\not<1$ \xx\quad Step 2 cites \plc{\#1}: $1<2$ \ck\par
+ $\mathrm{CV}=1/2=\mathbf{0.50}$.\quad Unlinked: $L_p=0$, so $0$.}
+\hw{BLIND SPOT}{Merged scores 1.00: links must point back, not match gold.}
+\end{column}
+\end{columns}
+\srcmono{chain\_validity\_macro $\cdot$ run score: mean over $N$ $\cdot$ ADR 0026}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Break EM: is the whole plan string identical?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{PUNCTUATION-ONLY PLAN}{\punctlines}
+\hw{WHY}{Break's official strict match. Keeps punctuation.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{BEM}=\mathbf{1}\big[\,\mathrm{lower}(b(p))=\mathrm{lower}(b(g))\,\big]$\par\vspace{1mm}
+ $b(x)$: whitespace collapsed, \plc{\#k} rewritten \texttt{@@k@@}, steps joined by \texttt{\,@@SEP@@\,}; no punctuation stripped. Run score: mean over $N$.}
+\hw{WORKED: PUNCTUATION ONLY}{$b(p)$ has \texttt{Matrix.} where $b(g)$ has \texttt{Matrix?}\par
+ $\mathrm{BEM}=\mathbf{0}$, yet $\mathrm{EM}=1$: $\nu$ strips the mark.}
+\hw{BLIND SPOT}{All five plans score 0, a one-mark slip like a reversed plan.}
+\end{column}
+\end{columns}
+\srcmono{break\_exact\_match\_rate $\cdot$ ADR 0026}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{SARI: does it edit the question like gold?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{REVERSED PLAN}{\revlines}
+\hw{WHY}{Rewards rewriting the question the way gold does.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA, FOR EACH $n=1,\dots,4$}{%
+ $\mathrm{keep}_n=F_1\big(|Q\cap P\cap G|;\ |Q\cap P|,\ |Q\cap G|\big)$\par\vspace{0.6mm}
+ $\mathrm{add}_n=F_1\big(|(P\setminus Q)\cap G|;\ |P\setminus Q|,\ |G\setminus Q|\big)$\par\vspace{0.6mm}
+ $\mathrm{del}_n=\mathrm{Pr}\big(|(Q\setminus P)\cap(Q\setminus G)|;\ |Q\setminus P|\big)$\par\vspace{1.2mm}
+ $\displaystyle \mathrm{SARI}=\tfrac13\big(\overline{\mathrm{keep}}+\overline{\mathrm{add}}+\overline{\mathrm{del}}\big),\quad \bar{x}=\tfrac14\textstyle\sum_{n=1}^{4}x_n$}
+\hw{SYMBOLS}{$Q,P,G$: $n$-gram sets of question, $b(p)$, $b(g)$; split on spaces, case kept, punctuation attached.\par $F_1(t;s,r)$: F1 of precision $t/s$, recall $t/r$. $\mathrm{Pr}(t;s)=t/s$. Both: $0/0=1$.}
+\end{column}
+\end{columns}
+\srcmono{sari\_macro $\cdot$ delete is precision only ($\beta=0$) $\cdot$ ADR 0026}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{SARI, worked on the reversed plan}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.54\textwidth}
+\colhead{WORKED: REVERSED}\par\vspace{0.8mm}
+\footnotesize
+\begin{tabular}{@{}p{10mm}R{18mm}R{22mm}R{18mm}@{}}
+\colhead{$n$} & \colhead{KEEP} & \colhead{ADD} & \colhead{DELETE}\\
+\midrule
+1 & \textcolor{inktwo}{8/8 $\to$ 1.00} & \textcolor{inktwo}{9/9 $\to$ 1.00} & \textcolor{inktwo}{5/5 $\to$ 1.00}\\
+2 & \textcolor{inktwo}{5/5 $\to$ 1.00} & \textcolor{inktwo}{10/12 $\to$ 0.83} & \textcolor{inktwo}{7/7 $\to$ 1.00}\\
+3 & \textcolor{inktwo}{3/3 $\to$ 1.00} & \textcolor{inktwo}{9/13 $\to$ 0.69} & \textcolor{inktwo}{8/8 $\to$ 1.00}\\
+4 & \textcolor{inktwo}{2/2 $\to$ 1.00} & \textcolor{inktwo}{7/13 $\to$ 0.54} & \textcolor{inktwo}{8/8 $\to$ 1.00}\\
+\midrule
+mean & \textbf{1.00} & \textbf{0.766} & \textbf{1.00}\\
+\bottomrule
+\end{tabular}
+\end{column}
+\begin{column}{0.42\textwidth}
+\hw{READING THE TABLE}{Each cell is $t/s$; here $s=r$, so $F_1=t/s$. Add falls with $n$: reordering breaks cross-step $n$-grams.}
+\hw{RESULT}{$\mathrm{SARI}=\tfrac13(1.00+0.766+1.00)=\mathbf{0.92}$}
+\hw{BLIND SPOT}{Merged drops a step yet scores 0.77; an empty plan scores 0.21.}
+\end{column}
+\end{columns}
+\srcmono{sari\_macro $\cdot$ every count printed by Slides/score\_metric\_examples.py}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{GED: how far is the plan's graph from gold's?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD PLAN}{\goldlines}
+\planblock{EXTRA STEP ADDED}{\extralines}
+\hw{WHY}{One distance for wording, links and length. Lower is better; can exceed 1.0.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{GED}=\frac{\min_{\pi}\,c(\pi)}{\max\big(|V_p|+|E_p|,\ |V_g|+|E_g|\big)}$\par
+ Node per step; edge $i\to k$ per \plc{\#k} in step $i$. $\pi$: edit path. Exact unless a guard fires (node cap, time budget, no optimizer result): upper bound, counted, not dropped.}
+\hw{COSTS}{Insert or delete a node or edge: 1. Relabel an edge: 0.\par
+ Relabel node $a\to b$: $1-2m/(|a|+|b|)$; $m$: aligned matching words.}
+\hw{WORKED: EXTRA}{Sizes $3+2=5$ and $4+2=6$. Delete step 3: cost 1.\par
+ $\mathrm{GED}=1/\max(5,6)=\mathbf{0.17}$}
+\end{column}
+\end{columns}
+\srcmono{ged\_macro $\cdot$ run score: mean over $N$ $\cdot$ ADR 0026}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{GED's blind spot: a graph has no step order}
+\planpair{GOLD PLAN}{\goldlines}{REVERSED PLAN}{\revlines}
+\vspace{3mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.47\textwidth}
+\hw{WORKED: REVERSED}{Match steps $1,2,3\to3,2,1$: relabel cost 0.\par
+ One link differs: delete 1, insert 1.\par
+ $\mathrm{GED}=2/\max(5,5)=\mathbf{0.40}$}
+\end{column}
+\begin{column}{0.47\textwidth}
+\hw{BLIND SPOT}{Reversed beats merged (0.57), yet step 1 cites an unanswered step.}
+\end{column}
+\end{columns}
+\srcmono{ged\_macro $\cdot$ chain validity is the metric that catches this plan (0.50)}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{Answer EM and F1: is the final answer right?}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.42\textwidth}
+\planblock{GOLD ANSWER}{English}
+\planblock{PREDICTED ANSWER}{the English language}
+\hw{WHY}{Tests whether better plans give better answers.}
+\hw{NORMALISATION $\nu_A$}{Lowercase, strip punctuation, drop a/an/the, collapse spaces.}
+\end{column}
+\begin{column}{0.54\textwidth}
+\hw{FORMULA}{$\displaystyle \mathrm{EM}_A=\max_{a\in A}\mathbf{1}\big[\nu_A(\hat a)=\nu_A(a)\big],\quad F_{1,A}=\max_{a\in A}\frac{2PR}{P+R}$\par\vspace{1mm}
+ $P=c/|T(\hat a)|$, $R=c/|T(a)|$, $c=|T(\hat a)\cap T(a)|$.\par $T$: word multiset. $A$: gold answer + aliases.}
+\hw{WORKED}{$\nu_A$: ``english language'' against ``english''\par
+ $\mathrm{EM}_A=\mathbf{0}$;\quad $P=\tfrac12$, $R=\tfrac11$, so $F_{1,A}=\mathbf{0.67}$}
+\hw{BLIND SPOT}{The plan is never seen: a lucky answer scores 1.}
+\end{column}
+\end{columns}
+\srcmono{src/answer\_metrics.py $\cdot$ MuSiQue's official metrics $\cdot$ mean over $N$ $\cdot$ ADR 0019}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ METRICS}{The five plans on every plan metric}
+\footnotesize
+{\setlength{\tabcolsep}{2pt}%
+\begin{tabular}{@{}p{20mm}*{3}{R{9.4mm}}R{11mm}*{7}{R{9.4mm}}@{}}
+\colhead{PLAN} & \colhead{EM} & \colhead{STEP F1} & \colhead{ORD. ACC.} & \colhead{\mbox{ROUGE-L}}
+ & \colhead{HOP EM} & \colhead{UNDER $\downarrow$} & \colhead{OVER $\downarrow$} & \colhead{CHAIN}
+ & \colhead{BREAK EM} & \colhead{SARI} & \colhead{GED $\downarrow$}\\
+\midrule
+Reversed & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.33} & \textcolor{inktwo}{0.38} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.50} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.92} & \textcolor{inktwo}{0.40}\\
+Merged & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.40} & \textcolor{inktwo}{0.33} & \textcolor{inktwo}{0.64} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.77} & \textcolor{inktwo}{0.57}\\
+Unlinked & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.33} & \textcolor{inktwo}{0.33} & \textcolor{inktwo}{0.82} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.88} & \textcolor{inktwo}{0.49}\\
+Extra step & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.86} & \textcolor{inktwo}{0.50} & \textcolor{inktwo}{0.82} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.92} & \textcolor{inktwo}{0.17}\\
+Punct.\ only & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.94} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{1.00} & \textcolor{inktwo}{0.00} & \textcolor{inktwo}{0.90} & \textcolor{inktwo}{0.05}\\
+\bottomrule
+\end{tabular}}
+\callout{Reversed ties for best on step F1 and is worst on ROUGE-L: no single metric suffices.}
+\srcline{Every cell printed by Slides/score\_metric\_examples.py via the evaluator's score\_item $\cdot$ $\downarrow$ lower is better}
 \end{frame}
 
 % ========================================== 17 -- metric retired ======
@@ -585,22 +914,36 @@ step 3 --- no gold step & \textcolor{bad}{counted against}\\
 \begin{columns}[T,onlytextwidth]
 \begin{column}{0.30\textwidth}
  \ptag{CONTINUOUS SCORES}\phead{Paired bootstrap}
- \pbody{10,000 resamples, 95\% confidence intervals.}
+ \pbody{Step F1, ordered acc., ROUGE-L, SARI, GED, chain validity.}
 \end{column}
 \begin{column}{0.30\textwidth}
  \ptag{BINARY OUTCOMES}\phead{Exact McNemar}
- \pbody{On the discordant pairs only.}
+ \pbody{EM, hop-count EM, Break EM, under, over.}
 \end{column}
 \begin{column}{0.30\textwidth}
  \ptag{AGREEMENT CHECK}\phead{Paired t-test}
- \pbody{Run alongside, never instead.}
+ \pbody{Every per-item metric. A cross-check; exp-018's Holm counts use its p-values.}
 \end{column}
 \end{columns}
-\callout{\textbf{Everything is paired.} Both arms of every comparison answer the same pinned 600
+\callout{\textbf{Everything is paired.} Both arms of every comparison answer the same
  questions, so per-question difficulty cancels and the test sees only the difference
  between methods. Underpowered cells are reported as underpowered; noise-scale effects
  are named as noise.}
 \srcmono{ADR 0009, amended by ADR 0017}
+\end{frame}
+
+\begin{frame}[t]
+\slidehead{SETUP \textperiodcentered\ STATISTICS}{The three tests, as the evaluator computes them}
+\defrowpar[27mm]{Paired bootstrap}{Draw $I_b$: $N$ indices with replacement, shared by both arms; $b=1,\dots,B$.\par\vspace{0.8mm}
+ $\Delta^{*}_b=\bar{x}_A(I_b)-\bar{x}_B(I_b)$; CI: its $\alpha/2$, $1-\alpha/2$ percentiles. Significant iff $0\notin\mathrm{CI}$.}
+\defrowpar[27mm]{Exact McNemar}{$b=\#(A{=}1,B{=}0)$,\ \ $c=\#(A{=}0,B{=}1)$: the discordant pairs only.\par\vspace{0.8mm}
+ $p=\min\big(1,\ 2\textstyle\sum_{k=0}^{\min(b,c)}\tbinom{b+c}{k}\,2^{-(b+c)}\big)$;\ \ $p=1$ if $b+c=0$.\par\vspace{0.8mm}
+ With $b+c\le5$, $p\ge0.0625$: it cannot reach $\alpha$.}
+\defrowpar[27mm]{Paired t-test}{$d_j=x_{A,j}-x_{B,j}$,\quad $t=\bar{d}\,/\,(s_d/\sqrt{N})$,\quad $N-1$ d.f., two-sided p.\par\vspace{0.8mm}
+ No claim when $N<2$ or $s_d=0$.}
+\defrowpar[27mm]{All tests}{$\alpha=0.05$. $N<30$ is flagged underpowered; McNemar also whenever its smallest attainable $p\ge\alpha$.\par\vspace{0.8mm}
+ The evaluator applies no correction; Holm, where shown, was applied afterwards, per test family (e.g.\ exp-018).}
+\srcmono{configs/musique\_eval.json: seed 42, bootstrap\_iterations $B$ = 10,000, alpha 0.05, min\_items 30}
 \end{frame}
 
 % ======================================= 19 -- divider: results ======
