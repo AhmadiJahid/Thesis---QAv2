@@ -9,6 +9,11 @@ Learnings (non-obvious, for whoever edits these slides next):
   score_item value, so a drift in the evaluator breaks this script instead of the deck.
 - The example plans use the bracketed ``[#k]`` form shown on the slides; the evaluator's
   bare-``#k`` regex reads both, but Break EM / SARI see the brackets as text.
+- The statistics slides' toy examples go through the evaluator's own ``_mcnemar``,
+  ``_paired_bootstrap``, ``_statistics_for`` and ``_paired_t_test_row`` with the config's
+  seed, iterations and alpha. The three example resamples are the first three rows of the
+  stream ``_paired_bootstrap`` draws (one ``rng.integers`` call per chunk, row-major).
+- The "real run" lines are READ from a committed metrics JSON (exp-005), never recomputed.
 
 Run from the repo root:  .venv/bin/python Slides/score_metric_examples.py
 No metric is reimplemented here; nothing is written to disk.
@@ -21,6 +26,7 @@ import sys
 from pathlib import Path
 
 import networkx as nx
+import numpy as np
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -56,6 +62,15 @@ PLANS = {
     ],
     "punct_only": ["Who directed The Matrix.", GOLD[1], GOLD[2]],
 }
+# Statistics toys.  McNemar: 10 questions, 1 = correct (A, B are two systems).
+TOY_MCNEMAR_A = [1, 1, 1, 0, 1, 1, 1, 1, 0, 1]
+TOY_MCNEMAR_B = [0, 0, 1, 1, 0, 0, 1, 0, 0, 0]
+# Bootstrap and t-test: 5 questions, a per-item score (step F1) for systems A and B.
+TOY_SCORES_A = [0.8, 0.6, 1.0, 0.5, 0.7]
+TOY_SCORES_B = [0.6, 0.5, 0.7, 0.3, 0.6]
+TOY_SHOWN_RESAMPLES = 3
+REAL_RUN = REPO / "experiments" / "exp-005" / "metrics.json"
+REAL_COMPARISON = "unguided_vs_oracle_guided"
 ANSWER_GOLD = "English"
 ANSWER_PRED = "the English language"
 
@@ -193,6 +208,20 @@ def main() -> None:
         print(f"  {name:<10} " + " ".join(f"{it[c]:>8.2f}" for c in cols))
     print()
 
+    up = E._tokenize(E._join_steps(PLANS["unlinked"]))
+    lcs_u = E._lcs_len(up, gold_tokens)
+    only_p = [t for t in up if t not in set(gold_tokens)]
+    only_g = [t for t in gold_tokens if t not in set(up)]
+    # Here the words outside the LCS are exactly the words the other side lacks.
+    assert len(only_p) == len(up) - lcs_u and len(only_g) == len(gold_tokens) - lcs_u
+    print(f"=== ROUGE-L unlinked: words outside the LCS  pred-only={only_p}  gold-only={only_g}")
+    q1 = E._ngram_set(QUESTION.split(" "), 1)
+    g1 = E._ngram_set(gold_break.split(" "), 1)
+    print(f"=== SARI unigrams, gold vs question: kept={sorted(x[0] for x in q1 & g1)}")
+    print(f"    added={sorted(x[0] for x in g1 - q1)}")
+    print(f"    deleted={sorted(x[0] for x in q1 - g1)}")
+    print()
+
     empty = E._sari(QUESTION, E._break_string(E._break_steps([])), gold_break)
     print(f"=== empty plan SARI (pred_steps=[]): {r(empty)}")
     print()
@@ -205,15 +234,88 @@ def main() -> None:
     print()
 
     pc = cfg["paired_comparison"]
+    alpha, seed, iters = pc["alpha"], cfg["seed"], pc["bootstrap_iterations"]
     print("=== statistics (config values and the evaluator's McNemar)")
-    print(f"  seed={cfg['seed']} bootstrap_iterations={pc['bootstrap_iterations']} "
-          f"alpha={pc['alpha']} min_items_for_significance_claim={pc['min_items_for_significance_claim']}")
+    print(f"  seed={seed} bootstrap_iterations={iters} "
+          f"alpha={alpha} min_items_for_significance_claim={pc['min_items_for_significance_claim']}")
     for m in range(1, 8):
         print(f"  McNemar min attainable p with m={m} discordant pairs: "
               f"{r(E._mcnemar_exact_p(m, 0), 4)}")
     print(f"  McNemar p(b=3, c=0)={r(E._mcnemar_exact_p(3, 0), 4)}  "
           f"p(b=8, c=2)={r(E._mcnemar_exact_p(8, 2), 4)}")
+    print()
 
+    print("=== toy McNemar (evaluator's _mcnemar on 10 binary items)")
+    rows_a = [{"exact_match": float(x)} for x in TOY_MCNEMAR_A]
+    rows_b = [{"exact_match": float(x)} for x in TOY_MCNEMAR_B]
+    n_toy = len(rows_a)
+    mc = E._mcnemar(rows_a, rows_b, alpha, n_toy < pc["min_items_for_significance_claim"],
+                    statistics=("exact_match",))["exact_match"]
+    b, c = mc["discordant_only_in_a"], mc["discordant_only_in_b"]
+    tail_terms = [math.comb(b + c, k) for k in range(min(b, c) + 1)]
+    assert math.isclose(mc["p_value"], min(1.0, 2 * sum(tail_terms) / 2 ** (b + c)))
+    print(f"  A={TOY_MCNEMAR_A}\n  B={TOY_MCNEMAR_B}")
+    print(f"  b={b} c={c} n_discordant={b + c} tail terms C(n,k)={tail_terms} "
+          f"sum={sum(tail_terms)} 2^n={2 ** (b + c)}")
+    print(f"  p={r(mc['p_value'], 4)} significant={mc['significant']} "
+          f"min_attainable_p={r(mc['min_attainable_p_value'], 4)} underpowered={mc['underpowered']}")
+    print()
+
+    print("=== toy paired bootstrap (evaluator's _paired_bootstrap / _statistics_for)")
+    a_arr, b_arr = np.array(TOY_SCORES_A), np.array(TOY_SCORES_B)
+    n5 = a_arr.size
+    under5 = n5 < pc["min_items_for_significance_claim"]
+    bs = E._paired_bootstrap({"step_f1": a_arr}, {"step_f1": b_arr}, n5, iters, alpha, seed,
+                             {}, 1.0, pc["bootstrap_chunk_size"], under5,
+                             statistics=("step_f1",))["step_f1"]
+    # The first rows of the evaluator's own resample stream, re-drawn for display.
+    full = np.random.default_rng(seed).integers(0, n5, size=(iters, n5))
+    first = np.random.default_rng(seed).integers(0, n5, size=(TOY_SHOWN_RESAMPLES, n5))
+    assert (full[:TOY_SHOWN_RESAMPLES] == first).all()
+    deltas = (E._statistics_for({"step_f1": a_arr}, full, {}, 1.0, ("step_f1",))["step_f1"]
+              - E._statistics_for({"step_f1": b_arr}, full, {}, 1.0, ("step_f1",))["step_f1"])
+    lo, hi = np.percentile(deltas, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    assert math.isclose(lo, bs["ci_low"]) and math.isclose(hi, bs["ci_high"])
+    print(f"  A={TOY_SCORES_A} mean={r(bs['system_a'])}\n  B={TOY_SCORES_B} mean={r(bs['system_b'])}")
+    print(f"  observed delta=A-B={r(bs['difference'])}")
+    for k in range(TOY_SHOWN_RESAMPLES):
+        idx = [int(i) + 1 for i in first[k]]
+        print(f"  resample {k + 1}: questions {idx}  "
+              f"A mean={r(a_arr[first[k]].mean())} B mean={r(b_arr[first[k]].mean())} "
+              f"delta*={r(deltas[k])}")
+    print(f"  {iters} resamples: CI=[{r(bs['ci_low'])}, {r(bs['ci_high'])}] "
+          f"significant={bs['significant']} underpowered={bs['underpowered']}")
+    print()
+
+    print("=== toy paired t-test (evaluator's _paired_t_test_row -> scipy ttest_rel)")
+    tt = E._paired_t_test_row(a_arr, b_arr, alpha, under5, name="step_f1")
+    d = a_arr - b_arr
+    sd = float(d.std(ddof=1))
+    assert math.isclose(tt["t_statistic"], d.mean() / (sd / math.sqrt(n5)))
+    print(f"  d={[r(x, 2) for x in d]} d_bar={r(d.mean())} s_d={r(sd, 4)} "
+          f"s_d/sqrt(n)={r(sd / math.sqrt(n5), 4)} n={n5}")
+    print(f"  t={r(tt['t_statistic'])} df={tt['degrees_of_freedom']} p={r(tt['p_value'], 4)} "
+          f"significant={tt['significant']} underpowered={tt['underpowered']}")
+    print()
+
+    print(f"=== real run, READ from {REAL_RUN.relative_to(REPO)} "
+          f"comparisons.{REAL_COMPARISON} (not recomputed)")
+    real = json.loads(REAL_RUN.read_text())["comparisons"][REAL_COMPARISON]
+    print(f"  system_a={real['system_a_path']}\n  system_b={real['system_b_path']}")
+    print(f"  n={real['num_aligned_items']} seed={real['seed']} "
+          f"bootstrap_iterations={real['bootstrap_iterations']} alpha={real['alpha']}")
+    m = real["mcnemar"]["exact_match"]
+    print(f"  McNemar exact_match: b={m['correct_only_in_a']} c={m['correct_only_in_b']} "
+          f"p={m['p_value']} rates A={r(m['system_a_rate'])} B={r(m['system_b_rate'])}")
+    assert math.isclose(E._mcnemar_exact_p(m["correct_only_in_a"], m["correct_only_in_b"]),
+                        m["p_value"])  # sanity only: the slide quotes the JSON's value
+    bt = real["bootstrap"]["step_f1"]
+    print(f"  bootstrap step_f1: A={r(bt['system_a'])} B={r(bt['system_b'])} "
+          f"delta={bt['difference']} CI=[{bt['ci_low']}, {bt['ci_high']}] "
+          f"significant={bt['significant']}")
+    tr = real["t_test"]["step_f1"]
+    print(f"  t-test step_f1: t={tr['t_statistic']} df={tr['degrees_of_freedom']} "
+          f"p={tr['p_value']} significant={tr['significant']}")
 
 if __name__ == "__main__":
     main()
