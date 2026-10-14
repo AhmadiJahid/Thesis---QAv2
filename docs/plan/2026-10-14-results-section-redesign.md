@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14 · **Refs:** #50 · **Status:** proposal for Jahid. The deck is untouched and nothing is committed.
 **Prototype:** `Slides/proposals/results-charts-prototype.pdf` (8 pages). Every plotted number is printed by
-`python3 Slides/proposals/results_chart_data.py`, which reads only `experiments/<exp-id>/metrics.json`.
+`python3 Slides/results_chart_data.py`, which reads `experiments/<exp-id>/metrics.json` (plus, labelled, three runs/ compare files for C2's paired-t p-values).
 
 Scope: deck frames 19–35 (`Slides/thesis-deck-v2.tex` l.1147–1545). The audit checked every number against the JSON or the log.
 

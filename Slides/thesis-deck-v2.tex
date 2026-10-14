@@ -277,6 +277,107 @@
 \renewcommand{\arraystretch}{1.25}
 \setlength{\tabcolsep}{3pt}
 
+% ------------------------------------------------- results-section charts
+% pgfplots is the only package the results section adds; compat is pinned so
+% pdflatex (Overleaf) and XeTeX draw the same axes.  Every plotted number is
+% printed, with its exp-id and JSON key, by  python3 -I Slides/results_chart_data.py
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+
+% Entity colours: one per arm, the same on every chart, fixed order.
+% Validated with the dataviz validate_palette.py (light mode, surface paper
+% #F5F6F4, all pairs): lightness, chroma, normal-vision and contrast PASS;
+% CVD WARN 7.8 (Qwen3.5-9B vs Qwen2.5-7B, protan) -> every series is also
+% direct-labelled or legend-keyed with a distinct marker.
+% accent / bad are NOT entity colours: they carry the significance rule only.
+\definecolor{cMis}{HTML}{B07D2A}   % Mistral-7B-Instruct-v0.3   (prompting)
+\definecolor{cQs}{HTML}{1F5BA8}    % Qwen2.5-7B-Instruct        (prompting)
+\definecolor{cQl}{HTML}{A07ADB}    % Qwen2.5-14B-Instruct       (prompting)
+\definecolor{cQn}{HTML}{C2417F}    % Qwen3.5-9B                 (prompting)
+\definecolor{cFT}{HTML}{1E6B3C}    % Mistral-7B + LoRA fine-tune (full / pool-only / 2-3-hop)
+
+% recessive axes: grey axis lines, muted tick labels, no box, faint x grid
+\pgfplotsset{
+  resultaxis/.style={
+    scale only axis,
+    axis line style={ruletwo, line width=.4pt},
+    every tick/.style={ruletwo},
+    tick label style={font=\scriptsize, text=muted},
+    label style={font=\scriptsize, text=muted},
+    title style={font=\footnotesize, text=ink, yshift=-1.2mm},
+    xmajorgrids, major grid style={rulec, line width=.3pt},
+    axis x line*=bottom, axis y line*=left,
+    tick align=outside, major tick length=1mm,
+    clip=false, scaled x ticks=false, scaled y ticks=false,
+  }}
+
+% THE SECTION'S ONE HIGHLIGHT RULE (stated on the results divider):
+%   accent *  significantly better than the slide's named baseline
+%   red *     significantly worse than it
+%   bootstrap 95% CI excludes 0, or exact McNemar p < 0.05; Holm where the
+%   source line says so.  Bold = best in a table column.  Nothing else coloured.
+% forest row: #1 y, #2 point, #3 ci low, #4 ci high, #5 colour
+\newcommand{\cirow}[5]{%
+  \draw[#5, line width=.9pt] (axis cs:#3,#1) -- (axis cs:#4,#1);
+  \fill[#5] (axis cs:#2,#1) circle[radius=1.7pt];}
+% dot only (McNemar rate difference: no interval): #1 y, #2 point, #3 colour
+\newcommand{\dotrow}[3]{\fill[#3] (axis cs:#2,#1) circle[radius=1.7pt];}
+% stars placed right (west anchor) or left (east anchor) of a coordinate
+\newcommand{\sigstar}[2]{\node[text=accent, font=\footnotesize\bfseries, anchor=west, inner sep=1pt]
+  at (axis cs:#1,#2) {*};}
+\newcommand{\sigstarL}[2]{\node[text=accent, font=\footnotesize\bfseries, anchor=east, inner sep=1pt]
+  at (axis cs:#1,#2) {*};}
+\newcommand{\badstar}[2]{\node[text=bad, font=\footnotesize\bfseries, anchor=west, inner sep=1pt]
+  at (axis cs:#1,#2) {*};}
+\newcommand{\badstarL}[2]{\node[text=bad, font=\footnotesize\bfseries, anchor=east, inner sep=1pt]
+  at (axis cs:#1,#2) {*};}
+% zero line for a difference panel
+\newcommand{\zeroline}{\draw[inktwo, line width=.5pt] (axis cs:0,\pgfkeysvalueof{/pgfplots/ymin}) -- (axis cs:0,\pgfkeysvalueof{/pgfplots/ymax});}
+% dumbbell: #1 y, #2 baseline value (hollow), #3 compared value (filled), #4 colour
+\newcommand{\dumbbell}[4]{%
+  \draw[#4, line width=.9pt] (axis cs:#2,#1) -- (axis cs:#3,#1);
+  \fill[#4] (axis cs:#3,#1) circle[radius=1.7pt];
+  \draw[#4, fill=paper, line width=.7pt] (axis cs:#2,#1) circle[radius=1.7pt];}
+
+% diverging length bar: y, under %, over %, colour, label
+\newcommand{\dbar}[5]{%
+  \fill[#4] (axis cs:-#2,#1-0.3) rectangle (axis cs:0,#1+0.3);
+  \fill[#4!45] (axis cs:0,#1-0.3) rectangle (axis cs:#3,#1+0.3);
+  \node[anchor=east, font=\scriptsize, text=inktwo, inner sep=1.5pt] at (axis cs:-#2,#1) {#2};
+  \node[anchor=west, font=\scriptsize, text=inktwo, inner sep=1.5pt] at (axis cs:#3,#1) {#3};
+  \node[anchor=east, font=\footnotesize, text=ink] at (axis cs:-44,#1) {#5};}
+% horizontal bar from zero: y, value, colour, printed value, star (\st, \stbad or empty)
+\newcommand{\hb}[5]{%
+  \fill[#3] (axis cs:0,#1-0.32) rectangle (axis cs:#2,#1+0.32);
+  \node[anchor=west, font=\scriptsize, text=inktwo, inner sep=1.5pt] at (axis cs:#2,#1) {#4#5};}
+\newcommand{\st}{\textcolor{accent}{\bfseries\,*}}
+\newcommand{\stbad}{\textcolor{bad}{\bfseries\,*}}
+
+% manual legend entry: #1 line style, #2 mark style, #3 label
+\newcommand{\lgd}[3]{\tikz[baseline=-.6ex]{\draw[#1] (0,0) -- (5mm,0); \path[#2] plot coordinates {(2.5mm,0)};}\,\textcolor{ink}{#3}}
+% y-axis model labels: swatch dot + ink text
+\newcommand{\sw}[2]{\textcolor{#1}{\raisebox{.2ex}{\tikz\fill (0,0) circle (2pt);}}\hspace{1.2mm}\textcolor{ink}{#2}}
+
+% eval-set badge on slides that do NOT use the pinned 600 (never share an axis with it)
+\newcommand{\evalbadge}[1]{\raisebox{0pt}[0pt][0pt]{\tikz[baseline=-.6ex]{\node[rounded corners=1.2mm,
+  draw=gold, line width=.5pt, fill=goldsoft, text=ink, inner xsep=1.8mm, inner ysep=.8mm,
+  font=\fontsize{6.5}{8}\selectfont\bfseries]{#1};}}}
+\newcommand{\slideheadbadge}[3]{%  eyebrow, title, badge text
+  {\color{accent}\fontsize{6.8}{8}\selectfont\bfseries\lsp{#1}\hfill\evalbadge{#3}\par}%
+  \vspace{2.4mm}%
+  {\color{ink}\fontsize{15}{18}\selectfont #2\par}%
+  \vspace{3.4mm}%
+}
+% stat with a footnotesize caption (results body is never below \footnotesize)
+\newcommand{\rstat}[2]{%  #1 value  #2 caption
+  {\color{ink}\fontsize{17}{19}\selectfont #1\par}%
+  \vspace{1.4mm}%
+  {\color{inktwo}\footnotesize\raggedright #2\par}}
+% end-to-end survivor tag: \svy{EM} accent (survives Holm), \svn muted dot (does not)
+\newcommand{\svy}[1]{\textcolor{accent}{\bfseries #1}}
+\newcommand{\svn}{\textcolor{muted}{$\cdot$}}
+
 \begin{document}
 
 % ===================================================== 1 -- title ======
@@ -1145,285 +1246,551 @@ $d=A-B$ & \textbf{0.2} & \textbf{0.1} & \textbf{0.3} & \textbf{0.2} & \textbf{0.
 \end{frame}
 
 % ======================================= 19 -- divider: results ======
+% The section's one highlight rule is stated here, once.  Every plotted or
+% quoted number below is printed, with exp-id and JSON key, by
+%   python3 -I Slides/results_chart_data.py
+% except the pool-construction and reranking slides (exp-019, exp-018: log
+% rows only, no experiments/<exp-id>/ directory).
 {\setbeamercolor{background canvas}{bg=sunk}
 \begin{frame}[t]
-\vspace{18mm}
+\vspace{10mm}
 {\color{accent}\fontsize{11}{13}\selectfont Part three\par}
 \vspace{4mm}
 {\color{ink}\fontsize{24}{28}\selectfont Results\par}
+\vspace{3mm}
+{\color{inktwo}\fontsize{11}{15}\selectfont One claim per slide, ordered by question.\par}
 \vspace{5mm}
-{\color{inktwo}\fontsize{11}{15}\selectfont
- One claim per slide --- overall first, then broken out by hop depth.\par}
+\colhead{HOW TO READ EVERY RESULT SLIDE}\par\vspace{2.4mm}
+\defrow[34mm]{\textcolor{accent}{*}\ \ accent}{Significantly better than the slide's named baseline.}
+\defrow[34mm]{\textcolor{bad}{*}\ \ red}{Significantly worse than that baseline.}
+\defrow[34mm]{The test}{Uncorrected: bootstrap 95\% CI excludes 0, or exact McNemar $p<0.05$.}
+\defrow[34mm]{Holm}{Titles claim only what survives Holm over the slide's family, sized on the source line. Per-depth (exp-029) marks are Holm survivors.}
+\defrow[34mm]{Line colour}{Colour only names the model.}
 \end{frame}
 }
 
-% ========================================== 20 -- masking result ======
+% ==================================== A3 -- pool construction ======
+% source: experiments/log.md row exp-019 (no experiments/exp-019/ directory)
 \begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ MASKING}{Typed masking leads on every plan metric}
-\small
-\begin{tabular}{@{}p{26mm}R{20mm}R{20mm}R{20mm}R{20mm}R{20mm}@{}}
-\colhead{VARIANT} & \colhead{EXACT MATCH} & \colhead{STEP F1} & \colhead{ORDERED ACC.}
- & \colhead{ROUGE-L F1} & \colhead{HOP-COUNT EM}\\
-\midrule
-typed & \textbf{0.058} & \textbf{0.201} & \textbf{0.179} & \textbf{0.544} & \textbf{0.522}\\
-uniform & \textcolor{inktwo}{0.055} & \textcolor{inktwo}{0.190} & \textcolor{inktwo}{0.166} & \textcolor{inktwo}{0.543} & \textcolor{inktwo}{0.505}\\
-raw & \textcolor{inktwo}{0.037} & \textcolor{inktwo}{0.178} & \textcolor{inktwo}{0.158} & \textcolor{inktwo}{0.532} & \textcolor{inktwo}{0.485}\\
-\bottomrule
-\end{tabular}
-\calloutwarn{Margins over raw are consistent but \textbf{small} --- 2.1 points of exact match, 2.3 of step
- F1 --- and \textbf{no significance test has been run on typed vs uniform}. That ordering is
- provisional and is stated as provisional.}
-\srcline{MuSiQue dev $\cdot$ n = 600 $\cdot$ unguided $\cdot$ Mistral-7B \hfill v1 prior work --- not re-run in v2}
-\end{frame}
-
-% ========================================= 21 -- per-hop decline ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Quality falls with every hop added}
-\small
-{\renewcommand{\arraystretch}{1.06}%
-\begin{tabular}{@{}p{30mm}p{26mm}R{20mm}R{20mm}R{20mm}@{}}
-\colhead{METRIC} & \colhead{VARIANT} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
-\midrule
-Step F1 & typed & \textbf{0.322} & \textbf{0.171} & \textbf{0.109}\\
- & uniform & \textcolor{inktwo}{0.320} & \textcolor{inktwo}{0.157} & \textcolor{inktwo}{0.092}\\
- & raw & \textcolor{inktwo}{0.282} & \textcolor{inktwo}{0.147} & \textcolor{inktwo}{0.103}\\
-\midrule
-Hop-count EM & typed & \textbf{0.720} & \textbf{0.525} & \textcolor{inktwo}{0.320}\\
- & uniform & \textcolor{inktwo}{0.695} & \textcolor{inktwo}{0.495} & \textbf{0.325}\\
- & raw & \textcolor{inktwo}{0.680} & \textcolor{inktwo}{0.490} & \textcolor{inktwo}{0.285}\\
-\bottomrule
-\end{tabular}}
-\callout{Step F1 loses roughly two-thirds of its value between 2 and 4 hops. Four-hop is both the
- hardest class and the one with the least training data --- those two facts are not
- independent. \textbf{Provenance:} this is the v1 measurement; the same typed arm re-run
- and re-scored in v2 sits about a point lower at every depth (0.710 / 0.515 / 0.300).}
-\srcline{200 questions per hop $\cdot$ bold marks best in column \hfill v1 prior work --- not re-run in v2}
-\end{frame}
-
-% =============================================== 22 -- pool size ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ POOL SIZE}{1,000 is too small; above that, nothing separates}
+\slideheadbadge{RESULT \textperiodcentered\ POOL CONSTRUCTION}{Every upstream stage changes; no reported metric moves detectably}{750 QUESTIONS}
+{\color{inktwo}\footnotesize Imbalanced against clustered pool, traced stage by stage.\par}
+\vspace{6mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.185\textwidth}
+ \colhead{1 \textperiodcentered\ POOL}\par\vspace{2mm}
+ \rstat{0.053}{Jaccard overlap: 201 of 2,000 rows shared}
+\end{column}
+\begin{column}{0.185\textwidth}
+ \colhead{2 \textperiodcentered\ EXEMPLARS}\par\vspace{2mm}
+ \rstat{0 / 750}{questions given the same top-5 list}
+\end{column}
+\begin{column}{0.185\textwidth}
+ \colhead{3 \textperiodcentered\ PROMPTS}\par\vspace{2mm}
+ \rstat{0 / 150}{logged prompts identical}
+\end{column}
+\begin{column}{0.185\textwidth}
+ \colhead{4 \textperiodcentered\ PLANS}\par\vspace{2mm}
+ \rstat{92--93\%}{of 750 plans differ, in each of six cells}
+\end{column}
+\begin{column}{0.185\textwidth}
+ \colhead{5 \textperiodcentered\ METRICS}\par\vspace{2mm}
+ \rstat{n.s.}{in all six cells; hop-count EM $p\geq0.39$}
+\end{column}
+\end{columns}
 \vspace{2mm}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.48\textwidth}
-\begin{tikzpicture}[x=1mm,y=1mm]
-  \barrow{24}{8,000}{100}{0.190}{accent}{38}
-  \barrow{16}{4,000}{96.8}{0.184}{accent}{38}
-  \barrow{8}{2,000}{95.8}{0.182}{accent}{38}
-  \barrow{0}{1,000}{89.5}{0.170}{ruletwo}{38}
+\callout{Not a duplicated run: the trace found no defect.}
+\srcline{exp-019 on exp-010 $\cdot$ Mistral-7B 4-bit $\cdot$ pool\_sweep 750 (405 in the pinned 600) $\cdot$ exact McNemar
+ \hfill one pool draw per strategy}
+\end{frame}
+
+% ================================================= A4 -- rerank ======
+% source: experiments/log.md row exp-018 (no experiments/exp-018/ directory);
+%   per-pair output docs/analysis/2026-08-27-pool-construction-slide-facts.json
+%   bar = pairs of 9 where +CE is better; label = pairs surviving Holm (within metric)
+\begin{frame}[t]
+\slideheadbadge{RESULT \textperiodcentered\ RERANKING}{Reranking helps GED in 4 of 9 pairs, ROUGE-L in 3 (Holm)}{750 QUESTIONS}
+\vspace{-1mm}
+{\centering
+\begin{tikzpicture}
+\begin{axis}[resultaxis, width=62mm, height=35mm, xmin=0, xmax=9, ymin=0.4, ymax=9.6,
+  xtick={0,3,6,9}, xlabel={pairs, of 9, where reranking is better},
+  ytick={1,2,3,4,5,6,7,8,9},
+  yticklabels={Chain validity,Break EM,Exact match,Ordered acc.,Hop-count EM,Step F1,SARI,ROUGE-L F1,GED\,{\color{muted}$\downarrow$}},
+  yticklabel style={font=\footnotesize, text=ink}, ymajorgrids=false]
+ \hb{9}{9}{cMis}{9 \textperiodcentered\ Holm 4}{}
+ \hb{8}{9}{cMis}{9 \textperiodcentered\ Holm 3}{}
+ \hb{7}{9}{cMis}{9 \textperiodcentered\ Holm 0}{}
+ \hb{6}{8}{cMis}{8 \textperiodcentered\ Holm 1}{}
+ \hb{5}{8}{cMis}{8 \textperiodcentered\ Holm 0}{}
+ \hb{4}{7}{cMis}{7 \textperiodcentered\ Holm 1}{}
+ \hb{3}{6}{cMis}{6 \textperiodcentered\ Holm 0}{}
+ \hb{2}{5}{cMis}{5 \textperiodcentered\ Holm 0}{}
+ \hb{1}{4}{cMis}{4 \textperiodcentered\ Holm 0}{}
+\end{axis}
+\end{tikzpicture}\par}
+\callout{Sign counts are direction only; the Holm count is the claim.}
+\srcline{exp-018 on exp-010 $\cdot$ Mistral-7B 4-bit $\cdot$ +CE vs bi-encoder $\cdot$ pool\_sweep 750 $\cdot$ Holm within metric
+ \hfill label: pairs better $\cdot$ Holm survivors}
+\end{frame}
+
+% ============================================ A5 -- order, forest =======
+% source: exp-023.compare_vs_exp020_as_is.bootstrap.<metric>   (Mistral-7B)
+% source: exp-024.compare_vs_exp021_as_is.bootstrap.<metric>   (Qwen2.5-7B)
+% source: exp-025.compare_vs_exp022_as_is.bootstrap.<metric>   (Qwen2.5-14B)
+% source: exp-028.compare_vs_exp027_as_is.bootstrap.<metric>   (Qwen3.5-9B)
+%   fields: difference (reversed minus as-is), ci_low, ci_high, significant
+%   title count "2 of 28": 7 report-card terms x 4 models, composite excluded
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ EXAMPLE ORDER}{Reversing the examples: 2 of 28 tests move, none after Holm}
+\vspace{-1mm}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=4 by 1, horizontal sep=4mm},
+  resultaxis, width=24mm, height=25mm,
+  xmin=-0.045, xmax=0.075, ymin=0.4, ymax=4.6,
+  xtick={-0.04,0,0.04}, xticklabels={$-$.04,0,+.04},
+  ytick={1,2,3,4}, yticklabels={}, ymajorgrids=false]
+\nextgroupplot[title={SARI\,{\color{muted}\scriptsize$\uparrow$}},
+  yticklabels={\sw{cQn}{Qwen3.5-9B},\sw{cQl}{Qwen2.5-14B},\sw{cQs}{Qwen2.5-7B},\sw{cMis}{Mistral-7B}},
+  yticklabel style={font=\footnotesize}]
+ \zeroline
+ \cirow{4}{0.0065}{-0.0018}{0.0153}{cMis}
+ \cirow{3}{0.0051}{-0.0047}{0.0146}{cQs}
+ \cirow{2}{0.0038}{-0.0054}{0.0131}{cQl}
+ \cirow{1}{0.0039}{-0.0049}{0.0128}{cQn}
+\nextgroupplot[title={GED\,{\color{muted}\scriptsize$\downarrow$}}]
+ \zeroline
+ \cirow{4}{-0.0034}{-0.0193}{0.0127}{cMis}
+ \cirow{3}{0.0034}{-0.0125}{0.0200}{cQs}
+ \cirow{2}{0.0065}{-0.0079}{0.0209}{cQl}
+ \cirow{1}{-0.0194}{-0.0358}{-0.0031}{cQn}\sigstar{-0.0031}{1}
+\nextgroupplot[title={Chain validity\,{\color{muted}\scriptsize$\uparrow$}}]
+ \zeroline
+ \cirow{4}{0.0003}{-0.0144}{0.0151}{cMis}
+ \cirow{3}{0.0072}{-0.0157}{0.0304}{cQs}
+ \cirow{2}{-0.0071}{-0.0200}{0.0053}{cQl}
+ \cirow{1}{0.0349}{0.0041}{0.0652}{cQn}\sigstar{0.0652}{1}
+\nextgroupplot[title={Step F1\,{\color{muted}\scriptsize$\uparrow$}}]
+ \zeroline
+ \cirow{4}{0.0134}{-0.0003}{0.0277}{cMis}
+ \cirow{3}{0.0152}{0.0013}{0.0292}{cQs}\sigstar{0.0292}{3}
+ \cirow{2}{0.0005}{-0.0114}{0.0122}{cQl}
+ \cirow{1}{0.0072}{-0.0064}{0.0204}{cQn}
+\end{groupplot}
 \end{tikzpicture}
-\end{column}
-\begin{column}{0.48\textwidth}
- \vspace{-2.6mm}
- \callout{Only the contrasts \textbf{involving 1,000} survive Holm correction. No contrast above
-  1,000 survives on any metric --- at this sample size the adjacent steps are
-  \textbf{underpowered, not equal}.}
- {\color{inktwo}\scriptsize Exact match stays flat across all cells regardless of size.\par}
-\end{column}
-\end{columns}
-\srcpair{Mean step F1 $\cdot$ imbalanced arm}{v1 prior work, re-analysed 2026-08-20 --- not re-run in v2}
-\end{frame}
 
-% ==================================== 23 -- pool construction ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ POOL CONSTRUCTION}{Construction changes everything upstream, and nothing downstream}
-{\color{inktwo}\small
- Imbalanced against clustered, traced stage by stage. The two arms are physically separate
- the whole way --- and arrive at the same place.\par}
-\vspace{4mm}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.22\textwidth}
- \stat{accent}{0.053}{Jaccard overlap of the two \textbf{pools} --- 201 of 2,000 rows shared}
-\end{column}
-\begin{column}{0.23\textwidth}
- \stat{accent}{0 / 750}{queries whose \textbf{top-5 exemplars} are the same list. Most share none}
-\end{column}
-\begin{column}{0.22\textwidth}
- \stat{accent}{0 / 150}{logged \textbf{prompts} that match}
-\end{column}
-\begin{column}{0.23\textwidth}
- \stat{gold}{92\%}{of \textbf{generated plans} differ --- yet no reported metric moves detectably}
-\end{column}
-\end{columns}
-\callout{\textbf{This was checked because it looked like a bug.} One cell had clustered and imbalanced
- tie at 0.5133 hop-count EM --- which turned out to be 258 discordant items splitting exactly
- 129 / 129, in one cell of six. The other five do not tie. \textbf{It is a genuine null, not a
- duplicated run:} the same harness detects reranking's effect 9 times out of 9.}
-\srcpair{exp-019 re-analysis of exp-010 $\cdot$ n = 750 per cell}{own dev sample, not the pinned 600 --- internally comparable only}
-\end{frame}
-
-% ================================================= 24 -- rerank ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ RERANKING}{Reranking moves overlap and structure, not binary outcomes}
 \vspace{1mm}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.47\textwidth}
-\begin{tikzpicture}[x=1mm,y=1mm]
-  \barrow{49}{ROUGE-L}{100}{9/9 $\cdot$ 3\ck}{accent}{30}
-  \barrow{42}{GED}{100}{9/9 $\cdot$ 4\ck}{accent}{30}
-  \barrow{35}{SARI}{100}{9/9 $\cdot$ 0}{accent}{30}
-  \barrow{28}{Step F1}{88.9}{8/9 $\cdot$ 1\ck}{accent}{30}
-  \barrow{21}{Ordered}{77.8}{7/9 $\cdot$ 1\ck}{accent}{30}
-  \barrow{14}{Hop-count}{88.9}{8/9 $\cdot$ 0}{ruletwo}{30}
-  \barrow{7}{Break EM}{55.6}{5/9 $\cdot$ 0}{ruletwo}{30}
-  \barrow{0}{Chain val.}{44.4}{4/9 $\cdot$ 0}{ruletwo}{30}
+{\centering\footnotesize\color{muted}$\Delta$ = reversed $-$ as-is, same five examples $\cdot$ dot = $\Delta$, line = 95\% CI\par}
+\callout{Qwen3.5-9B's chaining and GED shifts are uncorrected only.}
+\srcline{exp-023--025, 028 vs exp-020--022, 027 $\cdot$ pinned 600 $\cdot$ paired bootstrap $\cdot$ Holm over 28: none survive
+ \hfill step F1 is off the report card}
+\end{frame}
+
+% =========================================== A6 -- order, dumbbell ======
+% source: exp-0{23,24,25,28}.compare_vs_exp0{20,21,22,27}_as_is.mcnemar.<metric>
+%   fields: system_b_rate (as-is, hollow), system_a_rate (reversed, filled), p_value
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ EXAMPLE ORDER}{Example order does not detectably move length errors}
+\vspace{-1mm}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=4 by 1, horizontal sep=5mm},
+  resultaxis, height=25mm, ymin=0.4, ymax=4.6, ytick={1,2,3,4}, yticklabels={},
+  ymajorgrids=false]
+\nextgroupplot[width=25mm, xmin=0, xmax=0.7, xtick={0,0.2,0.4,0.6}, xticklabels={0,.2,.4,.6},
+  title={Hop-count EM\,{\color{muted}\scriptsize$\uparrow$}},
+  yticklabels={\sw{cQn}{Qwen3.5-9B},\sw{cQl}{Qwen2.5-14B},\sw{cQs}{Qwen2.5-7B},\sw{cMis}{Mistral-7B}},
+  yticklabel style={font=\footnotesize}]
+ \dumbbell{4}{0.5117}{0.5267}{cMis}
+ \dumbbell{3}{0.5533}{0.5400}{cQs}
+ \dumbbell{2}{0.6167}{0.5967}{cQl}
+ \dumbbell{1}{0.5700}{0.5717}{cQn}
+\nextgroupplot[width=25mm, xmin=0, xmax=0.7, xtick={0,0.2,0.4,0.6}, xticklabels={0,.2,.4,.6},
+  title={Too few steps\,{\color{muted}\scriptsize$\downarrow$}}]
+ \dumbbell{4}{0.1683}{0.1783}{cMis}
+ \dumbbell{3}{0.2933}{0.2900}{cQs}
+ \dumbbell{2}{0.1017}{0.1150}{cQl}
+ \dumbbell{1}{0.1350}{0.1383}{cQn}
+\nextgroupplot[width=25mm, xmin=0, xmax=0.7, xtick={0,0.2,0.4,0.6}, xticklabels={0,.2,.4,.6},
+  title={Too many steps\,{\color{muted}\scriptsize$\downarrow$}}]
+ \dumbbell{4}{0.3200}{0.2950}{cMis}
+ \dumbbell{3}{0.1533}{0.1700}{cQs}
+ \dumbbell{2}{0.2817}{0.2883}{cQl}
+ \dumbbell{1}{0.2950}{0.2900}{cQn}
+\nextgroupplot[width=17mm, xmin=0, xmax=0.08, xtick={0,0.04,0.08}, xticklabels={0,.04,.08},
+  title={Break EM\,{\color{muted}\scriptsize$\uparrow$}}]
+ \dumbbell{4}{0.0400}{0.0483}{cMis}
+ \dumbbell{3}{0.0550}{0.0583}{cQs}
+ \dumbbell{2}{0.0333}{0.0333}{cQl}
+ \dumbbell{1}{0.0550}{0.0517}{cQn}
+\end{groupplot}
 \end{tikzpicture}
-\end{column}
-\begin{column}{0.49\textwidth}
- \vspace{-2.6mm}
- \callout{\textbf{The earlier reading was wrong, not null.} ``Rerank doesn't move the score'' was
-  measured on the retired composite, whose own intervals swing $\pm$0.2 on the very pairs
-  where GED moves a stable +0.01--0.02. Wrong instrument, not absent effect.}
- {\color{inktwo}\scriptsize
-  Pairs improved of 9, then Holm survivors. Pairs share one evaluation set, so sign
-  counts are descriptive.\par}
-\end{column}
-\end{columns}
-\srcline{exp-018 re-analysis of exp-010 $\cdot$ 9 matched pairs $\cdot$ n = 750 each}
-\end{frame}
 
-% ======================================== 25 -- oracle guidance ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ HOP GUIDANCE}{A perfect hop count helps one model far more than the other}
-\small
-{\renewcommand{\arraystretch}{1.00}%
-\begin{tabular}{@{}p{28mm}R{16mm}R{20mm}R{18mm}S{42mm}@{}}
-\colhead{CONDITION} & \colhead{STEP F1} & \colhead{HOP-COUNT EM} & \colhead{EXACT MATCH}
- & \colhead{PAIRED TESTS VS UNGUIDED}\\
-\midrule
-\multicolumn{5}{@{}l}{\textbf{Mistral-7B-Instruct-v0.3}}\\
-\midrule
-Unguided & \textcolor{inktwo}{0.204} & \textcolor{inktwo}{0.508} & \textcolor{inktwo}{0.062} & \textcolor{muted}{baseline}\\
-Oracle-guided & \textcolor{inktwo}{0.206} & \textcolor{gold}{\bfseries 0.590} & \textcolor{inktwo}{0.057}
- & \textcolor{inktwo}{count, ROUGE-L and GED move; content does not}\\
-\midrule
-\multicolumn{5}{@{}l}{\textbf{Qwen3.5-9B}}\\
-\midrule
-Unguided & \textcolor{inktwo}{0.213} & \textcolor{inktwo}{0.520} & \textcolor{inktwo}{0.062} & \textcolor{muted}{baseline}\\
-Oracle-guided & \textcolor{gold}{\bfseries 0.237} & \textcolor{gold}{\bfseries 0.873} & \textcolor{gold}{\bfseries 0.073}
- & \textcolor{inktwo}{six of nine report-card metrics move, content and count included}\\
-\bottomrule
-\end{tabular}}
-\vspace{-3.5mm}
-\calloutopen{Same conditions, same 600 questions, same decoding. \textbf{Effectiveness is
- model-dependent}, which is why the next experiment varies only the model.}
-\srcpair{exp-004 / exp-005, tested in exp-014}{not significant on Qwen: SARI, chain validity, Break EM}
-\end{frame}
-
-% ================================= 26 -- hop-matched retrieval ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ HOP-MATCHED RETRIEVAL}{Matching the pool to the question's depth moves count, not quality}
-\small
-\begin{tabular}{@{}p{40mm}R{16mm}R{20mm}S{46mm}@{}}
-\colhead{METRIC} & \colhead{MIXED POOL} & \colhead{ORACLE HOP-MATCHED} & \colhead{RESULT}\\
-\midrule
-Step F1 (macro) & \textcolor{inktwo}{0.204} & \textcolor{inktwo}{0.193}
- & \textcolor{muted}{not significant $\cdot$ CI [$-$0.006, +0.027]}\\
-Ordered step accuracy & \textcolor{inktwo}{0.180} & \textcolor{inktwo}{0.180}
- & \textcolor{muted}{not significant $\cdot$ p = 0.950}\\
-Hop-count exact match & \textcolor{inktwo}{0.515} & \textcolor{gold}{\bfseries 0.600}
- & \textcolor{inktwo}{significant $\cdot$ McNemar p = 0.0006}\\
-Exact match & \textcolor{inktwo}{0.062} & \textcolor{inktwo}{0.057}
- & \textcolor{muted}{not significant $\cdot$ p = 0.664}\\
-\bottomrule
-\end{tabular}
-\calloutwarn{The gain concentrates at 2-hop and also \textbf{shrinks the candidate pool} --- so it may be
- measuring pool size rather than hop matching. \textbf{Not adopted on this evidence.}}
-\srcline{exp-009 $\cdot$ pinned 600 $\cdot$ unguided $\cdot$ Mistral-7B}
-\end{frame}
-
-% ========================================== 27 -- per-hop oracle ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Where the pool is thinnest, hop-matching starts to hurt}
-\small
-\begin{tabular}{@{}p{34mm}p{32mm}R{18mm}R{18mm}R{18mm}@{}}
-\colhead{METRIC} & \colhead{ARM} & \colhead{2-HOP} & \colhead{3-HOP} & \colhead{4-HOP}\\
-\midrule
-Step F1 & mixed & \textcolor{inktwo}{0.327} & \textbf{0.168} & \textbf{0.116}\\
- & oracle-matched & \textbf{0.355} & \textcolor{inktwo}{0.153} & \textcolor{bad}{0.071}\\
-\midrule
-Ordered accuracy & mixed & \textcolor{inktwo}{0.318} & \textbf{0.138} & \textbf{0.085}\\
- & oracle-matched & \textbf{0.345} & \textcolor{inktwo}{0.135} & \textcolor{bad}{0.060}\\
-\midrule
-Hop-count EM & mixed & \textcolor{inktwo}{0.710} & \textcolor{inktwo}{0.525} & \textcolor{inktwo}{0.310}\\
- & oracle-matched & \textcolor{gold}{\bfseries 0.845} & \textcolor{gold}{\bfseries 0.580} & \textcolor{gold}{\bfseries 0.375}\\
-\bottomrule
-\end{tabular}
-\callout{The count keeps improving at every depth. \textbf{Step quality inverts at 4 hops}, where
- restricting the pool leaves only the 1,175-row bucket to draw from.}
-\srcpair{n = 200 per hop, both arms}{no per-hop significance test run --- the paired test is on the pooled 600}
-\end{frame}
-
-% ============================================ 28 -- fine-tuning ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ FINE-TUNING}{Fine-tuning beats prompting at its best configuration}
+\vspace{1mm}
+{\centering\footnotesize\color{muted}
+ \tikz\draw[inktwo,fill=paper,line width=.7pt] (0,0) circle (1.7pt);~as-is (most similar first)\quad
+ \tikz\fill[inktwo] (0,0) circle (1.7pt);~reversed\quad $\cdot$\quad rates out of 600\par}
 \vspace{2mm}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.50\textwidth}
-\small
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{34mm}R{14mm}R{17mm}@{}}
-\colhead{ARM} & \colhead{STEP F1} & \colhead{ROUGE-L F1}\\
-\midrule
-Prompting, best pool & \textcolor{inktwo}{0.189} & \textcolor{inktwo}{0.545}\\
-Fine-tuned LoRA & \textbf{0.341} & \textbf{0.665}\\
-\bottomrule
-\end{tabular}
-\end{column}
-\begin{column}{0.44\textwidth}
- \vspace{-3mm}
- \stat{accent}{10 / 10}{paired statistics significant --- seven bootstrap, three McNemar --- and
-  every one of them favours the fine-tuned arm}
-\end{column}
-\end{columns}
-\callout{The prompting arm here is prompting at its \textbf{strongest measured configuration}, not a
- strawman. Fine-tuning is the current leader, and the prompting study becomes the ablation
- behind it --- which is a finding, not a defeat.}
-\srcline{exp-015 $\cdot$ pinned 600 $\cdot$ paired bootstrap + McNemar}
+{\color{inktwo}\footnotesize Largest shift: 2.5 points. None of the 16 tests is significant, even uncorrected. Model effects: see \emph{Family, size, precision}.\par}
+\srcline{exp-023/024/025/028 vs exp-020/021/022/027 $\cdot$ pinned 600 $\cdot$ exact McNemar
+ \hfill supervisor's prior: ``up to 10\%'' (log, exp-023)}
 \end{frame}
 
-% ========================================= 29 -- generalisation ======
+% ================================= A7 -- hop-matched retrieval ======
+% source: exp-029.pairs["A7|exp009_mixed_vs_oracle_hop_matched"].strata.<overall|2|3|4>
+%   .mcnemar.hop_count_exact_match.{system_a_rate (mixed, hollow), system_b_rate (hop-matched, filled), holm}
+%   .bootstrap.step_f1.{system_a, system_b, ci_low, ci_high, holm}
+%   overall rows equal exp-009.compare_mixed_vs_oracle_hop_matched
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ HOP-MATCHED RETRIEVAL}{Hop-matching lifts count at 2 hops and cuts step F1 at 4}
+\vspace{-1mm}
+{\centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=18mm},
+  resultaxis, height=27mm, ymin=0.4, ymax=4.6, ytick={1,2,3,4}, yticklabels={},
+  ymajorgrids=false]
+\nextgroupplot[width=46mm, xmin=0.2, xmax=0.9, xtick={0.2,0.4,0.6,0.8}, xticklabels={.2,.4,.6,.8},
+  title={Hop-count EM\,{\color{muted}\scriptsize$\uparrow$}},
+  yticklabels={4 hops,3 hops,2 hops,All 600}, yticklabel style={font=\footnotesize, text=ink}]
+ \dumbbell{4}{0.5150}{0.6000}{cMis}\sigstar{0.610}{4}
+ \dumbbell{3}{0.7100}{0.8450}{cMis}\sigstar{0.855}{3}
+ \dumbbell{2}{0.5250}{0.5800}{cMis}
+ \dumbbell{1}{0.3100}{0.3750}{cMis}
+\nextgroupplot[width=46mm, xmin=0, xmax=0.4, xtick={0,0.1,0.2,0.3,0.4}, xticklabels={0,.1,.2,.3,.4},
+  title={Step F1\,{\color{muted}\scriptsize$\uparrow$}},
+  yticklabels={4 hops,3 hops,2 hops,All 600}, yticklabel style={font=\footnotesize, text=ink}]
+ \dumbbell{4}{0.2035}{0.1931}{cMis}
+ \dumbbell{3}{0.3268}{0.3551}{cMis}
+ \dumbbell{2}{0.1677}{0.1531}{cMis}
+ \dumbbell{1}{0.1161}{0.0711}{cMis}\badstarL{0.065}{1}
+\end{groupplot}
+\end{tikzpicture}\par}
+
+\vspace{1mm}
+{\centering\footnotesize\color{muted}
+ \tikz\draw[cMis,fill=paper,line width=.7pt] (0,0) circle (1.7pt);~mixed pool (baseline)\quad
+ \tikz\fill[cMis] (0,0) circle (1.7pt);~hop-matched pool\quad $\cdot$\quad 200 questions per depth\par}
+\callout{Hop-matching also shrinks the pool: 1,175 of 9,156 rows at 4 hops (ADR 0022).}
+\srcline{exp-009; per depth exp-029 $\cdot$ Mistral-7B fp16 $\cdot$ pinned 600 $\cdot$ McNemar / bootstrap, Holm over 16
+ \hfill ordered acc., EM: n.s. everywhere}
+\end{frame}
+
+% ======================================== B1 -- oracle hop count ======
+% source: exp-029.pairs["B1|mistral7b_exp004_unguided_vs_oracle_guided"].strata.<s>.mcnemar.hop_count_exact_match
+% source: exp-029.pairs["B1|qwen35_9b_exp005_unguided_vs_oracle_guided"].strata.<s>.mcnemar.hop_count_exact_match
+%   system_a_rate = unguided (hollow, baseline), system_b_rate = oracle-guided (filled); holm.significant
+%   "k of 9": overall stratum, 9 non-composite metrics, holm.significant (overall rows equal exp-014 pairs)
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ HOP GUIDANCE}{Hop guidance lifts Qwen3.5-9B at every depth, Mistral at 2}
+\vspace{-1mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.64\textwidth}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=6mm},
+  resultaxis, width=30mm, height=25mm, ymin=0.4, ymax=4.6, ytick={1,2,3,4}, yticklabels={},
+  ymajorgrids=false, xmin=0.2, xmax=1.0, xtick={0.2,0.6,1.0}, xticklabels={.2,.6,1}]
+\nextgroupplot[title={\sw{cMis}{Mistral-7B}},
+  yticklabels={4 hops,3 hops,2 hops,All 600}, yticklabel style={font=\footnotesize, text=ink}]
+ \dumbbell{4}{0.5083}{0.5900}{cMis}\sigstar{0.600}{4}
+ \dumbbell{3}{0.7100}{0.8500}{cMis}\sigstar{0.860}{3}
+ \dumbbell{2}{0.5150}{0.5650}{cMis}
+ \dumbbell{1}{0.3000}{0.3550}{cMis}
+\nextgroupplot[title={\sw{cQn}{Qwen3.5-9B}}]
+ \dumbbell{4}{0.5200}{0.8733}{cQn}\sigstar{0.883}{4}
+ \dumbbell{3}{0.7150}{0.9750}{cQn}\sigstar{0.985}{3}
+ \dumbbell{2}{0.4700}{0.8350}{cQn}\sigstar{0.845}{2}
+ \dumbbell{1}{0.3750}{0.8100}{cQn}\sigstar{0.820}{1}
+\end{groupplot}
+\end{tikzpicture}
+
+\vspace{1mm}
+{\footnotesize\color{muted}
+ hop-count EM $\uparrow$\quad
+ \tikz\draw[inktwo,fill=paper,line width=.7pt] (0,0) circle (1.7pt);~unguided (baseline)\quad
+ \tikz\fill[inktwo] (0,0) circle (1.7pt);~oracle hop count\par}
+\end{column}
+\begin{column}{0.33\textwidth}
+ \vspace{2mm}
+ \colhead{OVERALL, OF 9 METRICS}\par\vspace{2.4mm}
+ \rstat{4 of 9}{Qwen3.5-9B: count, GED, ordered acc., step F1 (6 uncorrected)}
+ \vspace{4mm}
+ \rstat{2 of 9}{Mistral-7B: count and GED}
+\end{column}
+\end{columns}
+\calloutwarn{Compare within a model: precision and retrieval artifact differ.}
+\srcline{exp-004 (Mistral-7B fp16) $\cdot$ exp-005 (Qwen3.5-9B 4-bit, v1 retrieval; not exp-027) $\cdot$ exp-014, exp-029 $\cdot$ pinned 600
+ \hfill Holm over 72}
+\end{frame}
+
+% ====================================== C1 -- length errors, diverging ==
+% source (rates x100):
+%   exp-020.eval.decomposition_report_card_six_terms.{under,over}_decomposition_rate  0.1683 / 0.3200
+%   exp-021.eval.decomposition_report_card_six_terms.{under,over}_decomposition_rate  0.2933 / 0.1533
+%   exp-022.eval.decomposition_report_card_six_terms.{under,over}_decomposition_rate  0.1017 / 0.2817
+%   exp-027.eval.decomposition_report_card_seven_terms.{under,over}_decomposition_rate 0.1350 / 0.2950
+%   exp-026.eval.{under,over}_decomposition_rate                                       0.2583 / 0.0383
+%   exp-008.eval_metrics.{under,over}_decomposition_rate                               0.2567 / 0.0333
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ PLAN LENGTH}{Fine-tunes almost never write too many steps}
+\vspace{-2mm}
+\begin{tikzpicture}
+\begin{axis}[resultaxis, width=82mm, height=40mm, xmin=-40, xmax=40, ymin=0.4, ymax=7.6,
+  xtick={-40,-20,0,20,40}, xticklabels={40\%,20\%,0,20\%,40\%},
+  ytick=\empty, axis y line=none, xshift=40mm]
+ \draw[inktwo, line width=.5pt] (axis cs:0,0.4) -- (axis cs:0,7.6);
+ \dbar{7}{16.8}{32.0}{cMis}{Mistral-7B}
+ \dbar{6}{29.3}{15.3}{cQs}{Qwen2.5-7B}
+ \dbar{5}{10.2}{28.2}{cQl}{Qwen2.5-14B}
+ \dbar{4}{13.5}{29.5}{cQn}{Qwen3.5-9B}
+ \draw[rulec, dashed] (axis cs:-40,3) -- (axis cs:40,3);
+ \dbar{2}{25.8}{3.8}{cFT}{Fine-tune, pool-only}
+ \dbar{1}{25.7}{3.3}{cFT}{Fine-tune, full}
+ \node[anchor=south east, font=\scriptsize, text=muted] at (axis cs:-1,7.45) {$\leftarrow$ too few steps};
+ \node[anchor=south west, font=\scriptsize, text=muted] at (axis cs:1,7.45) {too many steps $\rightarrow$};
+ \node[anchor=south east, font=\scriptsize\itshape, text=muted] at (axis cs:-44,7.45) {prompting, 4-bit};
+ \node[anchor=south east, font=\scriptsize\itshape, text=muted] at (axis cs:-44,2.45) {fine-tuned, fp16 eval};
+\end{axis}
+\end{tikzpicture}
+\callout{Supervisor's rule: too few steps is the worse error (ADR 0017).}
+\srcline{exp-020/021/022/027 (prompting) $\cdot$ exp-026/008 (fine-tunes) $\cdot$ pinned 600 $\cdot$ \% of 600 questions
+ \hfill magnitudes; tests on the next slide}
+\end{frame}
+
+% ===================================== C2 -- one factor at a time =======
+% a = the row's changed arm, b = its reference arm; Delta = a - b
+% source: exp-020.compare_vs_exp015_unguided_quantization_none   (4-bit - fp16, Mistral)
+% source: exp-021.compare_vs_exp020_mistral_7b_4bit             (Qwen2.5-7B - Mistral-7B)
+% source: exp-022.compare_vs_exp021_qwen2_5_7b_4bit             (Qwen2.5 14B - 7B)
+% source: exp-027.compare_vs_exp021_qwen2_5_7b_4bit             (Qwen3.5-9B - Qwen2.5-7B, confounded)
+%   .mcnemar.{under_decomposition, over_decomposition, break_exact_match}.difference (dot only)
+%   .bootstrap.chain_validity.{difference, ci_low, ci_high}
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ FAMILY, SIZE, PRECISION}{All three factors move length; two also move chaining}
+\vspace{-1mm}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=4 by 1, horizontal sep=4mm},
+  resultaxis, width=20mm, height=25mm, ymin=0.4, ymax=4.6,
+  ytick={1,2,3,4}, yticklabels={}, ymajorgrids=false]
+\nextgroupplot[xmin=-0.25, xmax=0.25, xtick={-0.2,0,0.2}, xticklabels={$-$.2,0,+.2},
+  title={Too few steps\,{\color{muted}\scriptsize$\downarrow$}},
+  yticklabels={{\color{muted}Qwen3.5-9B $-$ Qwen2.5-7B},14B $-$ 7B (Qwen2.5),Qwen2.5-7B $-$ Mistral,4-bit $-$ fp16 (Mistral)},
+  yticklabel style={font=\footnotesize, text=ink}]
+ \zeroline \draw[rulec,dashed] (axis cs:-0.25,1.5) -- (axis cs:0.25,1.5);
+ \dotrow{4}{-0.0633}{ink}\sigstar{-0.043}{4}
+ \dotrow{3}{0.1250}{ink}\badstar{0.145}{3}
+ \dotrow{2}{-0.1917}{ink}\sigstar{-0.172}{2}
+ \dotrow{1}{-0.1583}{muted}\sigstar{-0.138}{1}
+\nextgroupplot[xmin=-0.25, xmax=0.25, xtick={-0.2,0,0.2}, xticklabels={$-$.2,0,+.2},
+  title={Too many steps\,{\color{muted}\scriptsize$\downarrow$}}]
+ \zeroline \draw[rulec,dashed] (axis cs:-0.25,1.5) -- (axis cs:0.25,1.5);
+ \dotrow{4}{0.0917}{ink}\badstar{0.112}{4}
+ \dotrow{3}{-0.1667}{ink}\sigstar{-0.147}{3}
+ \dotrow{2}{0.1283}{ink}\badstar{0.148}{2}
+ \dotrow{1}{0.1417}{muted}\badstar{0.162}{1}
+\nextgroupplot[xmin=-0.12, xmax=0.10, xtick={-0.1,0,0.1}, xticklabels={$-$.1,0,+.1},
+  title={Chain validity\,{\color{muted}\scriptsize$\uparrow$}}]
+ \zeroline \draw[rulec,dashed] (axis cs:-0.12,1.5) -- (axis cs:0.10,1.5);
+ \cirow{4}{-0.0067}{-0.0212}{0.0074}{ink}
+ \cirow{3}{-0.0416}{-0.0658}{-0.0188}{ink}\badstar{-0.0188}{3}
+ \cirow{2}{0.0628}{0.0410}{0.0851}{ink}\sigstar{0.0851}{2}
+ \cirow{1}{-0.0739}{-0.1091}{-0.0389}{muted}\badstar{-0.0389}{1}
+\nextgroupplot[xmin=-0.04, xmax=0.04, xtick={-0.03,0,0.03}, xticklabels={$-$.03,0,+.03},
+  title={Break EM\,{\color{muted}\scriptsize$\uparrow$}}]
+ \zeroline \draw[rulec,dashed] (axis cs:-0.04,1.5) -- (axis cs:0.04,1.5);
+ \dotrow{4}{0.0050}{ink}
+ \dotrow{3}{0.0150}{ink}\sigstar{0.0182}{3}
+ \dotrow{2}{-0.0217}{ink}\badstar{-0.0185}{2}
+ \dotrow{1}{0.0000}{muted}
+\end{groupplot}
+\end{tikzpicture}
+
+\vspace{1mm}
+{\centering\footnotesize\color{muted}each row moves one factor $\cdot$ dot = $\Delta$; line = 95\% CI (chain validity only)\par}
+\calloutwarn{The grey row moves generation and size together: confounded.}
+\srcline{exp-020 vs 015 $\cdot$ 021 vs 020 $\cdot$ 022 vs 021 $\cdot$ 027 vs 021 $\cdot$ pinned 600 $\cdot$ McNemar / bootstrap $\cdot$ Holm over 31 on McNemar / paired-$t$ $p$\par
+ Holm: length and chaining stars survive, Break EM's do not $\cdot$ unplotted: EM, hop-count EM uncorrected only; SARI, GED, step F1 n.s.}
+\end{frame}
+
+% ===================================== D1 -- fine-tune vs prompting =====
+% source (step F1 / hop-count EM):
+%   exp-015.prompting_arm_full_600.{step_f1_macro,hop_count_exact_match_rate}            0.1894 / 0.5400
+%   exp-020.eval.other_reported.step_f1_macro / eval.decomposition_report_card_six_terms 0.1823 / 0.5117
+%   exp-021  (same keys)                                                                  0.1929 / 0.5533
+%   exp-022  (same keys)                                                                  0.1969 / 0.6167
+%   exp-027.eval.other_reported / decomposition_report_card_seven_terms                   0.2135 / 0.5700
+%   exp-026.eval.{step_f1_macro,hop_count_exact_match_rate}                               0.3185 / 0.7033
+%   exp-008.eval_metrics.{step_f1_macro,hop_count_exact_match_rate}                       0.3411 / 0.7100
+% significance vs exp-008 (red * = significantly below it):
+%   exp-0{15,20,21,22,27}.compare_vs_exp008_full_train.{bootstrap.step_f1, mcnemar.hop_count_exact_match}: all significant, all below
+%   exp-026.compare_vs_exp008_full_train_rescored: bootstrap.step_f1 significant (below); mcnemar.hop_count_exact_match p=0.789 n.s.
+% callout: exp-026.training.wall_clock_seconds 1568.8 (2,000 ex.); exp-001.wall_clock_seconds 15497.5 (19,938 ex.)
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ FINE-TUNING}{Prompting trails the full fine-tune on step F1 and hop count}
+\vspace{-2mm}
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=14mm},
+  resultaxis, height=36mm, ymin=0.4, ymax=8.6, ytick={1,2,4,5,6,7,8}, yticklabels={},
+  ymajorgrids=false]
+\nextgroupplot[width=40mm, xmin=0, xmax=0.4, xtick={0,0.1,0.2,0.3,0.4}, xticklabels={0,.1,.2,.3,.4},
+  title={Step F1\,{\color{muted}\scriptsize$\uparrow$}},
+  yticklabels={{Fine-tune, full {\color{muted}(baseline)}},{Fine-tune, pool-only},Qwen3.5-9B,Qwen2.5-14B,Qwen2.5-7B,Mistral-7B,{Mistral-7B, fp16}},
+  yticklabel style={font=\footnotesize, text=ink}]
+ \hb{8}{0.1894}{cMis}{.189}{\stbad}
+ \hb{7}{0.1823}{cMis}{.182}{\stbad}
+ \hb{6}{0.1929}{cQs}{.193}{\stbad}
+ \hb{5}{0.1969}{cQl}{.197}{\stbad}
+ \hb{4}{0.2135}{cQn}{.214}{\stbad}
+ \hb{2}{0.3185}{cFT}{.319}{\stbad}
+ \hb{1}{0.3411}{cFT}{.341}{}
+\nextgroupplot[width=40mm, xmin=0, xmax=0.8, xtick={0,0.2,0.4,0.6,0.8}, xticklabels={0,.2,.4,.6,.8},
+  title={Hop-count EM\,{\color{muted}\scriptsize$\uparrow$}}]
+ \hb{8}{0.5400}{cMis}{.540}{\stbad}
+ \hb{7}{0.5117}{cMis}{.512}{\stbad}
+ \hb{6}{0.5533}{cQs}{.553}{\stbad}
+ \hb{5}{0.6167}{cQl}{.617}{\stbad}
+ \hb{4}{0.5700}{cQn}{.570}{\stbad}
+ \hb{2}{0.7033}{cFT}{.703}{}
+ \hb{1}{0.7100}{cFT}{.710}{}
+\end{groupplot}
+\end{tikzpicture}
+\callout{Pool-only trains on 2,000 examples in 26 min; full on 19,938 in 4~h~18~min.}
+\srcline{exp-015/020/021/022/027, exp-026 vs exp-008 $\cdot$ pinned 600 $\cdot$ bootstrap / McNemar
+ \hfill prompting 4-bit unless marked; fine-tunes fp16}
+\end{frame}
+
+% ====================================== D2 -- by hop depth, lines =======
+% values: exp-020/021/022/027.eval.per_gold_hop_report_card.<2|3|4>.{step_f1_macro,under_decomposition_rate}
+%         exp-026.eval.per_gold_hop_metrics.<2|3|4>.(same)  exp-008.eval_metrics.per_gold_hop_metrics.<2|3|4>.(same)
+%   step F1   Mistral .2938/.1469/.1063  Q2.5-7B .3247/.1487/.1053  Q2.5-14B .3227/.1514/.1166
+%             Q3.5-9B .3579/.1591/.1234  FT pool .4495/.2899/.2162  FT full  .4810/.2930/.2494
+%   under     Mistral .000/.220/.285     Q2.5-7B .105/.320/.455     Q2.5-14B .010/.075/.220
+%             Q3.5-9B .025/.130/.250     FT pool .015/.295/.465     FT full  .005/.215/.550
+% tests: exp-029.pairs["D2|<arm>_vs_<exp008_full_train|exp026_pool_only_ft>"].strata.<2|3|4>, holm.significant
+%   star only where the prompting point differs from BOTH fine-tunes after Holm:
+%   step F1: all 12 points below both (24/24).  under: 2-hop Qwen2.5-7B worse (red);
+%   3-hop Qwen2.5-14B better; 4-hop Mistral, Qwen2.5-14B, Qwen3.5-9B better (bracket).
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ BY HOP DEPTH}{Fine-tunes lead on step F1 at every depth, stop short at 4}
+\vspace{-1mm}
+\pgfplotsset{hopline/.style={line width=.9pt, mark size=1.6pt}}
+{\centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=16mm},
+  resultaxis, width=48mm, height=24mm, xmin=1.8, xmax=4.2, xtick={2,3,4},
+  xticklabels={2 hops,3 hops,4 hops}, ymajorgrids, xmajorgrids=false,
+]
+\nextgroupplot[ymin=0, ymax=0.5, ytick={0,0.1,0.2,0.3,0.4,0.5}, yticklabels={0,.1,.2,.3,.4,.5},
+  title={Step F1\,{\color{muted}\scriptsize$\uparrow$}}]
+ \addplot[hopline, cMis, mark=*] coordinates {(2,0.2938) (3,0.1469) (4,0.1063)};
+ \addplot[hopline, cQs, mark=square*] coordinates {(2,0.3247) (3,0.1487) (4,0.1053)};
+ \addplot[hopline, cQl, mark=triangle*] coordinates {(2,0.3227) (3,0.1514) (4,0.1166)};
+ \addplot[hopline, cQn, mark=diamond*] coordinates {(2,0.3579) (3,0.1591) (4,0.1234)};
+ \addplot[hopline, cFT, dashed, mark=o, mark options={solid}] coordinates {(2,0.4495) (3,0.2899) (4,0.2162)};
+ \addplot[hopline, cFT, line width=1.4pt, mark=square*] coordinates {(2,0.4810) (3,0.2930) (4,0.2494)};
+ \node[anchor=south west, font=\footnotesize, text=inktwo, inner sep=1pt] at (axis cs:1.85,0.005)
+   {\textcolor{bad}{\bfseries *}\,every prompting point};
+\nextgroupplot[ymin=0, ymax=0.6, ytick={0,0.2,0.4,0.6}, yticklabels={0,.2,.4,.6},
+  title={Too few steps\,{\color{muted}\scriptsize$\downarrow$}}]
+ \addplot[hopline, cMis, mark=*] coordinates {(2,0.000) (3,0.220) (4,0.285)};
+ \addplot[hopline, cQs, mark=square*] coordinates {(2,0.105) (3,0.320) (4,0.455)};
+ \addplot[hopline, cQl, mark=triangle*] coordinates {(2,0.010) (3,0.075) (4,0.220)};
+ \addplot[hopline, cQn, mark=diamond*] coordinates {(2,0.025) (3,0.130) (4,0.250)};
+ \addplot[hopline, cFT, dashed, mark=o, mark options={solid}] coordinates {(2,0.015) (3,0.295) (4,0.465)};
+ \addplot[hopline, cFT, line width=1.4pt, mark=square*] coordinates {(2,0.005) (3,0.215) (4,0.550)};
+ \badstarL{1.94}{0.105}
+ \node[text=accent, font=\footnotesize\bfseries, anchor=north, inner sep=1pt] at (axis cs:3,0.060) {*};
+ \draw[accent, line width=.5pt] (axis cs:4.08,0.215) -- (axis cs:4.11,0.215) -- (axis cs:4.11,0.290) -- (axis cs:4.08,0.290);
+ \sigstar{4.11}{0.2525}
+\end{groupplot}
+\end{tikzpicture}\par}
+
+\vspace{0.5mm}
+{\centering\footnotesize
+ \lgd{cMis,line width=.9pt}{cMis,mark=*,mark size=1.6pt}{Mistral-7B}\quad
+ \lgd{cQs,line width=.9pt}{cQs,mark=square*,mark size=1.6pt}{Qwen2.5-7B}\quad
+ \lgd{cQl,line width=.9pt}{cQl,mark=triangle*,mark size=1.6pt}{Qwen2.5-14B}\par\vspace{1mm}
+ \lgd{cQn,line width=.9pt}{cQn,mark=diamond*,mark size=1.6pt}{Qwen3.5-9B}\quad
+ \lgd{cFT,line width=.9pt,dashed}{cFT,mark=o,mark size=1.6pt}{Pool-only fine-tune}\quad
+ \lgd{cFT,line width=1.4pt}{cFT,mark=square*,mark size=1.6pt}{Full fine-tune}\par}
+\calloutwarn{Precision differs: prompting runs 4-bit, fine-tunes are evaluated fp16.}
+\srcline{exp-020/021/022/027 vs exp-026/008 $\cdot$ pinned 600, 200 per depth $\cdot$ exp-029, Holm over 48
+ \hfill * = differs from both fine-tunes}
+\end{frame}
+
+% ========================================= D3 -- generalisation ======
+% source: exp-029.pairs["D3|exp013_gen_ft_vs_exp004_unguided_hop4"].strata.4 and
+%         exp-029.pairs["D3|exp013_gen_ft_vs_exp008_full_train_hop4"].strata.4  (a = exp-013 gen-FT)
+%   reproduce exp-013.comparison_A_vs_unguided_4hop_pre_existing / comparison_B_vs_exp008_hop4_task1_addition
+%   colour on the Delta cells: accent = gen-FT significantly better, red = significantly worse (Holm, 8)
 \begin{frame}[t]
 \slidehead{RESULT \textperiodcentered\ GENERALISATION}{The fine-tune transfers form, but not depth}
-\vspace{3mm}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.30\textwidth}
- \stat{accent}{200/200}{chains still well-formed at a depth never seen in training
-  (chain validity 1.000)}
-\end{column}
-\begin{column}{0.30\textwidth}
- \stat{gold}{169/200}{but systematically \textbf{too short} --- under-decomposition 0.845}
-\end{column}
-\begin{column}{0.31\textwidth}
- \stat{bad}{14.5\%}{hop-count exact match on 4-hop, against \textbf{30.0\%} for the prompting
-  baseline}
-\end{column}
-\end{columns}
-\callout{Trained on 2- and 3-hop only, the model keeps producing \textbf{valid} chains at 4 hops ---
- just too few steps. Step F1 still favours the fine-tune (0.198 vs 0.117); hop-count
- flips to prompting. \textbf{Fine-tuning is dataset-bound in depth, not in form.}}
-\srcline{exp-013 $\cdot$ LoRA trained on 2/3-hop, evaluated on the 4-hop slice $\cdot$ n = 200}
-\end{frame}
-
-% ============================================= 30 -- end to end ======
-\begin{frame}[t]
-\slidehead{RESULT \textperiodcentered\ END TO END}{Better plans do produce better answers --- up to three hops}
-\small
-\begin{tabular}{@{}p{48mm}R{18mm}R{18mm}R{38mm}@{}}
-\colhead{DECOMPOSITION SOURCE} & \colhead{ANSWER EM} & \colhead{ANSWER F1}
- & \colhead{EM BY HOP (2 / 3 / 4)}\\
+\vspace{1mm}
+\footnotesize
+\begin{tabular}{@{}p{30mm}R{19mm}R{19mm}R{19mm}R{19mm}R{19mm}@{}}
+\colhead{4-HOP QUESTIONS} & \colhead{2/3-HOP FINE-TUNE} & \colhead{PROMPTED} & \colhead{$\Delta$}
+ & \colhead{FULL FINE-TUNE} & \colhead{$\Delta$}\\
 \midrule
-None --- question asked whole & \textcolor{inktwo}{18.0\%} & \textcolor{inktwo}{27.2\%} & \textcolor{inktwo}{21.5 / 15.5 / 17.0}\\
-Prompted, unguided & \textcolor{inktwo}{21.3\%} & \textcolor{inktwo}{29.5\%} & \textcolor{inktwo}{29.0 / 20.0 / 15.0}\\
-Fine-tuned & \textcolor{inktwo}{24.2\%} & \textcolor{inktwo}{32.8\%} & \textcolor{inktwo}{34.0 / 24.0 / 14.5}\\
-Gold decompositions (ceiling) & \textcolor{gold}{\bfseries 28.0\%} & \textcolor{gold}{\bfseries 37.3\%}
- & \textcolor{inktwo}{40.0 / 30.5 / {\color{bad}13.5}}\\
+Chain validity\,{\color{muted}$\uparrow$} & \textcolor{ink}{1.000} & \textcolor{inktwo}{0.957} & \textcolor{accent}{+0.043}
+ & \textcolor{inktwo}{0.994} & \textcolor{muted}{+0.006 n.s.}\\
+Too few steps\,{\color{muted}$\downarrow$} & \textcolor{ink}{0.845} & \textcolor{inktwo}{0.400} & \textcolor{bad}{+0.445}
+ & \textcolor{inktwo}{0.550} & \textcolor{bad}{+0.295}\\
+Hop-count EM\,{\color{muted}$\uparrow$} & \textcolor{ink}{14.5\%} & \textcolor{inktwo}{30.0\%} & \textcolor{bad}{$-$15.5 pts}
+ & \textcolor{inktwo}{41.0\%} & \textcolor{bad}{$-$26.5 pts}\\
+Step F1\,{\color{muted}$\uparrow$} & \textcolor{ink}{0.198} & \textcolor{inktwo}{0.117} & \textcolor{accent}{+0.081}
+ & \textcolor{inktwo}{0.249} & \textcolor{bad}{$-$0.051}\\
 \bottomrule
 \end{tabular}
-\calloutopen{\textbf{Read the last column.} Answer accuracy rises monotonically overall --- but at 4 hops
- the ordering collapses entirely: all four cells sit between 13.5\% and 17.0\%, and asking
- the question whole is nominally \emph{best}. Decomposition pays off at 2--3 hops only.
- No significance tests between these cells yet.}
-\srcline{exp-017 $\cdot$ same reader and context in every cell $\cdot$ 200 questions per hop}
+\callout{Trained on 2--3 hops: 200/200 chains valid, 169/200 too short.}
+\srcline{exp-013 (Mistral-7B LoRA, 2/3-hop) vs exp-004, exp-008 $\cdot$ pinned 600, 4 hops, n = 200
+ \hfill exp-029: McNemar / bootstrap, Holm over 8}
+\end{frame}
+
+% ====================================== E1 -- end to end, lines ========
+% lines: exp-017.cells.<cell>.per_gold_hop_metrics.<2|3|4>.answer_em  (x100)
+%   no_decomposition_control .215/.155/.170   unguided (exp-004 Mistral) .290/.200/.150
+%   full_train (exp-008)     .340/.240/.145   oracle (gold plans)         .400/.305/.135
+% matrix: exp-029.pairs["E1|exp017_<a>_vs_exp017_<b>"].strata.<overall|2|3|4>
+%   .mcnemar.answer_em.holm.significant (EM), .bootstrap.answer_f1.holm.significant (F1); 14 of 48; 0 of 12 at 4 hops
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ END TO END}{Only gold plans significantly beat prompted plans end to end}
+\vspace{-1mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.40\textwidth}
+\begin{tikzpicture}
+\begin{axis}[resultaxis, width=44mm, height=28mm, xmin=1.8, xmax=4.2, xtick={2,3,4},
+  xticklabels={2 hops,3 hops,4 hops}, ymin=0, ymax=45, ytick={0,10,20,30,40},
+  yticklabels={0,10\%,20\%,30\%,40\%}, ymajorgrids, xmajorgrids=false,
+  title={Answer exact match\,{\color{muted}\scriptsize$\uparrow$}}]
+ \addplot[line width=.9pt, ink, mark=*, mark size=1.6pt] coordinates {(2,40.0) (3,30.5) (4,13.5)};
+ \addplot[line width=1.4pt, cFT, mark=square*, mark size=1.6pt] coordinates {(2,34.0) (3,24.0) (4,14.5)};
+ \addplot[line width=.9pt, cMis, mark=*, mark size=1.6pt] coordinates {(2,29.0) (3,20.0) (4,15.0)};
+ \addplot[line width=.9pt, muted, dashed, mark=o, mark size=1.6pt, mark options={solid}] coordinates {(2,21.5) (3,15.5) (4,17.0)};
+\end{axis}
+\end{tikzpicture}
+\end{column}
+\begin{column}{0.58\textwidth}
+\colhead{SURVIVES HOLM: ANSWER EM, ANSWER F1}\par\vspace{1mm}
+\footnotesize
+{\renewcommand{\arraystretch}{1.05}\setlength{\tabcolsep}{1.5pt}%
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{35mm}R{10mm}R{10mm}R{10mm}R{10mm}@{}}
+ & \colhead{ALL} & \colhead{2} & \colhead{3} & \colhead{4}\\
+\midrule
+Gold $>$ prompted & \svy{EM}\,\svy{F1} & \svy{EM}\,\svy{F1} & \svn\,\svy{F1} & \svn\,\svn\\
+Gold $>$ none & \svy{EM}\,\svy{F1} & \svy{EM}\,\svy{F1} & \svy{EM}\,\svy{F1} & \svn\,\svn\\
+Gold $>$ fine-tuned & \svn\,\svn & \svn\,\svn & \svn\,\svn & \svn\,\svn\\
+Fine-tuned $>$ prompted & \svn\,\svn & \svn\,\svn & \svn\,\svn & \svn\,\svn\\
+Fine-tuned $>$ none & \svy{EM}\,\svn & \svy{EM}\,\svy{F1} & \svn\,\svn & \svn\,\svn\\
+Prompted $>$ none & \svn\,\svn & \svn\,\svn & \svn\,\svn & \svn\,\svn\\
+\bottomrule
+\end{tabular}}
+\par\vspace{2mm}
+ \lgd{ink,line width=.9pt}{ink,mark=*,mark size=1.6pt}{Gold plans}\quad
+ \lgd{cFT,line width=1.4pt}{cFT,mark=square*,mark size=1.6pt}{Fine-tuned}\quad
+ \lgd{cMis,line width=.9pt}{cMis,mark=*,mark size=1.6pt}{Prompted}\par\vspace{1mm}
+ \lgd{muted,line width=.9pt,dashed}{muted,mark=o,mark size=1.6pt}{No plan, question asked whole}\par
+\end{column}
+\end{columns}
+\callout{At 4 hops no source separates from any other.}
+\srcline{exp-017, reader Mistral-7B $\cdot$ pinned 600 $\cdot$ exp-029: McNemar EM, bootstrap F1, Holm over 48
+ \hfill prompted exp-004, fine-tuned exp-008}
 \end{frame}
 
 % =================================== 31 -- divider: where next ======
@@ -1435,61 +1802,28 @@ Gold decompositions (ceiling) & \textcolor{gold}{\bfseries 28.0\%} & \textcolor{
 {\color{ink}\fontsize{24}{28}\selectfont Where this goes next\par}
 \vspace{5mm}
 {\color{inktwo}\fontsize{11}{15}\selectfont
- What the evidence does not yet cover, and the experiment designed to cover it.\par}
+ What the evidence does not yet cover.\par}
 \end{frame}
 }
 
-% ======================================= 32 -- the model confound ======
+% ============================================ F1 -- still open ======
+% source: docs/analysis/2026-09-20-issue-50-block-report.md section 6 (items 1-4);
+%   pool-size sweep: ADR 0035 item 7, issue #51 (no result yet: no numbers here)
 \begin{frame}[t]
-\slidehead{NEXT \textperiodcentered\ THE GAP IN THE EVIDENCE}{Almost every result here is one model's result}
-\begin{columns}[T,onlytextwidth]
-\begin{column}{0.50\textwidth}
- {\color{inktwo}\small
-  Of every MuSiQue arm run, all but one use \textbf{Mistral-7B}. The single Qwen arm
-  disagrees with the Mistral finding it is usually quoted beside.\par}
- \calloutopen{So ``hop guidance is worth little'' and ``fine-tuning beats prompting'' are currently
-  claims about \textbf{the same one model} --- and the model that disagrees with the first
-  was never brought into the second.}
-\end{column}
-\begin{column}{0.45\textwidth}
- \ptag{THE EXPERIMENT}\phead{Hold everything, vary one thing}
- \pbody{Same 2,000-example imbalanced pool, same pinned 600, same unguided condition and
-  decoding.}
- \vspace{2.5mm}
-
- \pillon{Mistral-7B}\hspace{1.5mm}\pillon{Qwen2.5-7B}\hspace{1.5mm}\pillon{Qwen2.5-14B}
- \vspace{1.5mm}
-
- {\color{inktwo}\scriptsize
-  Mistral vs Qwen-7B isolates the \textbf{family}, Qwen-7B vs Qwen-14B the \textbf{size}.
-  Each contrast moves exactly one factor.\par
-  \vspace{1mm}
-  Qwen3.5-9B is deliberately \emph{not} the size rung: it differs from Qwen2.5-7B in
-  generation as well as parameter count, so it would confound the two. Bringing it into
-  the fine-tuning claim is a separate, cheap arm.\par}
-\end{column}
-\end{columns}
-\srcmono{open issue \#49 $\cdot$ \#50}
-\end{frame}
-
-% ============================================== 33 -- also next ======
-\begin{frame}[t]
-\slidehead{NEXT \textperiodcentered\ ALSO QUEUED}{Four more things, in order}
+\slidehead{NEXT \textperiodcentered\ STILL OPEN}{Five questions the results leave open}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
 \chainnum{1} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
- \textbf{A fine-tune trained on the pool alone} --- 2,000 examples, not the full 19,938 ---
- to isolate what the pool itself is worth.}\\[3mm]
+ \textbf{Pool size, measured in v2} {\color{muted}--- 2k to 10k; the sweep is being prepared.}}\\[3mm]
 \chainnum{2} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
- \textbf{A fixed 45-question anchor set}, 15 per hop, inspected by hand in every experiment
- from here on. The same questions every time.}\\[3mm]
+ \textbf{Least-complex-first ordering} {\color{muted}--- not run; ``complexity'' is not yet defined.}}\\[3mm]
 \chainnum{3} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
- \textbf{Few-shot example ordering} --- currently highest-similarity-first, never varied.
- Reversed, and least-complex-first.}\\[3mm]
+ \textbf{Why the pool fine-tune works} {\color{muted}--- the size-matched control was never trained.}}\\[3mm]
 \chainnum{4} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
- \textbf{Whether the null generalises} --- pool construction is now measured as a genuine
- null, but masking, retriever and pool size have not had the same stage-by-stage check.}
+ \textbf{Run-to-run variance} {\color{muted}--- every arm ran once, at one seed.}}\\[3mm]
+\chainnum{5} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
+ \textbf{What 4-bit costs Qwen} {\color{muted}--- precision was varied for Mistral only.}}
 \end{tabular}
-\srcline{Every result from here on is reported overall \emph{and} per hop depth.}
+\srcmono{issue \#51 (pool size) $\cdot$ \#13 (pool\_2000 control) $\cdot$ \#50 block report, section 6}
 \end{frame}
 
 % ============================================ 34 -- limitations ======
@@ -1497,20 +1831,18 @@ Gold decompositions (ceiling) & \textcolor{gold}{\bfseries 28.0\%} & \textcolor{
 \slideheadplain{HONEST BOUNDARIES}{What this evidence does not support}
 \begin{columns}[T,onlytextwidth]
 \begin{column}{0.47\textwidth}
- \phead{Single-model scope}
- \pbody{The hop-guidance finding is Mistral-specific; Qwen3.5-9B behaves differently.}
- \vspace{3.5mm}
- \phead{Typed vs uniform untested}
- \pbody{The gap sits inside plausible run-to-run variance and carries no significance test.}
+ \phead{Fine-tuning is Mistral-only}
+ \pbody{Every fine-tune (exp-008, 026, 013) is a Mistral-7B LoRA, so ``prompting trails the full
+  fine-tune'' sets four prompting models against one Mistral fine-tune (issue \#49).}
  \vspace{3.5mm}
  \phead{Pool evidence is one trial}
  \pbody{One draw per strategy mixes the strategy's effect with the noise of that draw.}
-\end{column}
-\begin{column}{0.47\textwidth}
+ \vspace{3.5mm}
  \phead{No human judgement}
  \pbody{Exact match against one gold plan penalises valid alternatives. No human validity
   study has been run.}
- \vspace{3.5mm}
+\end{column}
+\begin{column}{0.47\textwidth}
  \phead{MetaQA end-to-end blocked}
  \pbody{The integrated graph run depends on an external system not yet available.}
  \vspace{3.5mm}
