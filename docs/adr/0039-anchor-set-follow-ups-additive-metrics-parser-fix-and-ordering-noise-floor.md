@@ -47,3 +47,20 @@
   so the logged re-score supersedes those figures.
 - **The beside-card terms get a paired bootstrap only, with no t-test** (ADR 0037).
 - The answerer's model-folder `post_process` is untouched, so the reader never truncates at `Answer:`.
+- **Item 4 is amended:** the parser *truncates the generation at the first `Task:` / `Answer:`
+  anywhere in the text*, the same substring rule as `Question:`. It does not merely stop counting
+  the scaffold line. So a real step containing one of these strings mid-line would be cut there.
+  No #50-block arm has such a step; exp-005 has one.
+- **`step_f1_soft_*`:** the NLTK English stopword list (198 entries; source and sha256 in
+  `configs/musique_eval.json`), each entry normalised the way a step is normalised. Matching is
+  one-to-one by maximum bipartite matching, so the result does not depend on order.
+- **`plan_connectedness`:** null for plans with fewer than 2 steps. Those rows are excluded from
+  the mean and counted, so the denominator depends on what the model emitted. Gold scores 1.0 on
+  600/600.
+- **Cross-parser comparisons (review I-3):** after the merge, every new Mistral MuSiQue run is
+  parsed with the fixed parser. Older Mistral-family runs are not 0-affected (exp-015 7/600, exp-004
+  10/3/10, exp-005 1, exp-009 10/11, exp-012 1, v1 pool-sweep 29–47/750 per arm). **A comparison
+  between a new-parser run and any of these uses the old run's re-parsed file**, never its stored
+  one. This does not touch exp-030's Mistral arm (it runs before the merge) or exp-031 (it runs from
+  a worktree pinned at `3bd3595`). Both are old-parser runs compared only with old-parser runs.
+  Qwen and the fine-tunes re-parse to 0 changed rows.
