@@ -36,3 +36,14 @@
   `components/decomposer/run_decomposer.py` and the evaluator from the main checkout for each arm.
 - The H4 noise floor comes from one model. Applying it to the other models is an assumption,
   and is stated as one.
+
+## Implementation choices (lead, 2026-10-14, PR #61)
+
+- **The parser truncates at the scaffold label; it does not just drop that one line.** This mirrors the
+  existing `Question:` rule. Text after `Task:` / `Answer:` is the model running on into a new
+  example block, and in the `Answer:` rows it is often a second copy of the plan. On the stored runs,
+  24/600 exp-020 rows lose 57 steps and 31/600 exp-023 rows lose 175. No row is left empty, and all
+  other arms are unchanged. The analysis note's 0.3200→0.3050 / 0.2950→0.2817 assumed line-dropping,
+  so the logged re-score supersedes those figures.
+- **The beside-card terms get a paired bootstrap only, with no t-test** (ADR 0037).
+- The answerer's model-folder `post_process` is untouched, so the reader never truncates at `Answer:`.
