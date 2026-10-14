@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -24,7 +25,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from run_config import load_config, load_paths, require, resolve_path  # noqa: E402
+from run_config import PATHS_CONFIG_ENV, load_config, load_paths, require, resolve_path  # noqa: E402
 
 EVALUATOR = REPO_ROOT / "scripts" / "musique_decompositions_evaluator.py"
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
@@ -190,6 +191,10 @@ class TestPlanConnectedness(unittest.TestCase):
         self.assertEqual(EVAL._beside_card_aggregate([{"step_f1": 1.0}]), {})
 
     def test_gold_is_fully_connected_on_the_pinned_600(self) -> None:
+        if os.environ.get(PATHS_CONFIG_ENV):
+            # The smoke runner points every path at the fabricated fixtures (3 ids per hop);
+            # this check is about the real ADR 0007 set, which lives in the real data root.
+            self.skipTest(f"{PATHS_CONFIG_ENV} is set: fixture paths, not the pinned 600")
         paths = load_paths("paths.json")
         root = Path(paths["data_root_resolved"])
         gold_path = resolve_path(require(paths, "datasets.musique_dev_gold_clean"), root)
