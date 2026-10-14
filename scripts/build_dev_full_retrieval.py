@@ -83,9 +83,22 @@ def compare_to_reference(
     new_rows: dict[str, dict[str, Any]],
     ref_rows: list[dict[str, Any]],
     mode: str,
+    prompt_k: int,
 ) -> dict[str, Any]:
-    """Exemplar-id-and-order equivalence of ``new_rows`` against ``ref_rows`` (by query id)."""
+    """Exemplar-id-and-order equivalence of ``new_rows`` against ``ref_rows`` (by query id).
+
+    Beside the strict top-k comparison, two diagnostics are counted (they explain a
+    mismatch; they do not excuse one - ``equivalent`` stays strict):
+
+    - ``mismatches_with_identical_score_sequence``: the two lists carry the same rerank
+      score at every position, i.e. the difference is only which of several exactly-tied
+      exemplars sits where;
+    - ``first_prompt_k_match``: rows whose first ``prompt_k`` exemplar ids, in order, match
+      (the decomposer shows only its few-shot k of the retrieved list).
+    """
     matched = 0
+    first_k_matched = 0
+    tie_only = 0
     masked_query_matched = 0
     missing: list[str] = []
     mismatched: list[dict[str, Any]] = []
@@ -98,10 +111,18 @@ def compare_to_reference(
         if new.get(f"query_question_masked_{mode}") == ref.get(f"query_question_masked_{mode}"):
             masked_query_matched += 1
         a, b = _exemplar_ids(new, mode), _exemplar_ids(ref, mode)
+        if a[:prompt_k] == b[:prompt_k]:
+            first_k_matched += 1
         if a == b:
             matched += 1
         else:
-            mismatched.append({"query_id": qid, "new": a, "reference": b})
+            scores_a = [nb.get("score") for nb in new.get(f"{mode}_top_k") or []]
+            scores_b = [nb.get("score") for nb in ref.get(f"{mode}_top_k") or []]
+            if scores_a == scores_b:
+                tie_only += 1
+            mismatched.append(
+                {"query_id": qid, "new": a, "reference": b, "identical_score_sequence": scores_a == scores_b}
+            )
     return {
         "mode": mode,
         "reference_rows": len(ref_rows),
@@ -110,7 +131,10 @@ def compare_to_reference(
         "missing_from_new_artifact": len(missing),
         "missing_ids_sample": missing[:10],
         "mismatched": len(mismatched),
-        "mismatched_sample": mismatched[:10],
+        "mismatches_with_identical_score_sequence": tie_only,
+        "prompt_k": prompt_k,
+        "first_prompt_k_match": first_k_matched,
+        "mismatched_rows": mismatched,
         "equivalent": matched == len(ref_rows),
     }
 
@@ -250,7 +274,9 @@ def main() -> None:
     ref_sha = _sha256(ref_path)
     if ref_sha != require(cfg, "reference.sha256"):
         raise SystemExit(f"reference sha256 {ref_sha} != pinned {require(cfg, 'reference.sha256')}")
-    equivalence = compare_to_reference(by_id, _load_jsonl(ref_path), mode)
+    equivalence = compare_to_reference(
+        by_id, _load_jsonl(ref_path), mode, int(require(cfg, "reference.prompt_k"))
+    )
     print(
         f"Equivalence vs reference ({mode}): {equivalence['exemplar_ids_and_order_match']}/"
         f"{equivalence['reference_rows']} rows match exemplar ids and order"
@@ -305,7 +331,12 @@ def main() -> None:
             f"- Equivalence vs `{ref_path}` ({mode} exemplar pool ids, in order): "
             f"{equivalence['exemplar_ids_and_order_match']}/{equivalence['reference_rows']} rows "
             f"match; masked query text matches {equivalence['masked_query_text_match']}/"
-            f"{equivalence['reference_rows']}",
+            f"{equivalence['reference_rows']}; mismatches whose rerank-score sequence is "
+            f"identical (exact ties reordered): "
+            f"{equivalence['mismatches_with_identical_score_sequence']}/"
+            f"{equivalence['mismatched']}; first {equivalence['prompt_k']} exemplar ids match "
+            f"(what a k={equivalence['prompt_k']} prompt shows): "
+            f"{equivalence['first_prompt_k_match']}/{equivalence['reference_rows']}",
             f"- Timings: {metrics['timings']}",
         ],
         prefix="build_",

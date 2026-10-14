@@ -28,7 +28,9 @@
     "_note": "The exp-014 artifact the issue #50 arms read. Its rows' exemplar ids and order are what the new artifact must reproduce for the same query ids.",
     "path": "exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
     "sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
-    "compare_mode": "typed"
+    "compare_mode": "typed",
+    "prompt_k": 3,
+    "_prompt_k_note": "Diagnostic only: the few_shot.k every decomposer model folder sets (components/decomposer/models/*/config.json), i.e. how many of the 5 retrieved exemplars a prompt shows. The equivalence verdict itself compares all 5."
   },
 
   "paths_config": "paths.json"
