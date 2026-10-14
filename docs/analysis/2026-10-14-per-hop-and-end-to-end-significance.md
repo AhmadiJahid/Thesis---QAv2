@@ -8,9 +8,9 @@
 
 1. **A7, hop-matched retrieval.** The hop-count gain is real only at 2 hops (0.710 → 0.845). At 3 and 4 hops it cannot be told apart from chance. At 4 hops, hop-matching **does lower step F1** (0.116 → 0.071), and that drop survives Holm. It is the only quality loss that does.
 2. **B1, oracle hop count.** For Mistral the gain is a 2-hop effect (hop EM, GED), and nothing separates at 4 hops. For Qwen3.5-9B, hop-count EM rises at every depth. Its content gains hold overall (step F1, ordered accuracy) but are weak per hop. Its overall exact-match gain (p = 0.039) does not survive Holm.
-3. **D2, fine-tune vs prompting by depth.** All 4 prompting models trail both fine-tunes on step F1 at every depth (24 of 24 tests survive Holm). At 4 hops the fine-tunes are the ones that stop short: they under-decompose more often than Mistral-7B, Qwen2.5-14B and Qwen3.5-9B (6 of 8 tests survive Holm). The exception is Qwen2.5-7B, which does not differ.
+3. **D2, fine-tune vs prompting by depth.** All 4 prompting models trail both fine-tunes on step F1 at every depth (24 of 24 tests survive Holm). At 4 hops the fine-tunes are the ones that stop short: they under-decompose more often than Mistral-7B, Qwen2.5-14B and Qwen3.5-9B (6 of 8 tests survive Holm). The exception is Qwen2.5-7B, which is not distinguishable from the fine-tunes (not significant; that is not the same as equal).
 4. **D3, generalisation.** Every number on the slide is a tested claim: 7 of 8 tests survive Holm. The one that does not is chain validity against the full fine-tune, and the slide does not make that claim.
-5. **E1, end to end.** Gold plans beat prompted plans and asking the question whole, overall and at 2 hops. The fine-tune beats asking whole on answer EM. **The fine-tune does not significantly beat prompted plans** (EM p = 0.12), and prompted plans do not beat asking whole. At 4 hops none of the four sources separates. The monotone ordering on the slide is therefore only partly tested.
+5. **E1, end to end.** Gold plans beat prompted plans and asking the question whole, overall and at 2 hops. The fine-tune beats asking whole on answer EM. **The fine-tune does not significantly beat prompted plans** (EM p = 0.12), and prompted plans are not significantly better than asking whole (2-hop p = 0.067). At 4 hops none of the four sources separates. The monotone ordering on the slide is therefore only partly tested.
 
 ## How to read the tables
 
@@ -19,6 +19,9 @@
 - **Holm** is a separate column, applied within each slide's family. The family size is given in each heading. The p-value fed to Holm is the McNemar p for binary metrics and the paired-t p for continuous ones, because the percentile bootstrap gives a CI, not a p. This is the convention exp-018 used. One cell has the two bases disagreeing: B1 Qwen ordered accuracy at 4 hops (bootstrap significant, t p = 0.054).
 - The legacy `composite_score` is excluded from everything (ADR 0035 item 4).
 - `ged`, `under_decomposition` and `over_decomposition` are lower-is-better.
+- **Metric definitions.** Answer EM/F1 are MuSiQue's official metrics: SQuAD `normalize_answer` (lowercase, strip punctuation and articles, collapse whitespace), max over the gold answer and its aliases (`experiments/exp-017/config.json`, `src/answer_metrics.py`). Decomposition `exact_match` is 1 iff the plan has gold's step count and every step equals gold's after `_normalize_step`.
+- **Provenance (added after review).** The results trace to commit `b894dff`, where `reanalysis.py` is first tracked; `git_head_at_compute` in `config.json` names `43b6290` because the script ran untracked on top of it. The log row and the Holm family definitions were committed together with the results, not before them, so git cannot show the families were fixed before the p-values were seen. The run is CPU-only and deterministic and a reviewer reproduced `metrics.json` byte-for-byte; the families are the ones the log row lists, one per planned slide. Re-running the script rewrites `config.json`/`metrics.json` in place.
+- **Holm convention:** ADR 0036.
 
 ## A7 — hop-matched retrieval (exp-009: a = mixed, b = oracle hop-matched). Family: 4 metrics × 4 strata = 16 tests
 
@@ -75,7 +78,7 @@ Bold means the test survives Holm. "✓unc" means the evaluator's uncorrected te
 | Qwen3.5-9B (exp-027) | full | 0.025 vs 0.005 (1) | 0.130 vs 0.215 ✓unc (0.11) | 0.250 vs 0.550 (**1e-10**) |
 | Qwen3.5-9B | pool-only | 0.025 vs 0.015 (1) | 0.130 vs 0.295 (**4e-5**) | 0.250 vs 0.465 (**6e-6**) |
 
-**May claim:** "the fine-tunes lead on step F1 at every depth" is tested against all four prompting models. "The fine-tunes stop short at 4 hops" is tested against Mistral-7B, Qwen2.5-14B and Qwen3.5-9B. **May not claim:** that they stop short against Qwen2.5-7B at 4 hops: that model under-decomposes as often (0.455 vs 0.550 / 0.465, n.s.). At 2 hops it is Qwen2.5-7B that runs short, not the fine-tunes. The precision confound still binds and must stay on the slide: the prompting arms are 4-bit and the fine-tune evaluations are fp16.
+**May claim:** "the fine-tunes lead on step F1 at every depth" is tested against all four prompting models. "The fine-tunes stop short at 4 hops" is tested against Mistral-7B, Qwen2.5-14B and Qwen3.5-9B. **May not claim:** that they stop short against Qwen2.5-7B at 4 hops: the difference with that model is not significant (0.455 vs 0.550 / 0.465; uncorrected McNemar p 0.050 vs the full fine-tune), which means not distinguishable, not equal. At 2 hops it is Qwen2.5-7B that runs short, not the fine-tunes. The precision confound still binds and must stay on the slide: the prompting arms are 4-bit and the fine-tune evaluations are fp16.
 
 ## D3 — generalisation to unseen 4-hop (a = exp-013 2/3-hop fine-tune; hop = 4 rows only, n = 200). Family: 4 metrics × 2 baselines = 8 tests
 
