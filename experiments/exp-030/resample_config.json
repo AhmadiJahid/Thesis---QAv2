@@ -1,0 +1,125 @@
+{
+  "script": "resample_eval_sets.py",
+  "config_path": "/cta/users/fyilmaz/Thesis---QAv2/configs/resample_eval_sets.json",
+  "config": {
+    "seed": 42,
+    "k_draws": 50,
+    "per_hop": 200,
+    "hops": [
+      2,
+      3,
+      4
+    ],
+    "percentiles": [
+      2.5,
+      97.5
+    ],
+    "tie_tolerance": 1e-12,
+    "pinned_ids_template_key": "musique_eval_questions_template",
+    "evaluator_script": "scripts/musique_decompositions_evaluator.py",
+    "per_hop_figure_metrics": [
+      "hop_count_exact_match_rate",
+      "sari_macro",
+      "break_exact_match_rate"
+    ],
+    "figures": {
+      "_note": "Okabe-Ito colorblind-safe palette, assigned to arms in the order they are passed on the command line (one color per arm in every figure). The heatmap uses a sequential single-hue colormap. Sizes are in inches at the stated dpi, chosen to stay readable when a figure fills a slide.",
+      "formats": [
+        "png",
+        "pdf"
+      ],
+      "dpi": 200,
+      "palette": [
+        "#0072B2",
+        "#E69F00",
+        "#009E73",
+        "#D55E00",
+        "#CC79A7",
+        "#56B4E9",
+        "#F0E442"
+      ],
+      "heatmap_cmap": "Blues",
+      "font_size": 12,
+      "panel_width": 3.6,
+      "panel_height": 3.4,
+      "jitter_width": 0.22,
+      "dot_size": 14,
+      "dot_alpha": 0.4,
+      "summary_color": "#222222",
+      "pinned_marker_size": 70,
+      "pinned_label": "pinned 600 subset (recomputed from this run)",
+      "ncols": 4,
+      "whisker_linewidth": 2.0,
+      "whisker_cap_half_width": 0.12,
+      "cap_linewidth": 1.5,
+      "mean_bar_half_width": 0.32,
+      "mean_linewidth": 3.5,
+      "pinned_x_offset": 0.42,
+      "pinned_edge_linewidth": 1.5,
+      "x_margin": 0.6,
+      "xtick_rotation": 30,
+      "grid_alpha": 0.3,
+      "legend_dot_alpha": 0.8,
+      "legend_extra_width": 2.2,
+      "heatmap_text_white_at_or_above": 60,
+      "colorbar_fraction": 0.6,
+      "metric_labels": {
+        "break_exact_match_rate": "Break EM",
+        "sari_macro": "SARI",
+        "ged_macro": "GED",
+        "chain_validity_macro": "Chain validity",
+        "hop_count_exact_match_rate": "Hop-count EM",
+        "under_decomposition_rate": "Under-decomposition",
+        "over_decomposition_rate": "Over-decomposition"
+      }
+    },
+    "paths_config": "paths.json"
+  },
+  "per_hop_effective": 200,
+  "allow_unnamed_population": false,
+  "committed_pinned": [
+    "Qwen2.5-7B=runs/exp-021/eval/eval_metrics.json",
+    "Pool-FT (Mistral)=runs/exp-026/eval/eval_metrics.json",
+    "Qwen2.5-14B=runs/exp-022/eval/eval_metrics.json",
+    "Qwen3.5-9B=runs/exp-027/eval/eval_metrics.json",
+    "Mistral-7B=runs/exp-020/eval/eval_metrics.json"
+  ],
+  "arms": [
+    {
+      "label": "Qwen2.5-7B",
+      "path": "runs/exp-030/qwen2_5_7b/eval/eval_per_item.json"
+    },
+    {
+      "label": "Pool-FT (Mistral)",
+      "path": "runs/exp-030/pool_ft/eval/eval_per_item.json"
+    },
+    {
+      "label": "Qwen2.5-14B",
+      "path": "runs/exp-030/qwen2_5_14b/eval/eval_per_item.json"
+    },
+    {
+      "label": "Qwen3.5-9B",
+      "path": "runs/exp-030/qwen3_5_9b/eval/eval_per_item.json"
+    },
+    {
+      "label": "Mistral-7B",
+      "path": "runs/exp-030/mistral_7b/eval/eval_per_item.json"
+    }
+  ],
+  "out_dir": "runs/exp-030/resample",
+  "git": {
+    "commit": "5226b8423d31b9cde2747ac8d81590309d5487ff",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 7,
+    "dirty_files": [
+      "M Slides/thesis-deck-v2.html",
+      "?? \"Slides/Artifact slides review.pdf\"",
+      "?? \"Slides/Final Slide before meeting.pdf\"",
+      "?? \"Slides/Screenshot 2026-10-13 010802.png\"",
+      "?? \"Slides/Screenshot 2026-10-13 011250.png\"",
+      "?? Slides/Thesis_QA_Slide_Deck.pdf",
+      "?? Slides/thesis-deck-v2.pdf"
+    ]
+  }
+}

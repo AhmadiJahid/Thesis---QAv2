@@ -1,0 +1,2 @@
+startup checks: {'eval': True, 'sha': True, 'quant': True, 'ordering': True}
+model_size: [model_size] decomposer model=mistralai/Mistral-7B-Instruct-v0.3+adapter parameters=7,289,966,592 expected 7,289,966,592 -> True

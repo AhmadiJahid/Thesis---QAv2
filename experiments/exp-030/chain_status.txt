@@ -1,0 +1,17 @@
+chain start 2026-10-14T04:57:49+03:00 HEAD=4136473fff09b16bddb20381925773bd647736d2
+qwen2_5_7b START 2026-10-14T04:57:49+03:00
+qwen2_5_7b END 2026-10-14T05:48:20+03:00 rc=0 check_rc=0 wall_s=3031
+qwen2_5_7b EVAL rc=0 wall_s=7 run_dir=runs/exp-030/qwen2_5_7b/decomposer/20261014_015750/
+pool_ft START 2026-10-14T05:48:27+03:00
+pool_ft END 2026-10-14T06:42:06+03:00 rc=0 check_rc=0 wall_s=3219
+pool_ft EVAL rc=0 wall_s=6 run_dir=runs/exp-030/pool_ft/decomposer/20261014_024829/
+qwen2_5_14b START 2026-10-14T06:42:12+03:00
+qwen2_5_14b END 2026-10-14T08:21:54+03:00 rc=0 check_rc=0 wall_s=5982
+qwen2_5_14b EVAL rc=0 wall_s=8 run_dir=runs/exp-030/qwen2_5_14b/decomposer/20261014_034213/
+qwen3_5_9b START 2026-10-14T08:22:02+03:00
+qwen3_5_9b END 2026-10-14T09:57:12+03:00 rc=0 check_rc=0 wall_s=5710
+qwen3_5_9b EVAL rc=0 wall_s=7 run_dir=runs/exp-030/qwen3_5_9b/decomposer/20261014_052203/
+mistral_7b START 2026-10-14T09:57:19+03:00
+mistral_7b END 2026-10-14T12:45:02+03:00 rc=0 check_rc=0 wall_s=10063
+mistral_7b EVAL rc=0 wall_s=12 run_dir=runs/exp-030/mistral_7b/decomposer/20261014_065720/
+chain done 2026-10-14T12:45:14+03:00

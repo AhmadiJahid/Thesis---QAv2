@@ -1,0 +1,183 @@
+{
+  "script": "run_decomposer.py",
+  "created_utc": "2026-10-14T05:22:03.944092+00:00",
+  "run_id": "20261014_052203",
+  "component": "decomposer",
+  "model": "qwen3_5_9b",
+  "model_id": "Qwen/Qwen3.5-9B",
+  "model_name": "qwen3_5_9b",
+  "prompt_style": "chat_template",
+  "prompt_file": "prompt_unguided.md",
+  "prompt_path": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/qwen3_5_9b/prompt_unguided.md",
+  "prompt_sha256": "473221aaa3f24d2a63882a32445e6c3ebfcbd98eb40d7a6649490103172ff1fe",
+  "unguided_prompt_invariant": {
+    "checked": true,
+    "guided_prompt": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/qwen3_5_9b/prompt.md",
+    "unguided_prompt": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/qwen3_5_9b/prompt_unguided.md",
+    "hop_lines_removed": [
+      "- The number of steps MUST equal the hop count.",
+      "Hop count: {hop_count}"
+    ]
+  },
+  "condition": "unguided",
+  "condition_settings": {
+    "guided": false,
+    "_note": "No hop count in the prompt: the model decides how many steps to emit."
+  },
+  "guided": false,
+  "hop_source": {
+    "source": "gold",
+    "condition": "unguided",
+    "predictions_file": null,
+    "predictions_file_sha256": null,
+    "id_field": "query_id",
+    "hop_field": "predicted_hop",
+    "note": "the query's gold hop depth (from its id on the retrieval path, or from the per-hop file it was read from) - never a prediction"
+  },
+  "stop_after_step_lines": null,
+  "seed": 42,
+  "seeded": {
+    "seed": 42,
+    "python_random": true,
+    "pythonhashseed_exported_for_subprocesses": "42",
+    "numpy": true,
+    "torch": true,
+    "torch_cuda": true
+  },
+  "sample_size": null,
+  "hops": [
+    2,
+    3,
+    4
+  ],
+  "few_shot_exemplar_hop_count": "exemplar_gold",
+  "few_shot_ordering": "as_is",
+  "few_shot_ordering_source": "config",
+  "questions_template_key": "musique_eval_questions_template",
+  "questions_format": "jsonl",
+  "device": "cuda",
+  "quantization": "4bit",
+  "adapter": null,
+  "no_few_shot": false,
+  "adapter_few_shot_override": false,
+  "adapter_prompt_parity": {
+    "checked": false,
+    "override": false,
+    "run": {
+      "guided": false,
+      "prompt_file": "prompt_unguided.md",
+      "prompt_style": "chat_template",
+      "few_shot_examples_in_prompt": true,
+      "prompt_sha256": "473221aaa3f24d2a63882a32445e6c3ebfcbd98eb40d7a6649490103172ff1fe"
+    },
+    "mismatches": [],
+    "note": "no --adapter in this run, so there is no training prompt to match"
+  },
+  "embed_model": "e5-small",
+  "embed_model_id": "intfloat/e5-small-v2",
+  "retrieval": {
+    "input": null,
+    "input_key": "musique_few_shot_top5_pinned600",
+    "input_resolved": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/retrieval/dev_full_imbalanced_rerank_top5.jsonl",
+    "input_sha256": "98e4f7201b0b11cabfd9d1df9ee154464ebc230b7296c27be98ae02cd1efa114",
+    "mode": "typed",
+    "k": 5,
+    "require_input": true
+  },
+  "generation": {
+    "max_new_tokens": 1024,
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "generation_overrides": {
+    "max_new_tokens": 1024
+  },
+  "loader": {
+    "trust_remote_code": true,
+    "quantization": "4bit",
+    "cuda_dtype": "float16",
+    "cpu_dtype": "float32",
+    "device_map_cuda": "auto"
+  },
+  "few_shot": {
+    "enabled": true,
+    "k": 3
+  },
+  "post_process": {
+    "strip_think": true,
+    "truncate_at": [
+      "Question:"
+    ]
+  },
+  "shared_config": "/cta/users/fyilmaz/Thesis---QAv2/configs/decomposer_musique.json",
+  "model_config": "/cta/users/fyilmaz/Thesis---QAv2/components/decomposer/models/qwen3_5_9b/config.json",
+  "logging": {
+    "prompt_log_every": 5,
+    "anchor_ids_file": "configs/anchor_set_45.json",
+    "anchor_ids_file_resolved": "/cta/users/fyilmaz/Thesis---QAv2/configs/anchor_set_45.json",
+    "anchor_ids_file_sha256": "c03aa351377894b2b1e371af0e2802365868b7ee39aac18e296572a699da7111",
+    "anchor_ids_count": 45
+  },
+  "output_root": "runs/exp-030/qwen3_5_9b/decomposer",
+  "dry_run": false,
+  "evaluation_set": {
+    "named_eval_set": "musique_dev_full",
+    "pinned": false,
+    "named_set_asserted": true,
+    "matches_named_set": true,
+    "allow_mismatch_flag": false,
+    "rows_source": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/retrieval/dev_full_imbalanced_rerank_top5.jsonl",
+    "id_identity_checked": true,
+    "ids_missing_count": 0,
+    "ids_unexpected_count": 0,
+    "rows_loaded_total": 2417,
+    "rows_loaded_per_hop": {
+      "2": 1252,
+      "3": 760,
+      "4": 405
+    },
+    "definition": {
+      "name": "musique_dev_full",
+      "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+      "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+      "ids_total": 2417,
+      "ids_per_hop": {
+        "2": 1252,
+        "3": 760,
+        "4": 405
+      },
+      "hops": [
+        2,
+        3,
+        4
+      ],
+      "expected_total": 2417,
+      "definition_problems": []
+    },
+    "distinct_query_ids": 2417
+  },
+  "few_shot_self_exclusion": {
+    "enabled": true,
+    "by": [
+      "pool_id == query_id",
+      "normalized pool_question == normalized query"
+    ],
+    "note": "an exemplar that is the query itself is dropped from the ranked list before the top-k is taken, on the reranked, bi-encoder and random paths"
+  },
+  "git": {
+    "commit": "5226b8423d31b9cde2747ac8d81590309d5487ff",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 7,
+    "dirty_files": [
+      "M Slides/thesis-deck-v2.html",
+      "?? \"Slides/Artifact slides review.pdf\"",
+      "?? \"Slides/Final Slide before meeting.pdf\"",
+      "?? \"Slides/Screenshot 2026-10-13 010802.png\"",
+      "?? \"Slides/Screenshot 2026-10-13 011250.png\"",
+      "?? Slides/Thesis_QA_Slide_Deck.pdf",
+      "?? Slides/thesis-deck-v2.pdf"
+    ]
+  }
+}

@@ -1,0 +1,2 @@
+startup checks: {'eval': True, 'sha': True, 'quant': True, 'ordering': True}
+model_size: [model_size] decomposer model=Qwen/Qwen3.5-9B parameters=8,953,803,264 expected 8,953,803,264 -> True

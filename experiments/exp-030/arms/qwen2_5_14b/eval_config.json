@@ -1,0 +1,59 @@
+{
+  "script": "musique_decompositions_evaluator.py",
+  "created_utc": "2026-10-14T05:22:02.356121+00:00",
+  "config_path": "/cta/users/fyilmaz/Thesis---QAv2/configs/musique_eval.json",
+  "predictions": "runs/exp-030/qwen2_5_14b/decomposer/20261014_034213/results.json",
+  "gold": "/cta/users/fyilmaz/thesis-qav2-data/musique/dev_data/musique_ans_v1.0_dev_clean.jsonl",
+  "run_dir": "runs/exp-030/qwen2_5_14b/eval",
+  "seed": 42,
+  "limit": null,
+  "out_prefix": "eval",
+  "composite_score_weights": {
+    "step_f1_macro": 0.4,
+    "ordered_step_accuracy_macro": 0.3,
+    "reference_validity_micro": 0.2,
+    "step_count_error": 0.1
+  },
+  "composite_step_count_error_scale": 3.0,
+  "composite_score_status": "legacy",
+  "ged_policy": {
+    "max_nodes_for_optimizer": 16,
+    "per_item_time_budget_seconds": 20.0,
+    "cost_bound": "max_nodes_for_optimizer is the guard that bounds cost: it is checked before any search starts and is deterministic. per_item_time_budget_seconds is a backstop only - the deadline is tested between the optimizer's successive approximations, so a single long-running approximation (including the first) cannot be interrupted",
+    "on_exhaustion": "the item is reported with a documented upper bound and flagged in ged_fallback, never dropped (dropping would break the paired battery; Break's own evaluator drops such items) — ADR 0026",
+    "node_substitution_cost": "1 - the edit-distance match ratio over lowercased whitespace tokens; Break lemmatizes with spaCy en_core_web_sm, so absolute values are not comparable to published Break GED",
+    "direction": "lower is better (it is a distance)",
+    "machine_dependence": "ged_fallback_counts['time_budget'] is machine-dependent, and so are the values of the items it counts (the last approximation before the deadline); every other path, including 'node_cap' and 'no_optimizer_result', is deterministic. An empty ged_fallback_counts means no machine-dependent value in the run"
+  },
+  "decomp_mean_policy": {
+    "components": [
+      "break_exact_match",
+      "sari",
+      "ged",
+      "chain_validity",
+      "hop_count_exact_match"
+    ],
+    "ged_clamp": 1.0,
+    "formula": "per item, the unweighted mean over the components of: break_exact_match, sari, 1 - min(ged_clamp, ged), chain_validity, hop_count_exact_match",
+    "weights": "all equal by construction; there is no weighted variant",
+    "status": "CONTINGENCY, not part of the reported suite. Offered only against a requirement for one blended number, reported beside the suite and never instead of it",
+    "junk_gate": "GATE PASSED on the ADR 0007 pinned 600 (all 15 rows on the same 600 items): the best junk baseline scored decomp_mean 0.1412 (J4, three fixed steps) against a real-arm worst of 0.5085 (exp005 unguided / unguided_capped), a margin of +0.3673, and every one of J1-J4 ranked below every one of the nine committed arms. Re-derive with scripts/decomposition_junk_battery.py; the table is in ADR 0029."
+  },
+  "eval_set": "musique_dev_full",
+  "allow_eval_set_mismatch": false,
+  "git": {
+    "commit": "5226b8423d31b9cde2747ac8d81590309d5487ff",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 7,
+    "dirty_files": [
+      "M Slides/thesis-deck-v2.html",
+      "?? \"Slides/Artifact slides review.pdf\"",
+      "?? \"Slides/Final Slide before meeting.pdf\"",
+      "?? \"Slides/Screenshot 2026-10-13 010802.png\"",
+      "?? \"Slides/Screenshot 2026-10-13 011250.png\"",
+      "?? Slides/Thesis_QA_Slide_Deck.pdf",
+      "?? Slides/thesis-deck-v2.pdf"
+    ]
+  }
+}

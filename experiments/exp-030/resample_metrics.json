@@ -1,0 +1,3087 @@
+{
+  "script": "resample_eval_sets.py",
+  "created_utc": "2026-10-14T09:49:49.857653+00:00",
+  "seed": 42,
+  "seeded": {
+    "seed": 42,
+    "python_random": true,
+    "pythonhashseed_exported_for_subprocesses": "42",
+    "numpy": true,
+    "torch": true,
+    "torch_cuda": true
+  },
+  "k_draws": 50,
+  "per_hop": 200,
+  "per_hop_overridden": false,
+  "hops": [
+    2,
+    3,
+    4
+  ],
+  "draw_seeds": [
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91
+  ],
+  "draw_seed_rule": "draw d (0-based) uses random.Random(seed + d)",
+  "percentile_method": "numpy.percentile, linear interpolation",
+  "pinned_percentile_rule": "100 * (#draws below + 0.5 * #draws tied) / K",
+  "rank_rule": "direction-aware, 1 = best, ties share the best rank (competition ranking)",
+  "metrics": [
+    "break_exact_match_rate",
+    "sari_macro",
+    "ged_macro",
+    "chain_validity_macro",
+    "hop_count_exact_match_rate",
+    "under_decomposition_rate",
+    "over_decomposition_rate"
+  ],
+  "directions": {
+    "break_exact_match_rate": "higher_is_better",
+    "sari_macro": "higher_is_better",
+    "ged_macro": "lower_is_better",
+    "chain_validity_macro": "higher_is_better",
+    "hop_count_exact_match_rate": "higher_is_better",
+    "under_decomposition_rate": "lower_is_better",
+    "over_decomposition_rate": "lower_is_better"
+  },
+  "aggregation": "scripts/musique_decompositions_evaluator.py::_aggregate (imported), with _assert_suite_terms_are_macro_means applied to every overall subset",
+  "arms": [
+    {
+      "label": "Qwen2.5-7B",
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen2_5_7b/eval/eval_per_item.json",
+      "sha256": "45f02d0aca02fc151689b52343c77a22f8c4a51cfb99b40ab63debda90208d83",
+      "items": 2417,
+      "evaluation_set": {
+        "named_eval_set": "musique_dev_full",
+        "pinned": false,
+        "named_set_asserted": true,
+        "matches_named_set": true,
+        "allow_mismatch_flag": false,
+        "rows_source": "runs/exp-030/qwen2_5_7b/decomposer/20261014_015750/results.json",
+        "id_identity_checked": true,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 2417,
+        "rows_loaded_per_hop": {
+          "2": 1252,
+          "3": 760,
+          "4": 405
+        },
+        "definition": {
+          "name": "musique_dev_full",
+          "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+          "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+          "ids_total": 2417,
+          "ids_per_hop": {
+            "2": 1252,
+            "3": 760,
+            "4": 405
+          },
+          "hops": [
+            2,
+            3,
+            4
+          ],
+          "expected_total": 2417,
+          "definition_problems": []
+        },
+        "missing_gold_count": 0
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen2_5_7b/decomposer/20261014_015750/results.json"
+    },
+    {
+      "label": "Pool-FT (Mistral)",
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/pool_ft/eval/eval_per_item.json",
+      "sha256": "429aa062c72a3e8f1b4cc4502cfdd45cc7fd9536cf7a9ca887c6236c6835a5cb",
+      "items": 2417,
+      "evaluation_set": {
+        "named_eval_set": "musique_dev_full",
+        "pinned": false,
+        "named_set_asserted": true,
+        "matches_named_set": true,
+        "allow_mismatch_flag": false,
+        "rows_source": "runs/exp-030/pool_ft/decomposer/20261014_024829/results.json",
+        "id_identity_checked": true,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 2417,
+        "rows_loaded_per_hop": {
+          "2": 1252,
+          "3": 760,
+          "4": 405
+        },
+        "definition": {
+          "name": "musique_dev_full",
+          "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+          "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+          "ids_total": 2417,
+          "ids_per_hop": {
+            "2": 1252,
+            "3": 760,
+            "4": 405
+          },
+          "hops": [
+            2,
+            3,
+            4
+          ],
+          "expected_total": 2417,
+          "definition_problems": []
+        },
+        "missing_gold_count": 0
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/pool_ft/decomposer/20261014_024829/results.json"
+    },
+    {
+      "label": "Qwen2.5-14B",
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen2_5_14b/eval/eval_per_item.json",
+      "sha256": "9c1ba3532bace8230412678918eb203f87d245aa39aefd6e322c2d2f54b803b2",
+      "items": 2417,
+      "evaluation_set": {
+        "named_eval_set": "musique_dev_full",
+        "pinned": false,
+        "named_set_asserted": true,
+        "matches_named_set": true,
+        "allow_mismatch_flag": false,
+        "rows_source": "runs/exp-030/qwen2_5_14b/decomposer/20261014_034213/results.json",
+        "id_identity_checked": true,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 2417,
+        "rows_loaded_per_hop": {
+          "2": 1252,
+          "3": 760,
+          "4": 405
+        },
+        "definition": {
+          "name": "musique_dev_full",
+          "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+          "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+          "ids_total": 2417,
+          "ids_per_hop": {
+            "2": 1252,
+            "3": 760,
+            "4": 405
+          },
+          "hops": [
+            2,
+            3,
+            4
+          ],
+          "expected_total": 2417,
+          "definition_problems": []
+        },
+        "missing_gold_count": 0
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen2_5_14b/decomposer/20261014_034213/results.json"
+    },
+    {
+      "label": "Qwen3.5-9B",
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen3_5_9b/eval/eval_per_item.json",
+      "sha256": "bb992f271031a4e08eb5297f0631f54a9a894e028bb332e4a982f58430b27ba7",
+      "items": 2417,
+      "evaluation_set": {
+        "named_eval_set": "musique_dev_full",
+        "pinned": false,
+        "named_set_asserted": true,
+        "matches_named_set": true,
+        "allow_mismatch_flag": false,
+        "rows_source": "runs/exp-030/qwen3_5_9b/decomposer/20261014_052203/results.json",
+        "id_identity_checked": true,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 2417,
+        "rows_loaded_per_hop": {
+          "2": 1252,
+          "3": 760,
+          "4": 405
+        },
+        "definition": {
+          "name": "musique_dev_full",
+          "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+          "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+          "ids_total": 2417,
+          "ids_per_hop": {
+            "2": 1252,
+            "3": 760,
+            "4": 405
+          },
+          "hops": [
+            2,
+            3,
+            4
+          ],
+          "expected_total": 2417,
+          "definition_problems": []
+        },
+        "missing_gold_count": 0
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/qwen3_5_9b/decomposer/20261014_052203/results.json"
+    },
+    {
+      "label": "Mistral-7B",
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/mistral_7b/eval/eval_per_item.json",
+      "sha256": "49e9114eaa971f532e4ba0827fcf645a2cf706934810aedfa107997add435ef6",
+      "items": 2417,
+      "evaluation_set": {
+        "named_eval_set": "musique_dev_full",
+        "pinned": false,
+        "named_set_asserted": true,
+        "matches_named_set": true,
+        "allow_mismatch_flag": false,
+        "rows_source": "runs/exp-030/mistral_7b/decomposer/20261014_065720/results.json",
+        "id_identity_checked": true,
+        "ids_missing_count": 0,
+        "ids_unexpected_count": 0,
+        "rows_loaded_total": 2417,
+        "rows_loaded_per_hop": {
+          "2": 1252,
+          "3": 760,
+          "4": 405
+        },
+        "definition": {
+          "name": "musique_dev_full",
+          "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+          "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+          "ids_total": 2417,
+          "ids_per_hop": {
+            "2": 1252,
+            "3": 760,
+            "4": 405
+          },
+          "hops": [
+            2,
+            3,
+            4
+          ],
+          "expected_total": 2417,
+          "definition_problems": []
+        },
+        "missing_gold_count": 0
+      },
+      "predictions_path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/mistral_7b/decomposer/20261014_065720/results.json"
+    }
+  ],
+  "population_total": 2417,
+  "population_per_hop": {
+    "2": 1252,
+    "3": 760,
+    "4": 405
+  },
+  "pinned_ids": 600,
+  "pinned_in_population": true,
+  "pinned_subset_note": "pinned_value is the pinned-600 subset RECOMPUTED from this run's per-item files; committed_pinned holds each arm's committed pinned-run value (when given with --committed-pinned) and the difference",
+  "committed_pinned": {
+    "Qwen2.5-7B": {
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-021/eval/eval_metrics.json",
+      "sha256": "f8165ea625a81415e5edc2a09a757a2ecfcef84f44f0aca47f12e7c327d1e970",
+      "committed_total_evaluated": 600,
+      "values": {
+        "overall": {
+          "break_exact_match_rate": {
+            "committed": 0.055,
+            "recomputed": 0.05333333333333334,
+            "difference_recomputed_minus_committed": -0.0016666666666666635
+          },
+          "sari_macro": {
+            "committed": 0.572033130236507,
+            "recomputed": 0.5717020531345965,
+            "difference_recomputed_minus_committed": -0.000331077101910493
+          },
+          "ged_macro": {
+            "committed": 0.4694386092774358,
+            "recomputed": 0.4701751172139437,
+            "difference_recomputed_minus_committed": 0.0007365079365079241
+          },
+          "chain_validity_macro": {
+            "committed": 0.921,
+            "recomputed": 0.921,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.5533333333333333,
+            "recomputed": 0.5516666666666666,
+            "difference_recomputed_minus_committed": -0.0016666666666667052
+          },
+          "under_decomposition_rate": {
+            "committed": 0.29333333333333333,
+            "recomputed": 0.29333333333333333,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.15333333333333332,
+            "recomputed": 0.155,
+            "difference_recomputed_minus_committed": 0.0016666666666666774
+          }
+        },
+        "hop2": {
+          "break_exact_match_rate": {
+            "committed": 0.14,
+            "recomputed": 0.135,
+            "difference_recomputed_minus_committed": -0.0050000000000000044
+          },
+          "sari_macro": {
+            "committed": 0.6429280009128463,
+            "recomputed": 0.6419347696071149,
+            "difference_recomputed_minus_committed": -0.000993231305731368
+          },
+          "ged_macro": {
+            "committed": 0.3330996028132689,
+            "recomputed": 0.3353091266227926,
+            "difference_recomputed_minus_committed": 0.002209523809523717
+          },
+          "chain_validity_macro": {
+            "committed": 0.8775,
+            "recomputed": 0.8775,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.81,
+            "recomputed": 0.805,
+            "difference_recomputed_minus_committed": -0.0050000000000000044
+          },
+          "under_decomposition_rate": {
+            "committed": 0.105,
+            "recomputed": 0.105,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.085,
+            "recomputed": 0.09,
+            "difference_recomputed_minus_committed": 0.0049999999999999906
+          }
+        },
+        "hop3": {
+          "break_exact_match_rate": {
+            "committed": 0.01,
+            "recomputed": 0.01,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5288603334224905,
+            "recomputed": 0.5288603334224905,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5067571155492331,
+            "recomputed": 0.5067571155492331,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9316666666666668,
+            "recomputed": 0.9316666666666668,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.525,
+            "recomputed": 0.525,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.32,
+            "recomputed": 0.32,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.155,
+            "recomputed": 0.155,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop4": {
+          "break_exact_match_rate": {
+            "committed": 0.015,
+            "recomputed": 0.015,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5443110563741841,
+            "recomputed": 0.5443110563741841,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5684591094698055,
+            "recomputed": 0.5684591094698055,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9538333333333334,
+            "recomputed": 0.9538333333333334,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.325,
+            "recomputed": 0.325,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.455,
+            "recomputed": 0.455,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.22,
+            "recomputed": 0.22,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        }
+      }
+    },
+    "Pool-FT (Mistral)": {
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-026/eval/eval_metrics.json",
+      "sha256": "358717bd41f7c8aa053ada36cdc34aa52c322d05d2c52ce274c8593db2acab25",
+      "committed_total_evaluated": 600,
+      "values": {
+        "overall": {
+          "break_exact_match_rate": {
+            "committed": 0.09666666666666666,
+            "recomputed": 0.09666666666666666,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.6803844747769351,
+            "recomputed": 0.6803844747769351,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.31911350294873786,
+            "recomputed": 0.31911350294873786,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9749722222222222,
+            "recomputed": 0.9749722222222222,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.7033333333333334,
+            "recomputed": 0.7033333333333334,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.25833333333333336,
+            "recomputed": 0.25833333333333336,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.03833333333333333,
+            "recomputed": 0.03833333333333333,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop2": {
+          "break_exact_match_rate": {
+            "committed": 0.22,
+            "recomputed": 0.22,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.7354981819668227,
+            "recomputed": 0.7354981819668227,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.2046708133245801,
+            "recomputed": 0.2046708133245801,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.985,
+            "recomputed": 0.985,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.965,
+            "recomputed": 0.965,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.015,
+            "recomputed": 0.015,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.02,
+            "recomputed": 0.02,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop3": {
+          "break_exact_match_rate": {
+            "committed": 0.055,
+            "recomputed": 0.055,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.6678125929051072,
+            "recomputed": 0.6678125929051072,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.3495631084349602,
+            "recomputed": 0.3495631084349602,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.975,
+            "recomputed": 0.975,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.645,
+            "recomputed": 0.645,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.295,
+            "recomputed": 0.295,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.06,
+            "recomputed": 0.06,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop4": {
+          "break_exact_match_rate": {
+            "committed": 0.015,
+            "recomputed": 0.015,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.6378426494588755,
+            "recomputed": 0.6378426494588755,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.40310658708667324,
+            "recomputed": 0.40310658708667324,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9649166666666666,
+            "recomputed": 0.9649166666666666,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.5,
+            "recomputed": 0.5,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.465,
+            "recomputed": 0.465,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.035,
+            "recomputed": 0.035,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        }
+      }
+    },
+    "Qwen2.5-14B": {
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-022/eval/eval_metrics.json",
+      "sha256": "00d64ce9f1cbe2229ea40ecf939120052fbb1e153b7a00ccd69fe79367c55f70",
+      "committed_total_evaluated": 600,
+      "values": {
+        "overall": {
+          "break_exact_match_rate": {
+            "committed": 0.03333333333333333,
+            "recomputed": 0.035,
+            "difference_recomputed_minus_committed": 0.0016666666666666705
+          },
+          "sari_macro": {
+            "committed": 0.5794855995759548,
+            "recomputed": 0.5801826742650638,
+            "difference_recomputed_minus_committed": 0.0006970746891089563
+          },
+          "ged_macro": {
+            "committed": 0.4605197933256812,
+            "recomputed": 0.45963619544208334,
+            "difference_recomputed_minus_committed": -0.0008835978835978753
+          },
+          "chain_validity_macro": {
+            "committed": 0.98375,
+            "recomputed": 0.98375,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.6166666666666667,
+            "recomputed": 0.6166666666666667,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.10166666666666667,
+            "recomputed": 0.10166666666666667,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.2816666666666667,
+            "recomputed": 0.2816666666666667,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop2": {
+          "break_exact_match_rate": {
+            "committed": 0.095,
+            "recomputed": 0.1,
+            "difference_recomputed_minus_committed": 0.0050000000000000044
+          },
+          "sari_macro": {
+            "committed": 0.6348865592922341,
+            "recomputed": 0.6369777833595611,
+            "difference_recomputed_minus_committed": 0.00209122406732698
+          },
+          "ged_macro": {
+            "committed": 0.32102676372832256,
+            "recomputed": 0.3183759700775289,
+            "difference_recomputed_minus_committed": -0.0026507936507936813
+          },
+          "chain_validity_macro": {
+            "committed": 0.98,
+            "recomputed": 0.98,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.79,
+            "recomputed": 0.79,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.01,
+            "recomputed": 0.01,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.2,
+            "recomputed": 0.2,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop3": {
+          "break_exact_match_rate": {
+            "committed": 0.005,
+            "recomputed": 0.005,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5465225824472432,
+            "recomputed": 0.5465225824472432,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5008658809426736,
+            "recomputed": 0.5008658809426736,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.98375,
+            "recomputed": 0.98375,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.58,
+            "recomputed": 0.58,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.075,
+            "recomputed": 0.075,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.345,
+            "recomputed": 0.345,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop4": {
+          "break_exact_match_rate": {
+            "committed": 0.0,
+            "recomputed": 0.0,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5570476569883869,
+            "recomputed": 0.5570476569883869,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5596667353060475,
+            "recomputed": 0.5596667353060475,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9875,
+            "recomputed": 0.9875,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.48,
+            "recomputed": 0.48,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.22,
+            "recomputed": 0.22,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.3,
+            "recomputed": 0.3,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        }
+      }
+    },
+    "Qwen3.5-9B": {
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-027/eval/eval_metrics.json",
+      "sha256": "65527beb8272351fb773d48ec16afcd780a0ab29911aaf053fd069959455a51e",
+      "committed_total_evaluated": 600,
+      "values": {
+        "overall": {
+          "break_exact_match_rate": {
+            "committed": 0.055,
+            "recomputed": 0.055,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5983793813751834,
+            "recomputed": 0.5983793813751834,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.4838362288602287,
+            "recomputed": 0.4838362288602287,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.8471229314420804,
+            "recomputed": 0.8471229314420804,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.57,
+            "recomputed": 0.57,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.135,
+            "recomputed": 0.135,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.295,
+            "recomputed": 0.295,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop2": {
+          "break_exact_match_rate": {
+            "committed": 0.135,
+            "recomputed": 0.135,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.6519416106328858,
+            "recomputed": 0.6519416106328858,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.3130800792350325,
+            "recomputed": 0.3130800792350325,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.945,
+            "recomputed": 0.945,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.8,
+            "recomputed": 0.8,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.025,
+            "recomputed": 0.025,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.175,
+            "recomputed": 0.175,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop3": {
+          "break_exact_match_rate": {
+            "committed": 0.005,
+            "recomputed": 0.005,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5764192627283017,
+            "recomputed": 0.5764192627283017,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.532478362400383,
+            "recomputed": 0.532478362400383,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.8213687943262411,
+            "recomputed": 0.8213687943262411,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.51,
+            "recomputed": 0.51,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.13,
+            "recomputed": 0.13,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.36,
+            "recomputed": 0.36,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop4": {
+          "break_exact_match_rate": {
+            "committed": 0.025,
+            "recomputed": 0.025,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.566777270764363,
+            "recomputed": 0.566777270764363,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.6059502449452707,
+            "recomputed": 0.6059502449452707,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.775,
+            "recomputed": 0.775,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.4,
+            "recomputed": 0.4,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.25,
+            "recomputed": 0.25,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.35,
+            "recomputed": 0.35,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        }
+      }
+    },
+    "Mistral-7B": {
+      "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-020/eval/eval_metrics.json",
+      "sha256": "b9c0f4fa0e00ed0e3a819f2c28490f881ea852a1d0b63eed84ec52fd540afda7",
+      "committed_total_evaluated": 600,
+      "values": {
+        "overall": {
+          "break_exact_match_rate": {
+            "committed": 0.04,
+            "recomputed": 0.04,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.576626314815536,
+            "recomputed": 0.5771831716932261,
+            "difference_recomputed_minus_committed": 0.0005568568776901373
+          },
+          "ged_macro": {
+            "committed": 0.48463988386617446,
+            "recomputed": 0.48416766164395225,
+            "difference_recomputed_minus_committed": -0.0004722222222222072
+          },
+          "chain_validity_macro": {
+            "committed": 0.9626203703703703,
+            "recomputed": 0.9626203703703703,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.5116666666666667,
+            "recomputed": 0.5133333333333333,
+            "difference_recomputed_minus_committed": 0.0016666666666665941
+          },
+          "under_decomposition_rate": {
+            "committed": 0.16833333333333333,
+            "recomputed": 0.16833333333333333,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.32,
+            "recomputed": 0.31833333333333336,
+            "difference_recomputed_minus_committed": -0.0016666666666666496
+          }
+        },
+        "hop2": {
+          "break_exact_match_rate": {
+            "committed": 0.1,
+            "recomputed": 0.1,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.6201345111032984,
+            "recomputed": 0.6218050817363691,
+            "difference_recomputed_minus_committed": 0.0016705706330706338
+          },
+          "ged_macro": {
+            "committed": 0.3331572796616357,
+            "recomputed": 0.33174061299496904,
+            "difference_recomputed_minus_committed": -0.0014166666666666772
+          },
+          "chain_validity_macro": {
+            "committed": 0.9869444444444444,
+            "recomputed": 0.9869444444444444,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.77,
+            "recomputed": 0.775,
+            "difference_recomputed_minus_committed": 0.0050000000000000044
+          },
+          "under_decomposition_rate": {
+            "committed": 0.0,
+            "recomputed": 0.0,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.23,
+            "recomputed": 0.225,
+            "difference_recomputed_minus_committed": -0.0050000000000000044
+          }
+        },
+        "hop3": {
+          "break_exact_match_rate": {
+            "committed": 0.01,
+            "recomputed": 0.01,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.5514180033862754,
+            "recomputed": 0.5514180033862754,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5372586262519662,
+            "recomputed": 0.5372586262519662,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9581666666666666,
+            "recomputed": 0.9581666666666666,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.465,
+            "recomputed": 0.465,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.22,
+            "recomputed": 0.22,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.315,
+            "recomputed": 0.315,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        },
+        "hop4": {
+          "break_exact_match_rate": {
+            "committed": 0.01,
+            "recomputed": 0.01,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "sari_macro": {
+            "committed": 0.558326429957034,
+            "recomputed": 0.558326429957034,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "ged_macro": {
+            "committed": 0.5835037456849216,
+            "recomputed": 0.5835037456849216,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "chain_validity_macro": {
+            "committed": 0.9427500000000001,
+            "recomputed": 0.9427500000000001,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "hop_count_exact_match_rate": {
+            "committed": 0.3,
+            "recomputed": 0.3,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "under_decomposition_rate": {
+            "committed": 0.285,
+            "recomputed": 0.285,
+            "difference_recomputed_minus_committed": 0.0
+          },
+          "over_decomposition_rate": {
+            "committed": 0.415,
+            "recomputed": 0.415,
+            "difference_recomputed_minus_committed": 0.0
+          }
+        }
+      }
+    }
+  },
+  "population_check": {
+    "named_eval_set": "musique_dev_full",
+    "verified": true,
+    "problems": [],
+    "allow_unnamed_population": false,
+    "definition": {
+      "name": "musique_dev_full",
+      "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+      "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+      "ids_total": 2417,
+      "ids_per_hop": {
+        "2": 1252,
+        "3": 760,
+        "4": 405
+      },
+      "hops": [
+        2,
+        3,
+        4
+      ],
+      "expected_total": 2417,
+      "definition_problems": []
+    }
+  },
+  "finite_population_correction": {
+    "sd_factor_rule": "sqrt(1 - n/N) per hop stratum (n = per_hop, N = hop population)",
+    "sd_factor_per_hop": {
+      "2": 0.9166545647376186,
+      "3": 0.8583950752789522,
+      "4": 0.7114582486036499
+    },
+    "sd_fpc_corrected_rule": "per hop: raw SD / sqrt(1 - n/N_h); overall: sqrt(sum_h Var_h / (1 - n/N_h)) / H, valid because a draw's overall value is the mean of its hop values (checked) and strata are drawn independently",
+    "plotted_quantity": "raw across-draw spread (not corrected)"
+  },
+  "draw_overlap": {
+    "2": {
+      "mean_shared_fraction": 0.15951836734693878,
+      "min_shared_fraction": 0.095,
+      "max_shared_fraction": 0.23,
+      "pairs": 1225
+    },
+    "3": {
+      "mean_shared_fraction": 0.26480408163265307,
+      "min_shared_fraction": 0.18,
+      "max_shared_fraction": 0.36,
+      "pairs": 1225
+    },
+    "4": {
+      "mean_shared_fraction": 0.49422040816326535,
+      "min_shared_fraction": 0.41,
+      "max_shared_fraction": 0.57,
+      "pairs": 1225
+    }
+  },
+  "summary": {
+    "Qwen2.5-7B": {
+      "overall": {
+        "break_exact_match_rate": {
+          "mean": 0.0398,
+          "sd": 0.007218959667764272,
+          "min": 0.023333333333333334,
+          "max": 0.06333333333333334,
+          "p2.5": 0.02704166666666667,
+          "p97.5": 0.052958333333333336,
+          "sd_fpc_corrected": 0.00853541724451278,
+          "pinned_value": 0.05333333333333334,
+          "pinned_percentile": 97.0
+        },
+        "sari_macro": {
+          "mean": 0.5748670066169171,
+          "sd": 0.006313374910691642,
+          "min": 0.5603984286417553,
+          "max": 0.5881625266354287,
+          "p2.5": 0.560964884489682,
+          "p97.5": 0.5864647208063001,
+          "sd_fpc_corrected": 0.007374035182173743,
+          "pinned_value": 0.5717020531345965,
+          "pinned_percentile": 32.0
+        },
+        "ged_macro": {
+          "mean": 0.4710631377297611,
+          "sd": 0.008315333457511743,
+          "min": 0.4432074187634682,
+          "max": 0.4857413943122598,
+          "p2.5": 0.4559558317964654,
+          "p97.5": 0.48408193880176625,
+          "sd_fpc_corrected": 0.009694732212729353,
+          "pinned_value": 0.4701751172139437,
+          "pinned_percentile": 40.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9165705555555556,
+          "sd": 0.008756995565854062,
+          "min": 0.8958055555555556,
+          "max": 0.9425833333333332,
+          "p2.5": 0.9016805555555555,
+          "p97.5": 0.9367048611111111,
+          "sd_fpc_corrected": 0.011087938812824874,
+          "pinned_value": 0.921,
+          "pinned_percentile": 72.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5444666666666667,
+          "sd": 0.015632688584531845,
+          "min": 0.515,
+          "max": 0.5816666666666667,
+          "p2.5": 0.515375,
+          "p97.5": 0.5757083333333334,
+          "sd_fpc_corrected": 0.01966675553424578,
+          "pinned_value": 0.5516666666666666,
+          "pinned_percentile": 70.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.29719999999999996,
+          "sd": 0.01417592734531936,
+          "min": 0.2633333333333333,
+          "max": 0.325,
+          "p2.5": 0.2720416666666667,
+          "p97.5": 0.32129166666666664,
+          "sd_fpc_corrected": 0.017740698409864173,
+          "pinned_value": 0.29333333333333333,
+          "pinned_percentile": 32.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.15833333333333333,
+          "sd": 0.011625291062603526,
+          "min": 0.13333333333333333,
+          "max": 0.185,
+          "p2.5": 0.13704166666666667,
+          "p97.5": 0.17683333333333334,
+          "sd_fpc_corrected": 0.013906522805240842,
+          "pinned_value": 0.155,
+          "pinned_percentile": 40.0
+        }
+      },
+      "hop2": {
+        "break_exact_match_rate": {
+          "mean": 0.0966,
+          "sd": 0.021510320256821383,
+          "min": 0.055,
+          "max": 0.165,
+          "p2.5": 0.061125,
+          "p97.5": 0.14162499999999997,
+          "sd_fpc_corrected": 0.02346611371861597,
+          "pinned_value": 0.135,
+          "pinned_percentile": 96.0
+        },
+        "sari_macro": {
+          "mean": 0.6182775103417647,
+          "sd": 0.015137705514723016,
+          "min": 0.5886677801928166,
+          "max": 0.6496308099509817,
+          "p2.5": 0.5963537619104149,
+          "p97.5": 0.6462277929417046,
+          "sd_fpc_corrected": 0.016514078582105792,
+          "pinned_value": 0.6419347696071149,
+          "pinned_percentile": 92.0
+        },
+        "ged_macro": {
+          "mean": 0.35609630856737406,
+          "sd": 0.017853846586940215,
+          "min": 0.2963929851619637,
+          "max": 0.39247622546077743,
+          "p2.5": 0.3269013487013823,
+          "p97.5": 0.38533541824673173,
+          "sd_fpc_corrected": 0.019477180689162512,
+          "pinned_value": 0.3353091266227926,
+          "pinned_percentile": 8.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.8659,
+          "sd": 0.023077951311472472,
+          "min": 0.8225,
+          "max": 0.935,
+          "p2.5": 0.8280625,
+          "p97.5": 0.903875,
+          "sd_fpc_corrected": 0.025176279265110364,
+          "pinned_value": 0.8775,
+          "pinned_percentile": 68.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.7842999999999999,
+          "sd": 0.029675283469237364,
+          "min": 0.715,
+          "max": 0.855,
+          "p2.5": 0.72225,
+          "p97.5": 0.831625,
+          "sd_fpc_corrected": 0.03237346390974615,
+          "pinned_value": 0.805,
+          "pinned_percentile": 73.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.10819999999999999,
+          "sd": 0.020769876145563335,
+          "min": 0.06,
+          "max": 0.145,
+          "p2.5": 0.07,
+          "p97.5": 0.14387499999999998,
+          "sd_fpc_corrected": 0.022658345842098613,
+          "pinned_value": 0.105,
+          "pinned_percentile": 47.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.1075,
+          "sd": 0.018985762657145733,
+          "min": 0.07,
+          "max": 0.17,
+          "p2.5": 0.08,
+          "p97.5": 0.14387499999999998,
+          "sd_fpc_corrected": 0.020712014522701012,
+          "pinned_value": 0.09,
+          "pinned_percentile": 16.0
+        }
+      },
+      "hop3": {
+        "break_exact_match_rate": {
+          "mean": 0.0099,
+          "sd": 0.005845807847317179,
+          "min": 0.0,
+          "max": 0.025,
+          "p2.5": 0.0,
+          "p97.5": 0.023874999999999993,
+          "sd_fpc_corrected": 0.00681016004829416,
+          "pinned_value": 0.01,
+          "pinned_percentile": 53.0
+        },
+        "sari_macro": {
+          "mean": 0.5527292122154767,
+          "sd": 0.00803243248203893,
+          "min": 0.5369280006202405,
+          "max": 0.5741302907782955,
+          "p2.5": 0.5398426615577121,
+          "p97.5": 0.5663108384127035,
+          "sd_fpc_corrected": 0.009357500658340375,
+          "pinned_value": 0.5288603334224905,
+          "pinned_percentile": 0.0
+        },
+        "ged_macro": {
+          "mean": 0.49460974195936735,
+          "sd": 0.01121862114681539,
+          "min": 0.47103850963287586,
+          "max": 0.5172417332346233,
+          "p2.5": 0.4725853485195844,
+          "p97.5": 0.5142802979952598,
+          "sd_fpc_corrected": 0.013069298123791867,
+          "pinned_value": 0.5067571155492331,
+          "pinned_percentile": 86.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9354933333333334,
+          "sd": 0.014426172989403038,
+          "min": 0.8958333333333333,
+          "max": 0.9631666666666666,
+          "p2.5": 0.9045416666666667,
+          "p97.5": 0.9586250000000001,
+          "sd_fpc_corrected": 0.01680598293823502,
+          "pinned_value": 0.9316666666666668,
+          "pinned_percentile": 42.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5152,
+          "sd": 0.026495282598983552,
+          "min": 0.465,
+          "max": 0.565,
+          "p2.5": 0.466125,
+          "p97.5": 0.563875,
+          "sd_fpc_corrected": 0.030866070137195736,
+          "pinned_value": 0.525,
+          "pinned_percentile": 59.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.3176,
+          "sd": 0.025157463289920017,
+          "min": 0.26,
+          "max": 0.38,
+          "p2.5": 0.26725000000000004,
+          "p97.5": 0.363875,
+          "sd_fpc_corrected": 0.029307557806927783,
+          "pinned_value": 0.32,
+          "pinned_percentile": 60.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.16720000000000002,
+          "sd": 0.021360845355128485,
+          "min": 0.12,
+          "max": 0.215,
+          "p2.5": 0.13,
+          "p97.5": 0.205,
+          "sd_fpc_corrected": 0.02488463176257956,
+          "pinned_value": 0.155,
+          "pinned_percentile": 28.0
+        }
+      },
+      "hop4": {
+        "break_exact_match_rate": {
+          "mean": 0.012900000000000002,
+          "sd": 0.005448272521578538,
+          "min": 0.0,
+          "max": 0.025,
+          "p2.5": 0.005,
+          "p97.5": 0.023874999999999993,
+          "sd_fpc_corrected": 0.007657894939403177,
+          "pinned_value": 0.015,
+          "pinned_percentile": 63.0
+        },
+        "sari_macro": {
+          "mean": 0.55359429729351,
+          "sd": 0.008084055100887808,
+          "min": 0.537601312347383,
+          "max": 0.5691082288486051,
+          "p2.5": 0.5383357743147309,
+          "p97.5": 0.567636420256457,
+          "sd_fpc_corrected": 0.011362655667783814,
+          "pinned_value": 0.5443110563741841,
+          "pinned_percentile": 12.0
+        },
+        "ged_macro": {
+          "mean": 0.5624833626625422,
+          "sd": 0.012234669568116235,
+          "min": 0.5364407828210169,
+          "max": 0.5953281099784759,
+          "p2.5": 0.542094772949594,
+          "p97.5": 0.5846838260970539,
+          "sd_fpc_corrected": 0.017196609347250834,
+          "pinned_value": 0.5684591094698055,
+          "pinned_percentile": 68.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9483183333333334,
+          "sd": 0.009811816219658048,
+          "min": 0.9171666666666667,
+          "max": 0.96475,
+          "p2.5": 0.9277166666666667,
+          "p97.5": 0.9635645833333334,
+          "sd_fpc_corrected": 0.013791134249852748,
+          "pinned_value": 0.9538333333333334,
+          "pinned_percentile": 70.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.33390000000000003,
+          "sd": 0.02737289736589975,
+          "min": 0.275,
+          "max": 0.4,
+          "p2.5": 0.28612499999999996,
+          "p97.5": 0.391625,
+          "sd_fpc_corrected": 0.03847435519880952,
+          "pinned_value": 0.325,
+          "pinned_percentile": 34.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.46580000000000005,
+          "sd": 0.02718718185363936,
+          "min": 0.415,
+          "max": 0.52,
+          "p2.5": 0.42,
+          "p97.5": 0.513875,
+          "sd_fpc_corrected": 0.03821332018709254,
+          "pinned_value": 0.455,
+          "pinned_percentile": 36.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.2003,
+          "sd": 0.018719464932175245,
+          "min": 0.165,
+          "max": 0.235,
+          "p2.5": 0.17,
+          "p97.5": 0.23387499999999997,
+          "sd_fpc_corrected": 0.026311403330996828,
+          "pinned_value": 0.22,
+          "pinned_percentile": 82.0
+        }
+      }
+    },
+    "Pool-FT (Mistral)": {
+      "overall": {
+        "break_exact_match_rate": {
+          "mean": 0.09399999999999999,
+          "sd": 0.010701050025830584,
+          "min": 0.07166666666666667,
+          "max": 0.11166666666666666,
+          "p2.5": 0.07575,
+          "p97.5": 0.11166666666666666,
+          "sd_fpc_corrected": 0.011747200998040183,
+          "pinned_value": 0.09666666666666666,
+          "pinned_percentile": 60.0
+        },
+        "sari_macro": {
+          "mean": 0.6818385125361934,
+          "sd": 0.006569821933468959,
+          "min": 0.6678040160662791,
+          "max": 0.6975141654926527,
+          "p2.5": 0.6711961670035503,
+          "p97.5": 0.6940440767317186,
+          "sd_fpc_corrected": 0.0072873794858393124,
+          "pinned_value": 0.6803844747769351,
+          "pinned_percentile": 40.0
+        },
+        "ged_macro": {
+          "mean": 0.3098359130234511,
+          "sd": 0.0070255546702170275,
+          "min": 0.2846776669003094,
+          "max": 0.3259280293293451,
+          "p2.5": 0.29554285867038693,
+          "p97.5": 0.32277471191046103,
+          "sd_fpc_corrected": 0.008174239767634687,
+          "pinned_value": 0.31911350294873786,
+          "pinned_percentile": 96.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9727644444444445,
+          "sd": 0.004665624681209462,
+          "min": 0.9644166666666666,
+          "max": 0.9816111111111112,
+          "p2.5": 0.9645041666666666,
+          "p97.5": 0.9802486111111112,
+          "sd_fpc_corrected": 0.004971742111820752,
+          "pinned_value": 0.9749722222222222,
+          "pinned_percentile": 62.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.7182,
+          "sd": 0.014332621402980665,
+          "min": 0.6883333333333334,
+          "max": 0.7516666666666667,
+          "p2.5": 0.695375,
+          "p97.5": 0.74925,
+          "sd_fpc_corrected": 0.01862749026089223,
+          "pinned_value": 0.7033333333333334,
+          "pinned_percentile": 12.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.2469333333333333,
+          "sd": 0.01278799749056099,
+          "min": 0.22166666666666668,
+          "max": 0.275,
+          "p2.5": 0.225375,
+          "p97.5": 0.26758333333333334,
+          "sd_fpc_corrected": 0.017333416904738226,
+          "pinned_value": 0.25833333333333336,
+          "pinned_percentile": 77.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.03486666666666667,
+          "sd": 0.007244045173533256,
+          "min": 0.021666666666666667,
+          "max": 0.051666666666666666,
+          "p2.5": 0.023333333333333334,
+          "p97.5": 0.04666666666666667,
+          "sd_fpc_corrected": 0.007802492518165629,
+          "pinned_value": 0.03833333333333333,
+          "pinned_percentile": 70.0
+        }
+      },
+      "hop2": {
+        "break_exact_match_rate": {
+          "mean": 0.20440000000000003,
+          "sd": 0.02707962559654361,
+          "min": 0.145,
+          "max": 0.27,
+          "p2.5": 0.16225,
+          "p97.5": 0.253875,
+          "sd_fpc_corrected": 0.029541799755608947,
+          "pinned_value": 0.22,
+          "pinned_percentile": 69.0
+        },
+        "sari_macro": {
+          "mean": 0.7297081516081275,
+          "sd": 0.014338984088011193,
+          "min": 0.7040179104925174,
+          "max": 0.7683651698763511,
+          "p2.5": 0.707749181818533,
+          "p97.5": 0.759453332929573,
+          "sd_fpc_corrected": 0.015642734613027925,
+          "pinned_value": 0.7354981819668227,
+          "pinned_percentile": 72.0
+        },
+        "ged_macro": {
+          "mean": 0.2063416398173526,
+          "sd": 0.011210669314775629,
+          "min": 0.17731447523462576,
+          "max": 0.23258189240042093,
+          "p2.5": 0.18578953221000924,
+          "p97.5": 0.2283181222881121,
+          "sd_fpc_corrected": 0.012229982532170718,
+          "pinned_value": 0.2046708133245801,
+          "pinned_percentile": 40.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9794499999999998,
+          "sd": 0.007845608416724065,
+          "min": 0.96,
+          "max": 0.99,
+          "p2.5": 0.965,
+          "p97.5": 0.99,
+          "sd_fpc_corrected": 0.008558958541781523,
+          "pinned_value": 0.985,
+          "pinned_percentile": 74.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.9592,
+          "sd": 0.01360372097956276,
+          "min": 0.925,
+          "max": 0.995,
+          "p2.5": 0.936125,
+          "p97.5": 0.9788749999999999,
+          "sd_fpc_corrected": 0.014840618814194921,
+          "pinned_value": 0.965,
+          "pinned_percentile": 66.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.0147,
+          "sd": 0.008169755073390125,
+          "min": 0.0,
+          "max": 0.035,
+          "p2.5": 0.005,
+          "p97.5": 0.03,
+          "sd_fpc_corrected": 0.008912577744843957,
+          "pinned_value": 0.015,
+          "pinned_percentile": 58.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.026099999999999998,
+          "sd": 0.011351975464154928,
+          "min": 0.0,
+          "max": 0.055,
+          "p2.5": 0.01,
+          "p97.5": 0.048874999999999995,
+          "sd_fpc_corrected": 0.012384136730289774,
+          "pinned_value": 0.02,
+          "pinned_percentile": 34.0
+        }
+      },
+      "hop3": {
+        "break_exact_match_rate": {
+          "mean": 0.0602,
+          "sd": 0.014104565768225694,
+          "min": 0.025,
+          "max": 0.095,
+          "p2.5": 0.03225,
+          "p97.5": 0.088875,
+          "sd_fpc_corrected": 0.016431321863819105,
+          "pinned_value": 0.055,
+          "pinned_percentile": 38.0
+        },
+        "sari_macro": {
+          "mean": 0.670337596764504,
+          "sd": 0.008990213407205431,
+          "min": 0.6513269419405964,
+          "max": 0.6926905661503955,
+          "p2.5": 0.6522841596408028,
+          "p97.5": 0.68638439281361,
+          "sd_fpc_corrected": 0.01047328166961336,
+          "pinned_value": 0.6678125929051072,
+          "pinned_percentile": 40.0
+        },
+        "ged_macro": {
+          "mean": 0.3350506335213106,
+          "sd": 0.013814856806826143,
+          "min": 0.3036529978572956,
+          "max": 0.3695497631822493,
+          "p2.5": 0.3121601155036838,
+          "p97.5": 0.3631551772543538,
+          "sd_fpc_corrected": 0.01609382113747185,
+          "pinned_value": 0.3495631084349602,
+          "pinned_percentile": 86.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9765833333333334,
+          "sd": 0.006789368272670896,
+          "min": 0.9608333333333333,
+          "max": 0.9925,
+          "p2.5": 0.9643541666666667,
+          "p97.5": 0.9866666666666667,
+          "sd_fpc_corrected": 0.007909374678628671,
+          "pinned_value": 0.975,
+          "pinned_percentile": 34.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.6811000000000001,
+          "sd": 0.03221879917700475,
+          "min": 0.615,
+          "max": 0.735,
+          "p2.5": 0.621125,
+          "p97.5": 0.7338749999999999,
+          "sd_fpc_corrected": 0.037533765168136154,
+          "pinned_value": 0.645,
+          "pinned_percentile": 20.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.2805,
+          "sd": 0.028771620087318327,
+          "min": 0.215,
+          "max": 0.335,
+          "p2.5": 0.231125,
+          "p97.5": 0.323875,
+          "sd_fpc_corrected": 0.03351792305887639,
+          "pinned_value": 0.295,
+          "pinned_percentile": 66.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.0384,
+          "sd": 0.012140335872703061,
+          "min": 0.015,
+          "max": 0.065,
+          "p2.5": 0.016125,
+          "p97.5": 0.05887499999999999,
+          "sd_fpc_corrected": 0.014143063284418101,
+          "pinned_value": 0.06,
+          "pinned_percentile": 97.0
+        }
+      },
+      "hop4": {
+        "break_exact_match_rate": {
+          "mean": 0.017400000000000002,
+          "sd": 0.007088363560031587,
+          "min": 0.005,
+          "max": 0.03,
+          "p2.5": 0.005,
+          "p97.5": 0.03,
+          "sd_fpc_corrected": 0.009963147625238205,
+          "pinned_value": 0.015,
+          "pinned_percentile": 37.0
+        },
+        "sari_macro": {
+          "mean": 0.6454697892359484,
+          "sd": 0.007908661633954548,
+          "min": 0.6290270879879121,
+          "max": 0.6650116376035978,
+          "p2.5": 0.6312696907067534,
+          "p97.5": 0.6613707850621255,
+          "sd_fpc_corrected": 0.011116128949908944,
+          "pinned_value": 0.6378426494588755,
+          "pinned_percentile": 16.0
+        },
+        "ged_macro": {
+          "mean": 0.38811546573169,
+          "sd": 0.009878264348184939,
+          "min": 0.36910186177963694,
+          "max": 0.4128728174466708,
+          "p2.5": 0.37012328907921616,
+          "p97.5": 0.4048928221048672,
+          "sd_fpc_corrected": 0.013884531337675268,
+          "pinned_value": 0.40310658708667324,
+          "pinned_percentile": 96.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9622599999999999,
+          "sd": 0.006622678860057059,
+          "min": 0.94675,
+          "max": 0.98125,
+          "p2.5": 0.9515145833333334,
+          "p97.5": 0.9762604166666666,
+          "sd_fpc_corrected": 0.009308598042197306,
+          "pinned_value": 0.9649166666666666,
+          "pinned_percentile": 64.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5143,
+          "sd": 0.027497866336521907,
+          "min": 0.445,
+          "max": 0.575,
+          "p2.5": 0.466125,
+          "p97.5": 0.5688749999999999,
+          "sd_fpc_corrected": 0.03865000706716219,
+          "pinned_value": 0.5,
+          "pinned_percentile": 29.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.44559999999999994,
+          "sd": 0.027565136217582484,
+          "min": 0.385,
+          "max": 0.505,
+          "p2.5": 0.38725000000000004,
+          "p97.5": 0.5,
+          "sd_fpc_corrected": 0.03874455918064546,
+          "pinned_value": 0.465,
+          "pinned_percentile": 79.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.0401,
+          "sd": 0.00992266011075001,
+          "min": 0.015,
+          "max": 0.06,
+          "p2.5": 0.016125,
+          "p97.5": 0.055,
+          "sd_fpc_corrected": 0.013946932416940573,
+          "pinned_value": 0.035,
+          "pinned_percentile": 29.0
+        }
+      }
+    },
+    "Qwen2.5-14B": {
+      "overall": {
+        "break_exact_match_rate": {
+          "mean": 0.028133333333333333,
+          "sd": 0.006403301302741902,
+          "min": 0.016666666666666666,
+          "max": 0.04666666666666667,
+          "p2.5": 0.017041666666666667,
+          "p97.5": 0.041291666666666664,
+          "sd_fpc_corrected": 0.007273948667891813,
+          "pinned_value": 0.035,
+          "pinned_percentile": 85.0
+        },
+        "sari_macro": {
+          "mean": 0.5761056454648444,
+          "sd": 0.006206701638519741,
+          "min": 0.566285945457988,
+          "max": 0.5879183342588187,
+          "p2.5": 0.5667474098850649,
+          "p97.5": 0.5866808129131252,
+          "sd_fpc_corrected": 0.007033693671355698,
+          "pinned_value": 0.5801826742650638,
+          "pinned_percentile": 72.0
+        },
+        "ged_macro": {
+          "mean": 0.47052766231126725,
+          "sd": 0.0071556261050403054,
+          "min": 0.45866169245729604,
+          "max": 0.48859091039404506,
+          "p2.5": 0.45921790741021495,
+          "p97.5": 0.48487781881745284,
+          "sd_fpc_corrected": 0.009133144305813122,
+          "pinned_value": 0.45963619544208334,
+          "pinned_percentile": 4.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9762983333333334,
+          "sd": 0.00480725695046095,
+          "min": 0.9658333333333333,
+          "max": 0.9875,
+          "p2.5": 0.96759375,
+          "p97.5": 0.9849479166666667,
+          "sd_fpc_corrected": 0.00562326149077638,
+          "pinned_value": 0.98375,
+          "pinned_percentile": 96.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5856666666666667,
+          "sd": 0.015393552262137731,
+          "min": 0.5566666666666666,
+          "max": 0.62,
+          "p2.5": 0.5633333333333334,
+          "p97.5": 0.618875,
+          "sd_fpc_corrected": 0.01903124491757065,
+          "pinned_value": 0.6166666666666667,
+          "pinned_percentile": 96.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.11470000000000001,
+          "sd": 0.009687228893141624,
+          "min": 0.09333333333333334,
+          "max": 0.13333333333333333,
+          "p2.5": 0.095,
+          "p97.5": 0.13258333333333333,
+          "sd_fpc_corrected": 0.012350239047451151,
+          "pinned_value": 0.10166666666666667,
+          "pinned_percentile": 9.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.29963333333333336,
+          "sd": 0.015002985341624435,
+          "min": 0.26166666666666666,
+          "max": 0.335,
+          "p2.5": 0.2724166666666667,
+          "p97.5": 0.32629166666666665,
+          "sd_fpc_corrected": 0.017761442450159103,
+          "pinned_value": 0.2816666666666667,
+          "pinned_percentile": 12.0
+        }
+      },
+      "hop2": {
+        "break_exact_match_rate": {
+          "mean": 0.0792,
+          "sd": 0.0194138599764105,
+          "min": 0.045,
+          "max": 0.14,
+          "p2.5": 0.046125,
+          "p97.5": 0.12274999999999998,
+          "sd_fpc_corrected": 0.02117903594574635,
+          "pinned_value": 0.1,
+          "pinned_percentile": 88.0
+        },
+        "sari_macro": {
+          "mean": 0.612245195345694,
+          "sd": 0.014112857842494586,
+          "min": 0.5862257280795969,
+          "max": 0.649231330991767,
+          "p2.5": 0.5865176882748686,
+          "p97.5": 0.6364031029963997,
+          "sd_fpc_corrected": 0.01539604817932066,
+          "pinned_value": 0.6369777833595611,
+          "pinned_percentile": 96.0
+        },
+        "ged_macro": {
+          "mean": 0.3551915505506257,
+          "sd": 0.01638886493657229,
+          "min": 0.3192083103419503,
+          "max": 0.39330535782396653,
+          "p2.5": 0.326264778575265,
+          "p97.5": 0.3849679725736793,
+          "sd_fpc_corrected": 0.017878997789383625,
+          "pinned_value": 0.3183759700775289,
+          "pinned_percentile": 0.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9655,
+          "sd": 0.010214535461482217,
+          "min": 0.94,
+          "max": 0.99,
+          "p2.5": 0.946125,
+          "p97.5": 0.985,
+          "sd_fpc_corrected": 0.011143276709046886,
+          "pinned_value": 0.98,
+          "pinned_percentile": 91.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.7380000000000001,
+          "sd": 0.02826622705344198,
+          "min": 0.665,
+          "max": 0.795,
+          "p2.5": 0.6745,
+          "p97.5": 0.785,
+          "sd_fpc_corrected": 0.03083629116223607,
+          "pinned_value": 0.79,
+          "pinned_percentile": 98.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.0152,
+          "sd": 0.006223720260226277,
+          "min": 0.005,
+          "max": 0.03,
+          "p2.5": 0.005,
+          "p97.5": 0.025,
+          "sd_fpc_corrected": 0.006789602648199043,
+          "pinned_value": 0.01,
+          "pinned_percentile": 23.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.24680000000000002,
+          "sd": 0.028423904857477606,
+          "min": 0.195,
+          "max": 0.32,
+          "p2.5": 0.205,
+          "p97.5": 0.31437499999999996,
+          "sd_fpc_corrected": 0.03100830558304546,
+          "pinned_value": 0.2,
+          "pinned_percentile": 2.0
+        }
+      },
+      "hop3": {
+        "break_exact_match_rate": {
+          "mean": 0.0052,
+          "sd": 0.004513019713980376,
+          "min": 0.0,
+          "max": 0.02,
+          "p2.5": 0.0,
+          "p97.5": 0.015,
+          "sd_fpc_corrected": 0.005257508860373857,
+          "pinned_value": 0.005,
+          "pinned_percentile": 52.0
+        },
+        "sari_macro": {
+          "mean": 0.5488429910281472,
+          "sd": 0.008515641050845272,
+          "min": 0.534187181270953,
+          "max": 0.5772610074646096,
+          "p2.5": 0.5360485079217068,
+          "p97.5": 0.5642556116742636,
+          "sd_fpc_corrected": 0.009920421605492027,
+          "pinned_value": 0.5465225824472432,
+          "pinned_percentile": 44.0
+        },
+        "ged_macro": {
+          "mean": 0.49892473277176835,
+          "sd": 0.011048637990214629,
+          "min": 0.47800354871161715,
+          "max": 0.5216746848408772,
+          "p2.5": 0.479371448601129,
+          "p97.5": 0.5191404813688694,
+          "sd_fpc_corrected": 0.012871273739104525,
+          "pinned_value": 0.5008658809426736,
+          "pinned_percentile": 48.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9823249999999999,
+          "sd": 0.007680689076761124,
+          "min": 0.96,
+          "max": 1.0,
+          "p2.5": 0.96903125,
+          "p97.5": 0.99471875,
+          "sd_fpc_corrected": 0.008947731991897943,
+          "pinned_value": 0.98375,
+          "pinned_percentile": 51.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5627,
+          "sd": 0.027778460309075017,
+          "min": 0.5,
+          "max": 0.625,
+          "p2.5": 0.52,
+          "p97.5": 0.61275,
+          "sd_fpc_corrected": 0.032360926931049624,
+          "pinned_value": 0.58,
+          "pinned_percentile": 74.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.09440000000000001,
+          "sd": 0.01748585434117579,
+          "min": 0.05,
+          "max": 0.125,
+          "p2.5": 0.056125,
+          "p97.5": 0.12,
+          "sd_fpc_corrected": 0.020370403844049808,
+          "pinned_value": 0.075,
+          "pinned_percentile": 12.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.3429,
+          "sd": 0.02591371081422468,
+          "min": 0.29,
+          "max": 0.405,
+          "p2.5": 0.29225,
+          "p97.5": 0.396625,
+          "sd_fpc_corrected": 0.030188559511252457,
+          "pinned_value": 0.345,
+          "pinned_percentile": 54.0
+        }
+      },
+      "hop4": {
+        "break_exact_match_rate": {
+          "mean": 0.0,
+          "sd": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "p2.5": 0.0,
+          "p97.5": 0.0,
+          "sd_fpc_corrected": 0.0,
+          "pinned_value": 0.0,
+          "pinned_percentile": 50.0
+        },
+        "sari_macro": {
+          "mean": 0.5672287500206921,
+          "sd": 0.007455137245470915,
+          "min": 0.5486138098311547,
+          "max": 0.5849381654148487,
+          "p2.5": 0.5551069434678263,
+          "p97.5": 0.5817861514907299,
+          "sd_fpc_corrected": 0.010478671461189477,
+          "pinned_value": 0.5570476569883869,
+          "pinned_percentile": 4.0
+        },
+        "ged_macro": {
+          "mean": 0.5574667036114078,
+          "sd": 0.011590453531150274,
+          "min": 0.5328546133287384,
+          "max": 0.5846513956144117,
+          "p2.5": 0.534041564226473,
+          "p97.5": 0.5766645007899677,
+          "sd_fpc_corrected": 0.016291122569593343,
+          "pinned_value": 0.5596667353060475,
+          "pinned_percentile": 60.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9810699999999999,
+          "sd": 0.006377583510121322,
+          "min": 0.9640000000000001,
+          "max": 0.9990000000000001,
+          "p2.5": 0.9717250000000001,
+          "p97.5": 0.9931000000000001,
+          "sd_fpc_corrected": 0.008964100876809489,
+          "pinned_value": 0.9875,
+          "pinned_percentile": 84.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.45629999999999993,
+          "sd": 0.025270172786371312,
+          "min": 0.4,
+          "max": 0.53,
+          "p2.5": 0.41225,
+          "p97.5": 0.5,
+          "sd_fpc_corrected": 0.03551884152860417,
+          "pinned_value": 0.48,
+          "pinned_percentile": 84.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.23450000000000004,
+          "sd": 0.021482076059746526,
+          "min": 0.19,
+          "max": 0.28,
+          "p2.5": 0.19612500000000002,
+          "p97.5": 0.27387500000000004,
+          "sd_fpc_corrected": 0.030194429682850008,
+          "pinned_value": 0.22,
+          "pinned_percentile": 27.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.30920000000000003,
+          "sd": 0.02211657426327272,
+          "min": 0.265,
+          "max": 0.35,
+          "p2.5": 0.266125,
+          "p97.5": 0.345,
+          "sd_fpc_corrected": 0.03108625742505624,
+          "pinned_value": 0.3,
+          "pinned_percentile": 36.0
+        }
+      }
+    },
+    "Qwen3.5-9B": {
+      "overall": {
+        "break_exact_match_rate": {
+          "mean": 0.04186666666666668,
+          "sd": 0.006764922197305812,
+          "min": 0.03,
+          "max": 0.06,
+          "p2.5": 0.030375,
+          "p97.5": 0.052958333333333336,
+          "sd_fpc_corrected": 0.008020099592282672,
+          "pinned_value": 0.055,
+          "pinned_percentile": 98.0
+        },
+        "sari_macro": {
+          "mean": 0.5990240912463541,
+          "sd": 0.005059395657385938,
+          "min": 0.5860722903947181,
+          "max": 0.6090549206511746,
+          "p2.5": 0.5906876718073468,
+          "p97.5": 0.6086233185072386,
+          "sd_fpc_corrected": 0.006927123932664804,
+          "pinned_value": 0.5983793813751834,
+          "pinned_percentile": 50.0
+        },
+        "ged_macro": {
+          "mean": 0.48631589388983154,
+          "sd": 0.008457428801818183,
+          "min": 0.4700304313859735,
+          "max": 0.5025593382073668,
+          "p2.5": 0.47126164948254345,
+          "p97.5": 0.5013847622270813,
+          "sd_fpc_corrected": 0.010074316253729123,
+          "pinned_value": 0.4838362288602287,
+          "pinned_percentile": 40.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.8498066497804796,
+          "sd": 0.010750842946477653,
+          "min": 0.8244126984126985,
+          "max": 0.8737022965214455,
+          "p2.5": 0.8313871369469774,
+          "p97.5": 0.865797619047619,
+          "sd_fpc_corrected": 0.014004775747913761,
+          "pinned_value": 0.8471229314420804,
+          "pinned_percentile": 36.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5679333333333333,
+          "sd": 0.016699152014534605,
+          "min": 0.5333333333333333,
+          "max": 0.6116666666666667,
+          "p2.5": 0.5390833333333334,
+          "p97.5": 0.601625,
+          "sd_fpc_corrected": 0.018310696892334995,
+          "pinned_value": 0.57,
+          "pinned_percentile": 56.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.10656666666666666,
+          "sd": 0.009514340530849286,
+          "min": 0.08333333333333333,
+          "max": 0.13,
+          "p2.5": 0.09166666666666666,
+          "p97.5": 0.12554166666666666,
+          "sd_fpc_corrected": 0.011430595604414014,
+          "pinned_value": 0.135,
+          "pinned_percentile": 100.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.32550000000000007,
+          "sd": 0.014042573750955353,
+          "min": 0.29,
+          "max": 0.35,
+          "p2.5": 0.3016666666666667,
+          "p97.5": 0.35,
+          "sd_fpc_corrected": 0.01725700912364222,
+          "pinned_value": 0.295,
+          "pinned_percentile": 2.0
+        }
+      },
+      "hop2": {
+        "break_exact_match_rate": {
+          "mean": 0.10120000000000001,
+          "sd": 0.01993765793872572,
+          "min": 0.07,
+          "max": 0.16,
+          "p2.5": 0.075,
+          "p97.5": 0.138875,
+          "sd_fpc_corrected": 0.021750459448628433,
+          "pinned_value": 0.135,
+          "pinned_percentile": 95.0
+        },
+        "sari_macro": {
+          "mean": 0.6326639112715023,
+          "sd": 0.01371600098579797,
+          "min": 0.6104676840577665,
+          "max": 0.6573799023977219,
+          "p2.5": 0.611769647037449,
+          "p97.5": 0.6570161904328438,
+          "sd_fpc_corrected": 0.014963107710835446,
+          "pinned_value": 0.6519416106328858,
+          "pinned_percentile": 86.0
+        },
+        "ged_macro": {
+          "mean": 0.350422148083786,
+          "sd": 0.014846969537283834,
+          "min": 0.31988672540977964,
+          "max": 0.38870667398040354,
+          "p2.5": 0.3249825150493633,
+          "p97.5": 0.37827308031221907,
+          "sd_fpc_corrected": 0.01619690787394224,
+          "pinned_value": 0.3130800792350325,
+          "pinned_percentile": 0.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9260333333333333,
+          "sd": 0.01666969360268077,
+          "min": 0.885,
+          "max": 0.9675,
+          "p2.5": 0.8903125,
+          "p97.5": 0.9538749999999999,
+          "sd_fpc_corrected": 0.018185360378860132,
+          "pinned_value": 0.945,
+          "pinned_percentile": 88.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.7390000000000001,
+          "sd": 0.0249693689899265,
+          "min": 0.69,
+          "max": 0.795,
+          "p2.5": 0.696125,
+          "p97.5": 0.7877500000000001,
+          "sd_fpc_corrected": 0.027239671246358416,
+          "pinned_value": 0.8,
+          "pinned_percentile": 100.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.0155,
+          "sd": 0.007160692019915507,
+          "min": 0.005,
+          "max": 0.035,
+          "p2.5": 0.005,
+          "p97.5": 0.03,
+          "sd_fpc_corrected": 0.007811767153491642,
+          "pinned_value": 0.025,
+          "pinned_percentile": 89.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.2455,
+          "sd": 0.025198193974803763,
+          "min": 0.19,
+          "max": 0.295,
+          "p2.5": 0.193375,
+          "p97.5": 0.295,
+          "sd_fpc_corrected": 0.02748930179823677,
+          "pinned_value": 0.175,
+          "pinned_percentile": 0.0
+        }
+      },
+      "hop3": {
+        "break_exact_match_rate": {
+          "mean": 0.006699999999999999,
+          "sd": 0.005210859931382707,
+          "min": 0.0,
+          "max": 0.02,
+          "p2.5": 0.0,
+          "p97.5": 0.018874999999999992,
+          "sd_fpc_corrected": 0.006070468111305668,
+          "pinned_value": 0.005,
+          "pinned_percentile": 42.0
+        },
+        "sari_macro": {
+          "mean": 0.5900970290017266,
+          "sd": 0.00876467393218669,
+          "min": 0.5695143402723333,
+          "max": 0.6065562902213716,
+          "p2.5": 0.5723407064535881,
+          "p97.5": 0.6041289122392226,
+          "sd_fpc_corrected": 0.010210536132605884,
+          "pinned_value": 0.5764192627283017,
+          "pinned_percentile": 4.0
+        },
+        "ged_macro": {
+          "mean": 0.5194478503896932,
+          "sd": 0.014011271590408053,
+          "min": 0.49411146404629536,
+          "max": 0.5514780789554361,
+          "p2.5": 0.4948715139601341,
+          "p97.5": 0.5488186754256072,
+          "sd_fpc_corrected": 0.01632263743574579,
+          "pinned_value": 0.532478362400383,
+          "pinned_percentile": 84.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.8508937588652482,
+          "sd": 0.021376430536295385,
+          "min": 0.8029999999999999,
+          "max": 0.89,
+          "p2.5": 0.8113413120567375,
+          "p97.5": 0.8862916666666667,
+          "sd_fpc_corrected": 0.02490278794918377,
+          "pinned_value": 0.8213687943262411,
+          "pinned_percentile": 14.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5203,
+          "sd": 0.02859659605831522,
+          "min": 0.465,
+          "max": 0.58,
+          "p2.5": 0.47112499999999996,
+          "p97.5": 0.5688749999999999,
+          "sd_fpc_corrected": 0.03331402623555616,
+          "pinned_value": 0.51,
+          "pinned_percentile": 32.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.10679999999999999,
+          "sd": 0.016835336985892842,
+          "min": 0.075,
+          "max": 0.14,
+          "p2.5": 0.076125,
+          "p97.5": 0.135,
+          "sd_fpc_corrected": 0.019612574059120588,
+          "pinned_value": 0.13,
+          "pinned_percentile": 90.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.3729,
+          "sd": 0.026918054027976486,
+          "min": 0.305,
+          "max": 0.43,
+          "p2.5": 0.33,
+          "p97.5": 0.415,
+          "sd_fpc_corrected": 0.031358583947174834,
+          "pinned_value": 0.36,
+          "pinned_percentile": 30.0
+        }
+      },
+      "hop4": {
+        "break_exact_match_rate": {
+          "mean": 0.017700000000000004,
+          "sd": 0.005908313064260062,
+          "min": 0.005,
+          "max": 0.03,
+          "p2.5": 0.006125,
+          "p97.5": 0.02887499999999999,
+          "sd_fpc_corrected": 0.008304511298949822,
+          "pinned_value": 0.025,
+          "pinned_percentile": 88.0
+        },
+        "sari_macro": {
+          "mean": 0.5743113334658334,
+          "sd": 0.007245557776015379,
+          "min": 0.5557964151550148,
+          "max": 0.5905069302296756,
+          "p2.5": 0.5621172745016617,
+          "p97.5": 0.585996697146688,
+          "sd_fpc_corrected": 0.010184094133754075,
+          "pinned_value": 0.566777270764363,
+          "pinned_percentile": 16.0
+        },
+        "ged_macro": {
+          "mean": 0.5890776831960153,
+          "sd": 0.013953622869405184,
+          "min": 0.5595484255922023,
+          "max": 0.6208162531593975,
+          "p2.5": 0.5629025689567626,
+          "p97.5": 0.6145014199603702,
+          "sd_fpc_corrected": 0.019612707979409037,
+          "pinned_value": 0.6059502449452707,
+          "pinned_percentile": 88.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.7724928571428571,
+          "sd": 0.020302723795163718,
+          "min": 0.7375,
+          "max": 0.8175,
+          "p2.5": 0.7385714285714287,
+          "p97.5": 0.8124464285714286,
+          "sd_fpc_corrected": 0.028536774765084313,
+          "pinned_value": 0.775,
+          "pinned_percentile": 52.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.4445,
+          "sd": 0.024290965818759926,
+          "min": 0.385,
+          "max": 0.505,
+          "p2.5": 0.401125,
+          "p97.5": 0.48774999999999996,
+          "sd_fpc_corrected": 0.03414250360640953,
+          "pinned_value": 0.4,
+          "pinned_percentile": 3.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.19740000000000002,
+          "sd": 0.019225832961440825,
+          "min": 0.16,
+          "max": 0.245,
+          "p2.5": 0.16612500000000002,
+          "p97.5": 0.23775,
+          "sd_fpc_corrected": 0.027023135931271557,
+          "pinned_value": 0.25,
+          "pinned_percentile": 100.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.35810000000000003,
+          "sd": 0.021827010041389976,
+          "min": 0.3,
+          "max": 0.4,
+          "p2.5": 0.3095,
+          "p97.5": 0.39,
+          "sd_fpc_corrected": 0.030679256420498263,
+          "pinned_value": 0.35,
+          "pinned_percentile": 34.0
+        }
+      }
+    },
+    "Mistral-7B": {
+      "overall": {
+        "break_exact_match_rate": {
+          "mean": 0.032266666666666666,
+          "sd": 0.00692329204852111,
+          "min": 0.016666666666666666,
+          "max": 0.051666666666666666,
+          "p2.5": 0.023333333333333334,
+          "p97.5": 0.042958333333333334,
+          "sd_fpc_corrected": 0.007441098022026297,
+          "pinned_value": 0.04,
+          "pinned_percentile": 87.0
+        },
+        "sari_macro": {
+          "mean": 0.5794729601581936,
+          "sd": 0.005736955511358335,
+          "min": 0.568455930419151,
+          "max": 0.5899845183945325,
+          "p2.5": 0.5688187862244223,
+          "p97.5": 0.589053499852729,
+          "sd_fpc_corrected": 0.0068682046702557035,
+          "pinned_value": 0.5771831716932261,
+          "pinned_percentile": 34.0
+        },
+        "ged_macro": {
+          "mean": 0.48602516882693114,
+          "sd": 0.00850083278872628,
+          "min": 0.46499615681042344,
+          "max": 0.5013567724859227,
+          "p2.5": 0.47001286266443265,
+          "p97.5": 0.500649630588022,
+          "sd_fpc_corrected": 0.009542361641292005,
+          "pinned_value": 0.48416766164395225,
+          "pinned_percentile": 36.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9632439935064936,
+          "sd": 0.0052057411380405545,
+          "min": 0.9496785714285714,
+          "max": 0.9728999518999518,
+          "p2.5": 0.9518482804232804,
+          "p97.5": 0.9726099957912457,
+          "sd_fpc_corrected": 0.006713360681477813,
+          "pinned_value": 0.9626203703703703,
+          "pinned_percentile": 36.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.5036333333333334,
+          "sd": 0.016185888705822705,
+          "min": 0.47,
+          "max": 0.5383333333333333,
+          "p2.5": 0.47370833333333334,
+          "p97.5": 0.529625,
+          "sd_fpc_corrected": 0.019208342988222393,
+          "pinned_value": 0.5133333333333333,
+          "pinned_percentile": 72.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.16063333333333332,
+          "sd": 0.01313582455049226,
+          "min": 0.13333333333333333,
+          "max": 0.18666666666666668,
+          "p2.5": 0.13741666666666666,
+          "p97.5": 0.18333333333333332,
+          "sd_fpc_corrected": 0.014397532407132686,
+          "pinned_value": 0.16833333333333333,
+          "pinned_percentile": 69.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.3357333333333332,
+          "sd": 0.01794157815682248,
+          "min": 0.2966666666666667,
+          "max": 0.375,
+          "p2.5": 0.3027916666666667,
+          "p97.5": 0.36591666666666667,
+          "sd_fpc_corrected": 0.01885486995369977,
+          "pinned_value": 0.31833333333333336,
+          "pinned_percentile": 18.0
+        }
+      },
+      "hop2": {
+        "break_exact_match_rate": {
+          "mean": 0.0817,
+          "sd": 0.01912925956299855,
+          "min": 0.045,
+          "max": 0.14,
+          "p2.5": 0.056125,
+          "p97.5": 0.11387499999999999,
+          "sd_fpc_corrected": 0.020868558668525335,
+          "pinned_value": 0.1,
+          "pinned_percentile": 82.0
+        },
+        "sari_macro": {
+          "mean": 0.6102332833180227,
+          "sd": 0.013351687096497976,
+          "min": 0.5843453009849808,
+          "max": 0.6383461698355519,
+          "p2.5": 0.59051953627973,
+          "p97.5": 0.6294101484211465,
+          "sd_fpc_corrected": 0.01456566913002799,
+          "pinned_value": 0.6218050817363691,
+          "pinned_percentile": 78.0
+        },
+        "ged_macro": {
+          "mean": 0.36678235980177815,
+          "sd": 0.01513558005710975,
+          "min": 0.3357881391686742,
+          "max": 0.4024168555572613,
+          "p2.5": 0.33809494990920347,
+          "p97.5": 0.3971846835018299,
+          "sd_fpc_corrected": 0.016511759870461266,
+          "pinned_value": 0.33174061299496904,
+          "pinned_percentile": 0.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9755152777777777,
+          "sd": 0.008372499725496519,
+          "min": 0.9575,
+          "max": 0.9911111111111112,
+          "p2.5": 0.958890625,
+          "p97.5": 0.9896527777777777,
+          "sd_fpc_corrected": 0.009133756648987012,
+          "pinned_value": 0.9869444444444444,
+          "pinned_percentile": 94.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.7049,
+          "sd": 0.028970252159829065,
+          "min": 0.645,
+          "max": 0.765,
+          "p2.5": 0.65725,
+          "p97.5": 0.755,
+          "sd_fpc_corrected": 0.031604328690733624,
+          "pinned_value": 0.775,
+          "pinned_percentile": 100.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.008700000000000001,
+          "sd": 0.005959900012858044,
+          "min": 0.0,
+          "max": 0.025,
+          "p2.5": 0.0,
+          "p97.5": 0.02,
+          "sd_fpc_corrected": 0.0065017949423117685,
+          "pinned_value": 0.0,
+          "pinned_percentile": 7.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.2864,
+          "sd": 0.029795904389149638,
+          "min": 0.23,
+          "max": 0.345,
+          "p2.5": 0.231125,
+          "p97.5": 0.34162499999999996,
+          "sd_fpc_corrected": 0.03250505210507336,
+          "pinned_value": 0.225,
+          "pinned_percentile": 0.0
+        }
+      },
+      "hop3": {
+        "break_exact_match_rate": {
+          "mean": 0.005,
+          "sd": 0.004164965639175214,
+          "min": 0.0,
+          "max": 0.015,
+          "p2.5": 0.0,
+          "p97.5": 0.013874999999999993,
+          "sd_fpc_corrected": 0.004852038133864791,
+          "pinned_value": 0.01,
+          "pinned_percentile": 85.0
+        },
+        "sari_macro": {
+          "mean": 0.5590445581125514,
+          "sd": 0.00821074026944656,
+          "min": 0.5391936227611923,
+          "max": 0.5749982676162736,
+          "p2.5": 0.5434493926235906,
+          "p97.5": 0.5738131971745142,
+          "sd_fpc_corrected": 0.00956522294443304,
+          "pinned_value": 0.5514180033862754,
+          "pinned_percentile": 18.0
+        },
+        "ged_macro": {
+          "mean": 0.5146074141457632,
+          "sd": 0.013424275424155687,
+          "min": 0.4762420025358661,
+          "max": 0.5466959354974626,
+          "p2.5": 0.4850152531176061,
+          "p97.5": 0.5383479224232316,
+          "sd_fpc_corrected": 0.015638807596599046,
+          "pinned_value": 0.5372586262519662,
+          "pinned_percentile": 96.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9606994805194805,
+          "sd": 0.011256407247138863,
+          "min": 0.9347222222222222,
+          "max": 0.98775,
+          "p2.5": 0.9394677579365079,
+          "p97.5": 0.9794258207070706,
+          "sd_fpc_corrected": 0.013113317598520557,
+          "pinned_value": 0.9581666666666666,
+          "pinned_percentile": 40.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.4791,
+          "sd": 0.026586209406612386,
+          "min": 0.43,
+          "max": 0.525,
+          "p2.5": 0.435,
+          "p97.5": 0.523875,
+          "sd_fpc_corrected": 0.03097199666246067,
+          "pinned_value": 0.465,
+          "pinned_percentile": 34.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.18710000000000002,
+          "sd": 0.02468350684574786,
+          "min": 0.13,
+          "max": 0.23,
+          "p2.5": 0.141125,
+          "p97.5": 0.228875,
+          "sd_fpc_corrected": 0.0287554152587915,
+          "pinned_value": 0.22,
+          "pinned_percentile": 91.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.33380000000000004,
+          "sd": 0.028058975791161362,
+          "min": 0.27,
+          "max": 0.39,
+          "p2.5": 0.28,
+          "p97.5": 0.388875,
+          "sd_fpc_corrected": 0.03268771757811291,
+          "pinned_value": 0.315,
+          "pinned_percentile": 25.0
+        }
+      },
+      "hop4": {
+        "break_exact_match_rate": {
+          "mean": 0.0101,
+          "sd": 0.004459568936796562,
+          "min": 0.0,
+          "max": 0.02,
+          "p2.5": 0.005,
+          "p97.5": 0.015,
+          "sd_fpc_corrected": 0.006268208915349812,
+          "pinned_value": 0.01,
+          "pinned_percentile": 49.0
+        },
+        "sari_macro": {
+          "mean": 0.5691410390440067,
+          "sd": 0.007822738591993807,
+          "min": 0.5503519218659902,
+          "max": 0.587640115916789,
+          "p2.5": 0.5565017464361462,
+          "p97.5": 0.5832358861553886,
+          "sd_fpc_corrected": 0.010995358627645653,
+          "pinned_value": 0.558326429957034,
+          "pinned_percentile": 8.0
+        },
+        "ged_macro": {
+          "mean": 0.5766857325332521,
+          "sd": 0.012369954859443972,
+          "min": 0.5520338469119791,
+          "max": 0.5988427603073181,
+          "p2.5": 0.556255486861712,
+          "p97.5": 0.5944391882198429,
+          "sd_fpc_corrected": 0.017386761463124473,
+          "pinned_value": 0.5835037456849216,
+          "pinned_percentile": 62.0
+        },
+        "chain_validity_macro": {
+          "mean": 0.9535172222222222,
+          "sd": 0.008720467004959096,
+          "min": 0.9395833333333333,
+          "max": 0.9814166666666666,
+          "p2.5": 0.941025,
+          "p97.5": 0.9700465277777778,
+          "sd_fpc_corrected": 0.012257173238309348,
+          "pinned_value": 0.9427500000000001,
+          "pinned_percentile": 10.0
+        },
+        "hop_count_exact_match_rate": {
+          "mean": 0.3269,
+          "sd": 0.026261829210269948,
+          "min": 0.26,
+          "max": 0.385,
+          "p2.5": 0.27725,
+          "p97.5": 0.375,
+          "sd_fpc_corrected": 0.03691267795659544,
+          "pinned_value": 0.3,
+          "pinned_percentile": 15.0
+        },
+        "under_decomposition_rate": {
+          "mean": 0.2861,
+          "sd": 0.02245835147601907,
+          "min": 0.24,
+          "max": 0.335,
+          "p2.5": 0.245,
+          "p97.5": 0.32275,
+          "sd_fpc_corrected": 0.031566647122437834,
+          "pinned_value": 0.285,
+          "pinned_percentile": 42.0
+        },
+        "over_decomposition_rate": {
+          "mean": 0.38699999999999996,
+          "sd": 0.023321182453306437,
+          "min": 0.34,
+          "max": 0.435,
+          "p2.5": 0.35112499999999996,
+          "p97.5": 0.42774999999999996,
+          "sd_fpc_corrected": 0.03277941115881075,
+          "pinned_value": 0.415,
+          "pinned_percentile": 87.0
+        }
+      }
+    }
+  },
+  "rank_stability_pct": {
+    "break_exact_match_rate": {
+      "Qwen2.5-7B": [
+        0.0,
+        40.0,
+        50.0,
+        8.0,
+        2.0
+      ],
+      "Pool-FT (Mistral)": [
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        0.0,
+        0.0,
+        4.0,
+        32.0,
+        64.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        68.0,
+        28.0,
+        4.0,
+        0.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        2.0,
+        12.0,
+        60.0,
+        26.0
+      ]
+    },
+    "sari_macro": {
+      "Qwen2.5-7B": [
+        0.0,
+        0.0,
+        16.0,
+        38.0,
+        46.0
+      ],
+      "Pool-FT (Mistral)": [
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        0.0,
+        0.0,
+        18.0,
+        38.0,
+        44.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        0.0,
+        66.0,
+        24.0,
+        10.0
+      ]
+    },
+    "ged_macro": {
+      "Qwen2.5-7B": [
+        0.0,
+        48.0,
+        44.0,
+        8.0,
+        0.0
+      ],
+      "Pool-FT (Mistral)": [
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        0.0,
+        50.0,
+        48.0,
+        2.0,
+        0.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        0.0,
+        6.0,
+        44.0,
+        50.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        2.0,
+        2.0,
+        46.0,
+        50.0
+      ]
+    },
+    "chain_validity_macro": {
+      "Qwen2.5-7B": [
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0
+      ],
+      "Pool-FT (Mistral)": [
+        30.0,
+        62.0,
+        8.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        70.0,
+        30.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        8.0,
+        92.0,
+        0.0,
+        0.0
+      ]
+    },
+    "hop_count_exact_match_rate": {
+      "Qwen2.5-7B": [
+        0.0,
+        0.0,
+        14.0,
+        84.0,
+        2.0
+      ],
+      "Pool-FT (Mistral)": [
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        0.0,
+        80.0,
+        18.0,
+        2.0,
+        0.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        24.0,
+        64.0,
+        12.0,
+        0.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        98.0
+      ]
+    },
+    "under_decomposition_rate": {
+      "Qwen2.5-7B": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        100.0
+      ],
+      "Pool-FT (Mistral)": [
+        0.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        20.0,
+        80.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen3.5-9B": [
+        84.0,
+        16.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        0.0
+      ]
+    },
+    "over_decomposition_rate": {
+      "Qwen2.5-7B": [
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Pool-FT (Mistral)": [
+        100.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "Qwen2.5-14B": [
+        0.0,
+        0.0,
+        90.0,
+        10.0,
+        0.0
+      ],
+      "Qwen3.5-9B": [
+        0.0,
+        0.0,
+        12.0,
+        64.0,
+        24.0
+      ],
+      "Mistral-7B": [
+        0.0,
+        0.0,
+        2.0,
+        24.0,
+        74.0
+      ]
+    }
+  },
+  "pinned_ranks": {
+    "break_exact_match_rate": {
+      "Qwen2.5-7B": 3,
+      "Pool-FT (Mistral)": 1,
+      "Qwen2.5-14B": 5,
+      "Qwen3.5-9B": 2,
+      "Mistral-7B": 4
+    },
+    "sari_macro": {
+      "Qwen2.5-7B": 5,
+      "Pool-FT (Mistral)": 1,
+      "Qwen2.5-14B": 3,
+      "Qwen3.5-9B": 2,
+      "Mistral-7B": 4
+    },
+    "ged_macro": {
+      "Qwen2.5-7B": 3,
+      "Pool-FT (Mistral)": 1,
+      "Qwen2.5-14B": 2,
+      "Qwen3.5-9B": 4,
+      "Mistral-7B": 5
+    },
+    "chain_validity_macro": {
+      "Qwen2.5-7B": 4,
+      "Pool-FT (Mistral)": 2,
+      "Qwen2.5-14B": 1,
+      "Qwen3.5-9B": 5,
+      "Mistral-7B": 3
+    },
+    "hop_count_exact_match_rate": {
+      "Qwen2.5-7B": 4,
+      "Pool-FT (Mistral)": 1,
+      "Qwen2.5-14B": 2,
+      "Qwen3.5-9B": 3,
+      "Mistral-7B": 5
+    },
+    "under_decomposition_rate": {
+      "Qwen2.5-7B": 5,
+      "Pool-FT (Mistral)": 4,
+      "Qwen2.5-14B": 1,
+      "Qwen3.5-9B": 2,
+      "Mistral-7B": 3
+    },
+    "over_decomposition_rate": {
+      "Qwen2.5-7B": 2,
+      "Pool-FT (Mistral)": 1,
+      "Qwen2.5-14B": 3,
+      "Qwen3.5-9B": 4,
+      "Mistral-7B": 5
+    }
+  },
+  "figures": {
+    "fig1_report_card_spread": [
+      "runs/exp-030/resample/fig1_report_card_spread.png",
+      "runs/exp-030/resample/fig1_report_card_spread.pdf"
+    ],
+    "fig2_per_hop_spread": [
+      "runs/exp-030/resample/fig2_per_hop_spread.png",
+      "runs/exp-030/resample/fig2_per_hop_spread.pdf"
+    ],
+    "fig3_rank_stability": [
+      "runs/exp-030/resample/fig3_rank_stability.png",
+      "runs/exp-030/resample/fig3_rank_stability.pdf"
+    ]
+  },
+  "caveat": "Each draw takes 200 questions per hop WITHOUT replacement from finite hop strata (N = {'2': 1252, '3': 760, '4': 405}), so the across-draw spread is smaller than the spread for independent samples from an unlimited population by the finite-population correction: the SD is scaled by sqrt(1 - n/N) = 0.92 at 2 hops, 0.86 at 3 hops, 0.71 at 4 hops. resample_metrics.json and resample_summary.csv report an FPC-corrected SD (sd_fpc_corrected) beside the raw SD; the figures plot the raw spread. Overlap between draws (measured mean shared fraction per hop: 2-hop 0.16, 3-hop 0.26, 4-hop 0.49) does not shrink the band: it only correlates the K draws, which limits how precisely K=50 draws estimate the band (SD, percentiles). The spread measures question-sampling variation only: decoding is greedy, so there is no decoding variation in it.",
+  "git": {
+    "commit": "5226b8423d31b9cde2747ac8d81590309d5487ff",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 7,
+    "dirty_files": [
+      "M Slides/thesis-deck-v2.html",
+      "?? \"Slides/Artifact slides review.pdf\"",
+      "?? \"Slides/Final Slide before meeting.pdf\"",
+      "?? \"Slides/Screenshot 2026-10-13 010802.png\"",
+      "?? \"Slides/Screenshot 2026-10-13 011250.png\"",
+      "?? Slides/Thesis_QA_Slide_Deck.pdf",
+      "?? Slides/thesis-deck-v2.pdf"
+    ]
+  }
+}

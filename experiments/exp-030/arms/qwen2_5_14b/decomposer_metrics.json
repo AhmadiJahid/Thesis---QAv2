@@ -1,0 +1,149 @@
+{
+  "dry_run": false,
+  "total_rows": 2417,
+  "rows_loaded_total": 2417,
+  "rows_loaded_per_hop": {
+    "2": 1252,
+    "3": 760,
+    "4": 405
+  },
+  "distinct_query_ids": 2417,
+  "evaluation_set": {
+    "named_eval_set": "musique_dev_full",
+    "pinned": false,
+    "named_set_asserted": true,
+    "matches_named_set": true,
+    "allow_mismatch_flag": false,
+    "rows_source": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-030/retrieval/dev_full_imbalanced_rerank_top5.jsonl",
+    "id_identity_checked": true,
+    "ids_missing_count": 0,
+    "ids_unexpected_count": 0,
+    "rows_loaded_total": 2417,
+    "rows_loaded_per_hop": {
+      "2": 1252,
+      "3": 760,
+      "4": 405
+    },
+    "definition": {
+      "name": "musique_dev_full",
+      "source_path": "/cta/users/fyilmaz/thesis-qav2-data/musique/musique_ans_v1.0_dev.jsonl",
+      "source_sha256": "15fa63794d18a94ce12411aca6e2327e65b6e83b0b1490efab3f1962e48abf3b",
+      "ids_total": 2417,
+      "ids_per_hop": {
+        "2": 1252,
+        "3": 760,
+        "4": 405
+      },
+      "hops": [
+        2,
+        3,
+        4
+      ],
+      "expected_total": 2417,
+      "definition_problems": []
+    },
+    "distinct_query_ids": 2417
+  },
+  "rows_with_empty_decomposition": 0,
+  "anchor_prompts_logged": 45,
+  "anchor_prompts_expected": 45,
+  "anchor_ids_total": 45,
+  "few_shot_enabled": true,
+  "few_shot_source_mode": "reranked",
+  "few_shot_source_counts": {
+    "reranked": 2417
+  },
+  "few_shot_self_exclusion": {
+    "enabled": true,
+    "rows_with_a_self_example_dropped": 0,
+    "self_examples_dropped": 0,
+    "note": "counted on the reranked retrieval path only (the bi-encoder and random paths exclude by filtering, without a counter)"
+  },
+  "condition": "unguided",
+  "guided": false,
+  "hop_source": {
+    "source": "gold",
+    "condition": "unguided",
+    "predictions_file": null,
+    "predictions_file_sha256": null,
+    "id_field": "query_id",
+    "hop_field": "predicted_hop",
+    "note": "the query's gold hop depth (from its id on the retrieval path, or from the per-hop file it was read from) - never a prediction"
+  },
+  "stop_after_step_lines": null,
+  "rows_at_step_line_cap": null,
+  "rows_stopped_at_step_line_cap": null,
+  "max_new_tokens": 1024,
+  "rows_at_max_new_tokens": 0,
+  "step_lines_per_row_total": 7138,
+  "truncation_definitions": {
+    "rows_at_step_line_cap": "rows whose recorded decomposition has at least stop_after_step_lines steps under src/step_lines.py::split_step_lines - a property of the output, not evidence that the cap intervened",
+    "rows_stopped_at_step_line_cap": "rows where the step-line StoppingCriteria fired during decoding (read from the criterion's state): the generation was cut off by the cap",
+    "rows_at_max_new_tokens": "rows whose completion reached generation.max_new_tokens, i.e. the token budget ended the generation"
+  },
+  "seed": 42,
+  "few_shot_exemplar_hop_count": "exemplar_gold",
+  "few_shot_ordering": "as_is",
+  "few_shot_ordering_source": "config",
+  "adapter": null,
+  "no_few_shot": false,
+  "adapter_few_shot_override": false,
+  "adapter_prompt_parity": {
+    "checked": false,
+    "override": false,
+    "run": {
+      "guided": false,
+      "prompt_file": "prompt_unguided.md",
+      "prompt_style": "chat_template",
+      "few_shot_examples_in_prompt": true,
+      "prompt_sha256": "473221aaa3f24d2a63882a32445e6c3ebfcbd98eb40d7a6649490103172ff1fe"
+    },
+    "mismatches": [],
+    "note": "no --adapter in this run, so there is no training prompt to match"
+  },
+  "adapter_base_model": null,
+  "no_few_shot_ineffective": false,
+  "model_size": {
+    "component": "decomposer",
+    "model_id": "Qwen/Qwen2.5-14B-Instruct",
+    "parameter_count": 14770033664,
+    "parameter_ceiling": 15000000000,
+    "ceiling_asserted": true
+  },
+  "embedding_model_size": null,
+  "cost": {
+    "rows_measured": 2417,
+    "rows_total": 2417,
+    "mean_prompt_tokens_per_query": 342.9892428630534,
+    "median_prompt_tokens_per_query": 336.0,
+    "mean_completion_tokens_per_query": 30.496483243690527,
+    "median_completion_tokens_per_query": 28.0,
+    "mean_total_tokens_per_query": 373.4857261067439,
+    "mean_latency_seconds_per_query": 2.4264625515873566,
+    "median_latency_seconds_per_query": 2.270004542544484,
+    "total_generation_seconds": 5864.7599871866405,
+    "definitions": {
+      "prompt_tokens": "tokenizer token count of the rendered prompt for that row",
+      "completion_tokens": "number of newly generated tokens for that row",
+      "latency_seconds": "wall clock around model.generate for that row (CUDA synchronized), excluding tokenization and decoding",
+      "excluded_rows": "rows without a measurement (e.g. a --dry-run) are excluded"
+    }
+  },
+  "results_path": "runs/exp-030/qwen2_5_14b/decomposer/20261014_034213/results.json",
+  "embedding_model_size_note": "no bi-encoder was loaded in this run (retrieval input supplied, few-shot disabled, or --dry-run), so its parameter count is unmeasured",
+  "git": {
+    "commit": "5226b8423d31b9cde2747ac8d81590309d5487ff",
+    "branch": "main",
+    "dirty": true,
+    "dirty_file_count": 7,
+    "dirty_files": [
+      "M Slides/thesis-deck-v2.html",
+      "?? \"Slides/Artifact slides review.pdf\"",
+      "?? \"Slides/Final Slide before meeting.pdf\"",
+      "?? \"Slides/Screenshot 2026-10-13 010802.png\"",
+      "?? \"Slides/Screenshot 2026-10-13 011250.png\"",
+      "?? Slides/Thesis_QA_Slide_Deck.pdf",
+      "?? Slides/thesis-deck-v2.pdf"
+    ]
+  }
+}
