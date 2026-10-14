@@ -95,6 +95,7 @@ from step_lines import (  # noqa: E402
     split_step_lines,
     step_line_count,
     trim_to_step_lines,
+    with_scaffold_truncate_markers,
 )
 
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
@@ -2286,7 +2287,18 @@ def main() -> None:
     )
     loader = dict(require(model_cfg, "loader"))
     few_shot_cfg = dict(require(model_cfg, "few_shot"))
-    post_cfg = dict(require(model_cfg, "post_process"))
+    model_post_cfg = dict(require(model_cfg, "post_process"))
+    # Issue #60 / ADR 0039 item 4 (H3): the decomposer's scaffold labels get the model
+    # folder's 'Question:' semantics (truncate at the first occurrence). Required in both
+    # shared configs rather than defaulted, like few_shot.ordering: what counts as a step is
+    # a scoring decision and must not be acquired by omission.
+    scaffold_truncate_at = require(cfg, "step_parser.scaffold_truncate_at")
+    try:
+        post_cfg = with_scaffold_truncate_markers(model_post_cfg, scaffold_truncate_at)
+    except ValueError as exc:
+        raise SystemExit(
+            f"step_parser.scaffold_truncate_at in {cfg.get('_config_path', '<config>')}: {exc}"
+        ) from exc
     prompt_log_every = int(require(model_cfg, "logging.prompt_log_every"))
     # Which items get a prompt logged BY ID, on top of the every-Nth positional sample
     # (ADR 0033, supervisor item A4). Required in the shared config rather than defaulted
@@ -2490,7 +2502,12 @@ def main() -> None:
         "generation_overrides": generation_overrides,
         "loader": {**loader, "quantization": quantization},
         "few_shot": few_shot_cfg,
+        # The EFFECTIVE block the run applied: the model folder's own post_process with the
+        # shared config's scaffold markers appended (issue #60). Both inputs are recorded
+        # beside it, so scripts/reparse_decompositions.py can tell what a run cut at.
         "post_process": post_cfg,
+        "post_process_model_folder": model_post_cfg,
+        "step_parser": {"scaffold_truncate_at": scaffold_truncate_at},
         "shared_config": cfg.get("_config_path"),
         "model_config": model_cfg.get("_config_path"),
         # What the prompts_log of this run contains, so a later reader can tell an empty

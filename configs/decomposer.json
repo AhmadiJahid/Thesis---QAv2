@@ -39,6 +39,10 @@
     "ordering": "as_is",
     "_ordering_note": "Present the k retrieved exemplars in retrieval-rank order, highest similarity first - the MetaQA path's behaviour since v1, unchanged. The key exists in both shared configs because run_decomposer.py requires it rather than defaulting it; the full statement of what the values mean, and why 'complexity_asc' is reserved but refused, is in configs/decomposer_musique.json where the ordering experiment lives (supervisor assignment A5, ADR 0032 item 5)."
   },
+  "step_parser": {
+    "scaffold_truncate_at": [],
+    "_note": "Empty: the MetaQA path's step parsing is unchanged. The scaffold-label fix of issue #60 / ADR 0039 item 4 was measured on MuSiQue arms only and is set in configs/decomposer_musique.json, where its reasoning is stated. The key exists here because run_decomposer.py requires it in every shared config rather than defaulting it."
+  },
   "few_shot_pool_key": "few_shot_decompositions",
   "embedding_cache_key": "embedding_cache_dir",
   "masking_config": "masking.json",
