@@ -33,6 +33,33 @@
     "command_template": ".venv/bin/python MusiQue/scripts/sample_pool.py --size {size} --balance imbalanced --seed 42 --out-dir runs/pool_size_sweep_v2/pools/size{size}_imbalanced_poolseed42",
     "_nesting_note": "The imbalanced strategy is Python's random.Random(42).sample(rows, size) over all 19,938 enriched train rows. random.sample picks its algorithm from the requested size: for size <= 5461 it uses the set-based method, for size >= 5462 (n=19938 <= 21 + 4**ceil(log4(3*size))) the pool-swap method. Each method is prefix-consistent, so the pools form TWO nested chains, not one: 2k c 3k c 4k c 5k (each the exact prefix of the next) and 6k c 7k c 8k c 9k c 10k (likewise), but 5k is NOT a subset of 6k - they share 3,553 of 5,000 ids - and 2k shares 1,946 of its 2,000 ids with 10k. The 5k->6k step therefore changes the draw as well as the size. Measured 2026-10-14 (ml-engineer, issue #51 prep)."
   },
+  "nested_extension": {
+    "_note": "Lead decision 2026-10-14 under Jahid delegation (ADR 0035 amendment): ONE nested chain anchored on the adopted 2k pool. 2k-5k come from sample_pool.py as in pool.command_template (exact prefixes of one random.sample draw). 6k-10k come from scripts/extend_pool_nested.py: the 5k pool plus a prefix of the remaining input rows, sorted by id then shuffled once with seed. Paths base_pool/out_root are relative to the runs root of configs/paths.json.",
+    "script": "scripts/extend_pool_nested.py",
+    "command": ".venv/bin/python scripts/extend_pool_nested.py --config pool_size_sweep_v2.json",
+    "paths_config": "paths.json",
+    "input_key": "musique_pool_enriched",
+    "seed": 42,
+    "base_size": 5000,
+    "base_pool": "pool_size_sweep_v2/pools/size5000_imbalanced_poolseed42/pool.jsonl",
+    "base_pool_sha256": "c7bb61787452b8e9d29c2472c14ac31b2b5e938daf85db152714cc785dde1a23",
+    "sizes": [
+      6000,
+      7000,
+      8000,
+      9000,
+      10000
+    ],
+    "out_root": "pool_size_sweep_v2/pools",
+    "out_dir_template": "size{size}_nested_on5k_poolseed42",
+    "pinned_eval_template_key": "musique_eval_questions_template",
+    "pinned_hops": [
+      2,
+      3,
+      4
+    ],
+    "pinned_count": 600
+  },
   "retrieval": {
     "similarity_script": "MusiQue/scripts/check_question_similarity.py",
     "rerank_script": "MusiQue/scripts/rerank_similarity_results.py",
