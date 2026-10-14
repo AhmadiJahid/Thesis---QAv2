@@ -1,0 +1,58 @@
+{
+  "_note": "Config for scripts/resample_eval_sets.py (issue #56, ADR 0038): offline stratified resampling of per-item decomposition scores. Each arm is run ONCE over a population (the full answerable dev split, musique_dev_full), decoding is greedy and few-shot retrieval is per question, so a question's score does not depend on which sample it sits in; K random stratified samples are then scored from the per-item files with the evaluator's own aggregation (scripts/musique_decompositions_evaluator.py::_aggregate), overall and per hop. Draw d (0-based) uses its own random.Random(seed + d), drawing per_hop ids without replacement from each hop's sorted population, hops in the listed order; the draws depend only on the population ids, so the SAME K draws are reused for every arm (paired). The pinned 600 (ADR 0007, read from datasets.<pinned_ids_template_key>) is scored as one more subset and placed in each distribution as a mid-rank percentile: 100 * (#draws below + 0.5 * #draws tied) / K. percentiles are numpy's default (linear interpolation). Ranks are direction-aware (1 = best; ged and the two decomposition-rate terms are lower-is-better, read from the evaluator) with ties sharing the best rank (competition ranking). per_hop may be overridden on the command line for a smoke run; the override is recorded. POPULATION: every arm's per-item file must carry the evaluator's evaluation_set record (scored with --eval-set) for the same named set with matches_named_set true, and the population must equal that set's ids; --allow-unnamed-population is the recorded smoke-run opt-out. CAVEAT (the lead's wording, 2026-10-14): draws are without replacement from finite hop strata, so the across-draw SD is shrunk by the finite-population correction sqrt(1 - n/N), about 0.92 / 0.86 / 0.71 at 2 / 3 / 4 hops for n = 200 of musique_dev_full (N = 1252 / 760 / 405); the outputs report an FPC-corrected SD beside the raw SD, and the figures plot the raw spread. Overlap between draws does not shrink the band; it only correlates the K draws, which limits how precisely the band is estimated. The spread is question-sampling variation only (greedy decoding). The diamond is the pinned-600 subset RECOMPUTED from this run; --committed-pinned records each arm's committed pinned value and the difference.",
+
+  "seed": 42,
+  "k_draws": 50,
+  "per_hop": 200,
+  "hops": [2, 3, 4],
+  "percentiles": [2.5, 97.5],
+  "tie_tolerance": 1e-12,
+
+  "pinned_ids_template_key": "musique_eval_questions_template",
+  "evaluator_script": "scripts/musique_decompositions_evaluator.py",
+
+  "per_hop_figure_metrics": ["hop_count_exact_match_rate", "sari_macro", "break_exact_match_rate"],
+
+  "figures": {
+    "_note": "Okabe-Ito colorblind-safe palette, assigned to arms in the order they are passed on the command line (one color per arm in every figure). The heatmap uses a sequential single-hue colormap. Sizes are in inches at the stated dpi, chosen to stay readable when a figure fills a slide.",
+    "formats": ["png", "pdf"],
+    "dpi": 200,
+    "palette": ["#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9", "#F0E442"],
+    "heatmap_cmap": "Blues",
+    "font_size": 12,
+    "panel_width": 3.6,
+    "panel_height": 3.4,
+    "jitter_width": 0.22,
+    "dot_size": 14,
+    "dot_alpha": 0.4,
+    "summary_color": "#222222",
+    "pinned_marker_size": 70,
+    "pinned_label": "pinned 600 subset (recomputed from this run)",
+    "ncols": 4,
+    "whisker_linewidth": 2.0,
+    "whisker_cap_half_width": 0.12,
+    "cap_linewidth": 1.5,
+    "mean_bar_half_width": 0.32,
+    "mean_linewidth": 3.5,
+    "pinned_x_offset": 0.42,
+    "pinned_edge_linewidth": 1.5,
+    "x_margin": 0.6,
+    "xtick_rotation": 30,
+    "grid_alpha": 0.3,
+    "legend_dot_alpha": 0.8,
+    "legend_extra_width": 2.2,
+    "heatmap_text_white_at_or_above": 60,
+    "colorbar_fraction": 0.6,
+    "metric_labels": {
+      "break_exact_match_rate": "Break EM",
+      "sari_macro": "SARI",
+      "ged_macro": "GED",
+      "chain_validity_macro": "Chain validity",
+      "hop_count_exact_match_rate": "Hop-count EM",
+      "under_decomposition_rate": "Under-decomposition",
+      "over_decomposition_rate": "Over-decomposition"
+    }
+  },
+
+  "paths_config": "paths.json"
+}

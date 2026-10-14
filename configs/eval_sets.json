@@ -1,0 +1,14 @@
+{
+  "_note": "Named NON-pinned MuSiQue evaluation sets (issue #56, ADR 0038). A named set is selected explicitly with --eval-set <name> on components/decomposer/run_decomposer.py and scripts/musique_decompositions_evaluator.py; without that flag both scripts behave exactly as before and assert the ADR 0007 pinned 600 (the decomposer) or nothing (the evaluator). The pinned 600 stays the headline evaluation set; a named set here is a population for offline resampling (scripts/resample_eval_sets.py), not a replacement. Each set is defined by a source file under data_root (datasets.<source_key> in configs/paths.json) and is asserted BY ID: the loaded/evaluated ids must be exactly the source file's ids whose answerable_field is true, and their count must equal expected_total, so a changed source file is a refusal rather than a silently different population. Per-hop counts are derived from the ids (the '<n>hop' prefix) and recorded in metrics; they are not separately configured.",
+
+  "musique_dev_full": {
+    "_note": "Every answerable question of the MuSiQue v1.0 answerable dev split: 2,417 rows (1,252 / 760 / 405 at 2 / 3 / 4 hops, counted 2026-10-14 from the file). The pinned 600 of ADR 0007 are a subset. Built for the sampling-variance study, issue #56.",
+    "source_key": "musique_dev",
+    "id_field": "id",
+    "answerable_field": "answerable",
+    "hops": [2, 3, 4],
+    "expected_total": 2417
+  },
+
+  "paths_config": "paths.json"
+}
