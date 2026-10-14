@@ -369,6 +369,10 @@ def main() -> None:
             # same reason 'underpowered' is - a comparison produced before it existed has no
             # such block, and that is not this script's failure.
             "t_test": compare_metrics.get("t_test"),
+            # ADR 0039: the beside-card terms, relayed in their own key so that nothing
+            # reading bootstrap / mcnemar / t_test above counts them. Read with .get, like
+            # t_test: a comparison produced before they existed has no such block.
+            "beside_report_card": compare_metrics.get("beside_report_card"),
         }
 
     # ---- one table: quality columns, then cost columns ----
@@ -463,6 +467,15 @@ def main() -> None:
             )
             note_lines.append(
                 f"  - paired t-test {stat}: {row['difference']:+.4f} {stat_cell} "
+                f"significant={row['significant']} "
+                f"underpowered={_fmt(row.get('underpowered'))}"
+            )
+        beside = record.get("beside_report_card") or {}
+        for stat, row in (beside.get("bootstrap") or {}).items():
+            note_lines.append(
+                f"  - BESIDE-CARD (ADR 0039, not a report-card term, not in any tally) "
+                f"bootstrap {stat}: {row['difference']:+.4f} "
+                f"[{row['ci_low']:+.4f}, {row['ci_high']:+.4f}] n={row['n']} "
                 f"significant={row['significant']} "
                 f"underpowered={_fmt(row.get('underpowered'))}"
             )

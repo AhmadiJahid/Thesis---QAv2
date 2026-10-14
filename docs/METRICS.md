@@ -117,6 +117,7 @@ not macro averages: `reference_validity_micro` pools counts across all rows;
 | `chain_validity_macro`, `chain_validity_gold_unchained_items` | see §2.1, §2.3 |
 | `over_decomposition` / `under_decomposition` (per item), `decomp_mean` (per item), `decomp_mean_macro`, `decomposition_report_card`, `decomp_mean_policy` | see §2.3 |
 | `break_exact_match_rate`, `sari_macro`, `ged_macro`, `ged_fallback_counts` | see §2.2 |
+| `step_{precision,recall,f1}_soft_<ttt>_macro`, `plan_connectedness_macro` / `_n_items` / `_null_items`, `gold_plan_connectedness_items_*`, `beside_report_card` | **beside-card terms**, not report-card terms — see §2.5 (ADR 0039) |
 | `per_gold_hop_metrics` | the **entire** aggregate block above, recomputed per gold hop depth (2, 3, 4, …) — including the five directional step-count metrics and everything in §2.1 / §2.2 |
 
 When reading the two direction rates, note that the errors are **not equally bad**: the
@@ -380,6 +381,69 @@ The acceptance criteria are tests in
 It is a **tool, not an experiment** (ADR 0027 point 5): it scores no system of the thesis,
 takes no `experiments/log.md` entry, needs no GPU and takes no `runs/run.lock`. Re-run it
 rather than quoting a remembered number; the measured table is in ADR 0029 with the SHA.
+
+### 2.5 Beside the report card — `step_f1_soft_<ttt>` and `plan_connectedness` (ADR 0039)
+
+Two terms added by [ADR 0039](adr/0039-anchor-set-follow-ups-additive-metrics-parser-fix-and-ordering-noise-floor.md)
+items 2–3 (issue #60), from `docs/analysis/2026-09-20-anchor-set-qualitative-analysis.md`
+§1.3 / §1.5 (H1, H2). They are **beside-card terms**:
+
+- neither is a `decomposition_report_card` term (§2.3), and neither enters `composite_score`
+  or `decomp_mean`;
+- no arm ranking and no "k of n significant" tally is taken from either. `--compare` puts them
+  in their own `beside_report_card` block (paired bootstrap only), **outside** the
+  `bootstrap` / `mcnemar` / `t_test` blocks that a tally or a Holm family reads, and
+  `scripts/compare_decomposer_arms.py` relays them labelled `BESIDE-CARD`;
+- `step_f1` itself is **unchanged** (ADR 0039 item 1): definition, code and every recorded
+  value.
+
+**`step_f1_soft_<ttt>`** (`_soft_step_prf`). `step_f1` with exact string equality relaxed. Over
+the same de-duplicated sets of normalised steps `step_f1` uses (`_normalize_step`), a
+predicted and a gold step **match** when their normalised strings are identical, or when the
+multiset token-overlap F1 of their tokens — after removing the stopwords — is ≥ the threshold
+(`_token_f1` = 2·overlap / (|a| + |b|); 0 when either side has no token left). Matching is
+**one-to-one**, and the true-positive count is the **maximum** number of disjoint matching
+pairs (a maximum bipartite matching, `_max_matching_size`), so the value does not depend on a
+tie-break or on input order; a greedy-by-score pairing can strand a step the maximum matching
+pairs, which is why it was not used. P = tp / |pred set|, R = tp / |gold set|, F1 per item,
+then macro-averaged; both sets empty scores 1.0, as in `step_f1`. Because identical strings
+always match, an item's soft F1 is never below its exact `step_f1` (tested over the fixture).
+
+| config (`configs/musique_eval.json` → `beside_report_card.step_f1_soft`) | value |
+|---|---|
+| `thresholds` | `[0.5, 0.6]` — a sensitivity pair, both always reported (ADR 0039 item 2) |
+| `stopwords` | the NLTK English stopword list, verbatim (198 entries; source URL and sha256 in `stopwords_source`), each entry normalised like a step before use (`aren't` → `arent`) |
+
+Per item: `step_precision_soft_<ttt>`, `step_recall_soft_<ttt>`, `step_f1_soft_<ttt>`, with
+`<ttt>` the threshold in whole percent (0.50 → `050`); aggregates `<column>_macro`. A threshold
+must be a whole percent in (0, 1], so the field name states it exactly.
+
+**`plan_connectedness`** (`_plan_connectedness`). Per item, the fraction of the predicted
+plan's **non-final** steps (1..n−1) that some **later** step references with `#k`, read with
+`_BARE_REF_RX` (bare `#k` and `[#k]` alike — the regex `chain_validity` reads). A forward or
+self reference does not count. It measures the dangling step `chain_validity` cannot see: a
+fact computed and never used (86 anchor cases, 85 of them `chain_validity` 1.0, analysis note
+§1.3). For **n < 2** there is no non-final step: the value is `null`, excluded from
+`plan_connectedness_macro`, and counted in `plan_connectedness_null_items`
+(`plan_connectedness_n_items` is the mean's denominator). That denominator therefore depends on
+what the model emitted — the defect class §2.3 forbids **in** the card, and one reason this
+term is beside it; read the null count with the value. In `--compare` it is paired over the
+items where **both** files define it, with the exclusions counted per side
+(`plan_connectedness_pairing`).
+
+`gold_plan_connectedness` is the same function on the gold steps, a check rather than a
+metric: every MuSiQue gold consumes each of its non-final steps, so it should be 1.0 on every
+item. The metrics JSON reports `gold_plan_connectedness_items_at_1` / `_items_below_1` /
+`_null_items`, and `tests/test_beside_card_metrics.py` asserts 1.0 on all 600 ADR 0007 pinned
+items by id when the gold is on disk.
+
+Both terms are computed on every scoring run (they need the `beside_report_card` config
+block), appended after every pre-existing per-item column, and recorded in the metrics JSON's
+`beside_report_card` block with their definitions and the policy (thresholds, stopword source
+and counts). A per-item file scored before they existed does not carry them; `--compare` then
+names them under `not_available_in_inputs` rather than re-scoring. Callers of `score_item`
+that pass no policy (the junk battery, `Slides/score_metric_examples.py`) get exactly the
+columns they got before.
 
 ## 3. ROUGE-L — the answer to the supervisor's question
 
