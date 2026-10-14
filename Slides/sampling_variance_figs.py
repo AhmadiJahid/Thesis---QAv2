@@ -15,9 +15,8 @@ Sources:
   experiments/exp-030/resample_metrics.json (committed) -- mean, p2.5, p97.5, pinned
       value, and rank_stability_pct. Every summary mark and every heatmap number comes
       from this file.
-  runs/exp-030/resample/resample_per_draw.csv (resampler output, NOT committed; the
-      resampler writes it next to resample_metrics.json) -- the per-draw values behind
-      the dots only. Before drawing, each arm x metric mean, min and max recomputed from
+  experiments/exp-030/resample_per_draw.csv (committed copy of the resampler's
+      runs/exp-030/resample/ output) -- the per-draw values behind the dots only. Before drawing, each arm x metric mean, min and max recomputed from
       the CSV is checked against the committed JSON; any mismatch aborts.
 
 No number is computed here that the slides quote.
@@ -43,12 +42,12 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 METRICS_JSON = REPO / "experiments" / "exp-030" / "resample_metrics.json"
-PER_DRAW_CSV = REPO / "runs" / "exp-030" / "resample" / "resample_per_draw.csv"
+PER_DRAW_CSV = REPO / "experiments" / "exp-030" / "resample_per_draw.csv"
 OUT_DIR = REPO / "Slides" / "figs"
 SEED = 42  # dot jitter only
 
 MM = 1 / 25.4
-FIG_W_MM, FIG_A_H_MM, FIG_B_H_MM = 142.0, 43.0, 50.0
+FIG_W_MM, FIG_A_H_MM, FIG_B_H_MM = 142.0, 51.0, 50.0
 
 # deck palette (Slides/thesis-deck-v2.tex preamble)
 INK, INKTWO, MUTED, RULE, PAPER, ACCENT = (
@@ -71,7 +70,7 @@ METRICS = [
     ("under_decomposition_rate", "Under-decomposition"),
     ("over_decomposition_rate", "Over-decomposition"),
 ]
-UP, DOWN = "⇑", "⇓"  # not in Plex; drawn from the DejaVu Sans fallback
+UP, DOWN = "\u2191", "\u2193"  # as in the deck's metric table
 
 FS_TITLE, FS_TICK, FS_CELL = 7.0, 6.5, 6.5
 
