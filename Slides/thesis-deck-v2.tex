@@ -1269,6 +1269,35 @@ $d=A-B$ & \textbf{0.2} & \textbf{0.1} & \textbf{0.3} & \textbf{0.2} & \textbf{0.
 \end{frame}
 }
 
+% ============================== A1 -- sampling variance: spread ======
+% source: experiments/exp-030/resample_metrics.json (summary.<arm>.overall: mean,
+%   p2.5, p97.5, pinned_value, pinned_percentile); dots = per-draw values from the
+%   resampler's resample_per_draw.csv, checked against that JSON.
+%   Figure drawn by:  .venv/bin/python -I Slides/sampling_variance_figs.py
+%   Callout: Break EM pinned_percentile 97 / 85 / 98 / 87 (Qwen2.5-7B / -14B /
+%   Qwen3.5-9B / Mistral-7B).
+\begin{frame}[t]
+\slideheadbadge{RESULT \textperiodcentered\ SAMPLING VARIANCE}{Across 50 random samples, every score stays within a few points}{50 $\times$ 600 QUESTIONS}
+\vspace{-1mm}
+{\centering\includegraphics[width=\linewidth]{figs/sampling_variance_spread.pdf}\par}
+\callout{Our 600-question set reads high on Break EM for every prompted model.}
+\srcline{exp-030 $\cdot$ 50 stratified draws, 200 per hop $\cdot$ seed 42 $\cdot$ diamond = pinned 600}
+\end{frame}
+
+% ====================== A2 -- sampling variance: rank stability ======
+% source: experiments/exp-030/resample_metrics.json (rank_stability_pct; rank_rule:
+%   direction-aware, 1 = best, ties share the best rank).
+%   Figure drawn by:  .venv/bin/python -I Slides/sampling_variance_figs.py
+%   Callout: SARI -- Mistral-7B, Qwen2.5-7B, Qwen2.5-14B each span ranks 3-5;
+%   GED -- Qwen2.5-7B 48/44/8, Qwen2.5-14B 50/48/2 at ranks 2/3/4.
+\begin{frame}[t]
+\slideheadbadge{RESULT \textperiodcentered\ SAMPLING VARIANCE}{The fine-tune ranks first in all 50 samples on five metrics}{50 $\times$ 600 QUESTIONS}
+\vspace{-1mm}
+{\centering\includegraphics[width=\linewidth]{figs/sampling_variance_ranks.pdf}\par}
+\callout{Close calls flip between samples: SARI ranks 3--5, GED ranks 2--4.}
+\srcline{exp-030 $\cdot$ \% of 50 draws in which each model takes each rank $\cdot$ 1 = best}
+\end{frame}
+
 % ==================================== A3 -- pool construction ======
 % source: experiments/log.md row exp-019 (no experiments/exp-019/ directory)
 \begin{frame}[t]
