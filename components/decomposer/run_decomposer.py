@@ -1971,7 +1971,16 @@ def _parse_args() -> argparse.Namespace:
         help="Permit a run whose loaded row counts do not match the config's "
         "'eval_rows_per_hop' (the pinned ADR 0007 set). For fixture and smoke runs only: "
         "the metrics JSON then records evaluation_set.pinned=false, and such a run is not an "
-        "experiment arm.",
+        "experiment arm. With --eval-set it downgrades the named-set assertion the same way.",
+    )
+    p.add_argument(
+        "--eval-set",
+        default=None,
+        help="Run on a NAMED non-pinned evaluation set from configs/eval_sets.json (e.g. "
+        "musique_dev_full, issue #56) instead of the ADR 0007 pinned 600. The loaded ids are "
+        "then asserted against that set's source file by id (src/eval_sets.py) in place of the "
+        "pinned-set assertion. Omitted (the default): the pinned-set assertion runs exactly as "
+        "before.",
     )
     return p.parse_args()
 
@@ -2718,25 +2727,41 @@ def main() -> None:
     }
     loaded_ids = {str(r["query_id"]) for r in inference_rows if r["query_id"] is not None}
     distinct_query_ids = len(loaded_ids)
-    pinned_ids: set[str] = set()
-    pinned_files: list[str] = []
-    pinned_id_problems: list[str] = []
-    if optional(cfg, "eval_rows_per_hop") is not None:
-        pinned_ids, pinned_files, pinned_id_problems = load_pinned_eval_ids(
-            paths_cfg, cfg, hops, data_root
+    if args.eval_set is not None:
+        # A NAMED non-pinned set (issue #56, ADR 0035), selected explicitly. It replaces the
+        # pinned-set assertion for this run only; it is asserted by id just as strictly.
+        from eval_sets import assert_named_eval_set, load_named_eval_set
+
+        eval_set_record = assert_named_eval_set(
+            loaded_ids,
+            rows_loaded_per_hop,
+            rows_loaded_total,
+            load_named_eval_set(args.eval_set, paths_cfg),
+            allow_mismatch=args.allow_unpinned_eval_set,
+            source=str(retrieval_path) if retrieval_input else "questions_template_key",
+            component="decomposer",
+            allow_flag="--allow-unpinned-eval-set",
         )
-    eval_set_record = assert_pinned_eval_set(
-        rows_loaded_per_hop,
-        rows_loaded_total,
-        cfg=cfg,
-        hops=hops,
-        allow_unpinned=args.allow_unpinned_eval_set,
-        source=str(retrieval_path) if retrieval_input else "questions_template_key",
-        loaded_ids=loaded_ids,
-        pinned_ids=pinned_ids,
-        pinned_files=pinned_files,
-        pinned_id_problems=pinned_id_problems,
-    )
+    else:
+        pinned_ids: set[str] = set()
+        pinned_files: list[str] = []
+        pinned_id_problems: list[str] = []
+        if optional(cfg, "eval_rows_per_hop") is not None:
+            pinned_ids, pinned_files, pinned_id_problems = load_pinned_eval_ids(
+                paths_cfg, cfg, hops, data_root
+            )
+        eval_set_record = assert_pinned_eval_set(
+            rows_loaded_per_hop,
+            rows_loaded_total,
+            cfg=cfg,
+            hops=hops,
+            allow_unpinned=args.allow_unpinned_eval_set,
+            source=str(retrieval_path) if retrieval_input else "questions_template_key",
+            loaded_ids=loaded_ids,
+            pinned_ids=pinned_ids,
+            pinned_files=pinned_files,
+            pinned_id_problems=pinned_id_problems,
+        )
     eval_set_record["rows_loaded_total"] = rows_loaded_total
     eval_set_record["rows_loaded_per_hop"] = rows_loaded_per_hop
     eval_set_record["distinct_query_ids"] = distinct_query_ids
@@ -3171,11 +3196,20 @@ def main() -> None:
             ),
             f"- Rows: {len(results)} of {rows_loaded_total} loaded "
             f"(per hop: {rows_loaded_per_hop}; distinct ids: {distinct_query_ids})",
-            f"- Evaluation set pinned: {eval_set_record['pinned']} "
-            f"(expected {eval_set_record['expected_rows_per_hop']} rows per hop for "
-            f"hops {hops}; ids checked against the pinned files: "
-            f"{eval_set_record['id_identity_checked']}; "
-            f"source: {eval_set_record['rows_source']})",
+            (
+                f"- Evaluation set: NAMED set `{eval_set_record['named_eval_set']}` (not the "
+                f"pinned 600); matches by id: {eval_set_record['matches_named_set']} "
+                f"({eval_set_record['definition']['expected_total']} ids from "
+                f"`{eval_set_record['definition']['source_path']}`, per hop "
+                f"{eval_set_record['definition']['ids_per_hop']}); "
+                f"source: {eval_set_record['rows_source']}"
+                if eval_set_record.get("named_set_asserted")
+                else f"- Evaluation set pinned: {eval_set_record['pinned']} "
+                f"(expected {eval_set_record['expected_rows_per_hop']} rows per hop for "
+                f"hops {hops}; ids checked against the pinned files: "
+                f"{eval_set_record['id_identity_checked']}; "
+                f"source: {eval_set_record['rows_source']})"
+            ),
             (
                 f"- Retrieval input: `{retrieval_path}` (sha256 `{retrieval_sha256}`)"
                 if retrieval_input

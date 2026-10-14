@@ -3103,9 +3103,27 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=None, help="Override the config seed.")
     p.add_argument("--limit", type=int, default=None, help="Override the config row cap.")
     p.add_argument("--out-prefix", default=None, help="Override the artifact filename prefix.")
+    p.add_argument(
+        "--eval-set",
+        default=None,
+        help="Scoring only. Assert that the evaluated items are exactly a NAMED evaluation set "
+        "from configs/eval_sets.json (e.g. musique_dev_full, issue #56), by id, and record "
+        "the set and its per-hop counts in the metrics and the per-item file. Omitted (the "
+        "default): scoring behaves exactly as before.",
+    )
+    p.add_argument(
+        "--allow-eval-set-mismatch",
+        action="store_true",
+        help="With --eval-set: downgrade a mismatch to a recorded warning. For fixture and "
+        "smoke runs only; such a run is not an experiment arm.",
+    )
     args = p.parse_args()
     if (args.predictions is None) == (args.compare is None):
         p.error("pass exactly one of --predictions (scoring) or --compare A B (comparison)")
+    if args.compare is not None and args.eval_set is not None:
+        p.error("--eval-set applies to scoring (--predictions), not to --compare")
+    if args.allow_eval_set_mismatch and args.eval_set is None:
+        p.error("--allow-eval-set-mismatch requires --eval-set")
     if args.compare is None and (args.v1_per_item or args.v1_alignment is not None):
         p.error("--v1-per-item / --v1-alignment only apply to --compare")
     if args.v1_alignment is not None and not args.v1_per_item:
@@ -3168,6 +3186,29 @@ def main() -> None:
     if not rows:
         raise SystemExit("No evaluable rows (no matched questions between predictions and gold).")
 
+    # A NAMED evaluation set (issue #56, ADR 0035), only when asked for: asserted by id on
+    # the rows that will actually be scored, before any scoring time is spent. Without
+    # --eval-set nothing here runs and no key is added anywhere.
+    eval_set_record: dict[str, Any] | None = None
+    if args.eval_set is not None:
+        from eval_sets import assert_named_eval_set, load_named_eval_set
+
+        scored_per_hop: dict[str, int] = {}
+        for r in rows:
+            scored_per_hop[str(r.gold_hop_count)] = scored_per_hop.get(str(r.gold_hop_count), 0) + 1
+        eval_set_record = assert_named_eval_set(
+            {r.item_id for r in rows},
+            {k: scored_per_hop[k] for k in sorted(scored_per_hop)},
+            len(rows),
+            load_named_eval_set(args.eval_set, paths_cfg),
+            allow_mismatch=args.allow_eval_set_mismatch,
+            source=str(args.predictions),
+            component="evaluator",
+            allow_flag="--allow-eval-set-mismatch",
+        )
+        eval_set_record["missing_gold_count"] = missing_gold
+        print(f"Evaluation set: {json.dumps(eval_set_record, default=str)}")
+
     per_item: list[dict[str, Any]] = []
     per_hop_rows: dict[int, list[dict[str, Any]]] = {}
     gold_hop_distribution: dict[str, int] = {}
@@ -3222,6 +3263,8 @@ def main() -> None:
         "lower_is_better_statistics": list(LOWER_IS_BETTER_STATISTICS),
         "metric_definitions": METRIC_DEFINITIONS,
     }
+    if eval_set_record is not None:
+        metrics["evaluation_set"] = eval_set_record
 
     per_item_path = run_dir / f"{out_prefix}_per_item.json"
     per_item_payload = {
@@ -3235,6 +3278,11 @@ def main() -> None:
         "composite_step_count_error_scale": scale,
         "items": per_item,
     }
+    if eval_set_record is not None:
+        # Stamped so a reader (scripts/resample_eval_sets.py) can tell which population the
+        # file covers without re-deriving it. Absent on the default path, which keeps that
+        # file's schema byte-identical.
+        per_item_payload["evaluation_set"] = eval_set_record["named_eval_set"]
     per_item_path.write_text(
         json.dumps(per_item_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -3255,6 +3303,9 @@ def main() -> None:
         "ged_policy": ged_policy,
         "decomp_mean_policy": decomp_mean_policy,
     }
+    if eval_set_record is not None:
+        snapshot["eval_set"] = args.eval_set
+        snapshot["allow_eval_set_mismatch"] = bool(args.allow_eval_set_mismatch)
     fallbacks = metrics["ged_fallback_counts"]
     write_run_artifacts(
         run_dir,
@@ -3265,6 +3316,15 @@ def main() -> None:
             f"- Predictions: `{args.predictions}`",
             f"- Gold: `{gold_path}`",
             f"- Evaluated rows: {n} (missing gold matches: {missing_gold})",
+            *(
+                [
+                    f"- Evaluation set: NAMED set `{eval_set_record['named_eval_set']}` (not "
+                    f"the pinned 600); matches by id: {eval_set_record['matches_named_set']}; "
+                    f"scored per hop {eval_set_record['rows_loaded_per_hop']}"
+                ]
+                if eval_set_record is not None
+                else []
+            ),
             "",
             *_report_card_note_lines(report_card),
             "",
