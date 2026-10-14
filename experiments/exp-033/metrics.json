@@ -1,0 +1,1176 @@
+{
+ "exp_id": "exp-033",
+ "issue": 60,
+ "adr": "0039 item 5 (H4)",
+ "code_commit": "5c4e442aee149561a4bb3c7a8b21045016fc2284",
+ "model": "Qwen/Qwen2.5-7B-Instruct 4-bit NF4 (one model; transfer to other models is an assumption)",
+ "eval_set": "MuSiQue ADR 0007 pinned 600 (200/hop)",
+ "orderings": [
+  "as_is (exp-021)",
+  "reversed (exp-024)",
+  "shuffled seed 1 (exp-033)",
+  "shuffled seed 2 (exp-033)",
+  "shuffled seed 3 (exp-033)"
+ ],
+ "run_checks": {
+  "seed1": {
+   "decomposer_dir": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed1/decomposer/20261014_155423/",
+   "few_shot_ordering": "shuffled",
+   "few_shot_ordering_seed": 1,
+   "config_few_shot_ordering": "shuffled",
+   "config_few_shot_ordering_seed": 1,
+   "rows": 600,
+   "rows_with_empty_decomposition": 0,
+   "eval_total_evaluated": 600,
+   "eval_missing_gold_count": 0
+  },
+  "seed2": {
+   "decomposer_dir": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed2/decomposer/20261014_160919/",
+   "few_shot_ordering": "shuffled",
+   "few_shot_ordering_seed": 2,
+   "config_few_shot_ordering": "shuffled",
+   "config_few_shot_ordering_seed": 2,
+   "rows": 600,
+   "rows_with_empty_decomposition": 0,
+   "eval_total_evaluated": 600,
+   "eval_missing_gold_count": 0
+  },
+  "seed3": {
+   "decomposer_dir": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed3/decomposer/20261014_162234/",
+   "few_shot_ordering": "shuffled",
+   "few_shot_ordering_seed": 3,
+   "config_few_shot_ordering": "shuffled",
+   "config_few_shot_ordering_seed": 3,
+   "rows": 600,
+   "rows_with_empty_decomposition": 0,
+   "eval_total_evaluated": 600,
+   "eval_missing_gold_count": 0
+  }
+ },
+ "per_ordering": {
+  "as_is (exp-021)": {
+   "break_exact_match_rate": 0.055,
+   "sari_macro": 0.572033130236507,
+   "ged_macro": 0.4694386092774358,
+   "chain_validity_macro": 0.921,
+   "hop_count_exact_match_rate": 0.5533333333333333,
+   "under_decomposition_rate": 0.29333333333333333,
+   "over_decomposition_rate": 0.15333333333333332,
+   "step_f1_soft_050_macro": 0.7236851851851852,
+   "step_f1_soft_060_macro": 0.5964612794612795,
+   "plan_connectedness_macro": 0.8842675264550265,
+   "plan_connectedness_null_items": 24,
+   "_sources": {
+    "card": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-021/eval/eval_metrics.json",
+    "beside": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-032/exp-021/eval/eval_metrics.json"
+   }
+  },
+  "reversed (exp-024)": {
+   "break_exact_match_rate": 0.058333333333333334,
+   "sari_macro": 0.5771373593257034,
+   "ged_macro": 0.47282022034280413,
+   "chain_validity_macro": 0.9282222222222222,
+   "hop_count_exact_match_rate": 0.54,
+   "under_decomposition_rate": 0.29,
+   "over_decomposition_rate": 0.17,
+   "step_f1_soft_050_macro": 0.7385774318274319,
+   "step_f1_soft_060_macro": 0.6131010008510009,
+   "plan_connectedness_macro": 0.8863871635610766,
+   "plan_connectedness_null_items": 25,
+   "_sources": {
+    "card": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-024/eval/eval_metrics.json",
+    "beside": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-032/exp-024/eval/eval_metrics.json"
+   }
+  },
+  "shuffled seed 1 (exp-033)": {
+   "break_exact_match_rate": 0.056666666666666664,
+   "sari_macro": 0.572394916000785,
+   "ged_macro": 0.4727829684408785,
+   "chain_validity_macro": 0.908611111111111,
+   "hop_count_exact_match_rate": 0.53,
+   "under_decomposition_rate": 0.31666666666666665,
+   "over_decomposition_rate": 0.15333333333333332,
+   "step_f1_soft_050_macro": 0.7228498075998077,
+   "step_f1_soft_060_macro": 0.6041818181818182,
+   "plan_connectedness_macro": 0.8776406548657857,
+   "plan_connectedness_null_items": 27,
+   "_sources": {
+    "card": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed1/eval/eval_metrics.json",
+    "beside": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed1/eval/eval_metrics.json"
+   }
+  },
+  "shuffled seed 2 (exp-033)": {
+   "break_exact_match_rate": 0.05,
+   "sari_macro": 0.5767713587914256,
+   "ged_macro": 0.47663919454524867,
+   "chain_validity_macro": 0.9100277777777778,
+   "hop_count_exact_match_rate": 0.5233333333333333,
+   "under_decomposition_rate": 0.33166666666666667,
+   "over_decomposition_rate": 0.145,
+   "step_f1_soft_050_macro": 0.7356184463684463,
+   "step_f1_soft_060_macro": 0.6213431938431938,
+   "plan_connectedness_macro": 0.8745920745920746,
+   "plan_connectedness_null_items": 28,
+   "_sources": {
+    "card": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed2/eval/eval_metrics.json",
+    "beside": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed2/eval/eval_metrics.json"
+   }
+  },
+  "shuffled seed 3 (exp-033)": {
+   "break_exact_match_rate": 0.058333333333333334,
+   "sari_macro": 0.5723428909957178,
+   "ged_macro": 0.46762880569311166,
+   "chain_validity_macro": 0.9342222222222222,
+   "hop_count_exact_match_rate": 0.535,
+   "under_decomposition_rate": 0.305,
+   "over_decomposition_rate": 0.16,
+   "step_f1_soft_050_macro": 0.7409053446553447,
+   "step_f1_soft_060_macro": 0.6145847578347579,
+   "plan_connectedness_macro": 0.8899786166625545,
+   "plan_connectedness_null_items": 21,
+   "_sources": {
+    "card": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed3/eval/eval_metrics.json",
+    "beside": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/seed3/eval/eval_metrics.json"
+   }
+  }
+ },
+ "b_spread_table": {
+  "break_exact_match_rate": {
+   "mean": 0.05566666666666667,
+   "sd_sample_n_minus_1": 0.0034560735588879525,
+   "min": 0.05,
+   "max": 0.058333333333333334,
+   "range": 0.008333333333333331,
+   "n_orderings": 5
+  },
+  "sari_macro": {
+   "mean": 0.5741359310700278,
+   "sd_sample_n_minus_1": 0.002579823074047327,
+   "min": 0.572033130236507,
+   "max": 0.5771373593257034,
+   "range": 0.005104229089196388,
+   "n_orderings": 5
+  },
+  "ged_macro": {
+   "mean": 0.47186195965989575,
+   "sd_sample_n_minus_1": 0.0034778122952352163,
+   "min": 0.46762880569311166,
+   "max": 0.47663919454524867,
+   "range": 0.009010388852137008,
+   "n_orderings": 5
+  },
+  "chain_validity_macro": {
+   "mean": 0.9204166666666667,
+   "sd_sample_n_minus_1": 0.011170949980050493,
+   "min": 0.908611111111111,
+   "max": 0.9342222222222222,
+   "range": 0.02561111111111114,
+   "n_orderings": 5
+  },
+  "hop_count_exact_match_rate": {
+   "mean": 0.5363333333333333,
+   "sd_sample_n_minus_1": 0.011328430311977626,
+   "min": 0.5233333333333333,
+   "max": 0.5533333333333333,
+   "range": 0.030000000000000027,
+   "n_orderings": 5
+  },
+  "under_decomposition_rate": {
+   "mean": 0.30733333333333335,
+   "sd_sample_n_minus_1": 0.017183648558376008,
+   "min": 0.29,
+   "max": 0.33166666666666667,
+   "range": 0.041666666666666685,
+   "n_orderings": 5
+  },
+  "over_decomposition_rate": {
+   "mean": 0.15633333333333332,
+   "sd_sample_n_minus_1": 0.009309493362512637,
+   "min": 0.145,
+   "max": 0.17,
+   "range": 0.025000000000000022,
+   "n_orderings": 5
+  },
+  "step_f1_soft_050_macro": {
+   "mean": 0.7323272431272432,
+   "sd_sample_n_minus_1": 0.008485099484388425,
+   "min": 0.7228498075998077,
+   "max": 0.7409053446553447,
+   "range": 0.018055537055537085,
+   "n_orderings": 5
+  },
+  "step_f1_soft_060_macro": {
+   "mean": 0.6099344100344101,
+   "sd_sample_n_minus_1": 0.00970091413891774,
+   "min": 0.5964612794612795,
+   "max": 0.6213431938431938,
+   "range": 0.02488191438191434,
+   "n_orderings": 5
+  },
+  "plan_connectedness_macro": {
+   "mean": 0.8825732072273036,
+   "sd_sample_n_minus_1": 0.006330197872209368,
+   "min": 0.8745920745920746,
+   "max": 0.8899786166625545,
+   "range": 0.015386542070479958,
+   "n_orderings": 5
+  }
+ },
+ "b_spread_note": "SD is the sample SD (n-1) over the 5 orderings; beside-card rows are descriptive only (no ranking, no k-of-n tally)",
+ "a_compares": {
+  "seed1_vs_exp021_as_is": {
+   "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/compare/seed1_vs_exp021_as_is/compare_metrics.json",
+   "difference_direction": "system_a minus system_b",
+   "num_aligned_items": 600,
+   "tests_reported": {
+    "bootstrap": 8,
+    "mcnemar": 5,
+    "paired_t_test": 12,
+    "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+    "multiple_comparison_correction": null
+   },
+   "beside_card_compared": false,
+   "beside_card_note": "not compared: exp-021's per-item file (runs/exp-021/eval) predates the beside-card columns; plan (a) names that file",
+   "significant_tests_uncorrected": [],
+   "rows": {
+    "bootstrap.rouge_l_f1": {
+     "difference": 0.0017416926143052347,
+     "ci_low": -0.007806626733298347,
+     "ci_high": 0.011110884059822712,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.step_f1": {
+     "difference": 0.007013227513227527,
+     "ci_low": -0.005985813492063462,
+     "ci_high": 0.01973822751322755,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ordered_step_accuracy": {
+     "difference": 0.006763888888888847,
+     "ci_low": -0.006069791666666654,
+     "ci_high": 0.019430555555555507,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.sari": {
+     "difference": 0.00036178576427781106,
+     "ci_low": -0.009738568001409764,
+     "ci_high": 0.01047642538912383,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ged": {
+     "difference": 0.0033443591634427228,
+     "ci_low": -0.011596848034802302,
+     "ci_high": 0.018243943884581146,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.chain_validity": {
+     "difference": -0.01238888888888856,
+     "ci_low": -0.03516736111111124,
+     "ci_high": 0.00983333333333336,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.decomp_mean": {
+     "difference": -0.007462788951370314,
+     "ci_low": -0.02127021622961346,
+     "ci_high": 0.006461905571862559,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.composite_score": {
+     "difference": -0.19622109788359787,
+     "ci_low": -0.20444220403439153,
+     "ci_high": 0.010830297619047604,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.exact_match": {
+     "difference": 0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.629058837890625,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.hop_count_exact_match": {
+     "difference": -0.023333333333333334,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.3070673333444646,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.break_exact_match": {
+     "difference": 0.0016666666666666668,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 1.0,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.over_decomposition": {
+     "difference": 0.0,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 1.0,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.under_decomposition": {
+     "difference": 0.023333333333333334,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.24670624718941767,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.rouge_l_f1": {
+     "difference": 0.0017416926143051592,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.7191148049238602,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.step_f1": {
+     "difference": 0.007013227513227514,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.2844412623886117,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ordered_step_accuracy": {
+     "difference": 0.00676388888888889,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.2978172682704402,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.sari": {
+     "difference": 0.0003617857642779924,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.9442181046694963,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ged": {
+     "difference": 0.0033443591634427267,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.6612679747607413,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.chain_validity": {
+     "difference": -0.012388888888888889,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.2742067259825461,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.decomp_mean": {
+     "difference": -0.0074627889513703746,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.2890563312484604,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.exact_match": {
+     "difference": 0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.46731336251503236,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.hop_count_exact_match": {
+     "difference": -0.023333333333333334,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.27171451871545166,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.break_exact_match": {
+     "difference": 0.0016666666666666668,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.7964970904074125,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.over_decomposition": {
+     "difference": 0.0,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 1.0,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.under_decomposition": {
+     "difference": 0.023333333333333334,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.21259264228487174,
+     "significant": false,
+     "favours": null
+    }
+   }
+  },
+  "seed2_vs_exp021_as_is": {
+   "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/compare/seed2_vs_exp021_as_is/compare_metrics.json",
+   "difference_direction": "system_a minus system_b",
+   "num_aligned_items": 600,
+   "tests_reported": {
+    "bootstrap": 8,
+    "mcnemar": 5,
+    "paired_t_test": 12,
+    "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+    "multiple_comparison_correction": null
+   },
+   "beside_card_compared": false,
+   "beside_card_note": "not compared: exp-021's per-item file (runs/exp-021/eval) predates the beside-card columns; plan (a) names that file",
+   "significant_tests_uncorrected": [
+    "mcnemar.under_decomposition",
+    "t_test.under_decomposition"
+   ],
+   "rows": {
+    "bootstrap.rouge_l_f1": {
+     "difference": 0.005320933371642189,
+     "ci_low": -0.004305894672265789,
+     "ci_high": 0.014940980644149861,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.step_f1": {
+     "difference": 0.00036243386243386966,
+     "ci_low": -0.012922288359788382,
+     "ci_high": 0.013032374338624305,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ordered_step_accuracy": {
+     "difference": 0.00020833333333333814,
+     "ci_low": -0.012694444444444453,
+     "ci_high": 0.012694444444444399,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.sari": {
+     "difference": 0.0047382285549185665,
+     "ci_low": -0.00553174715585363,
+     "ci_high": 0.014794843799619914,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ged": {
+     "difference": 0.0072005852678128646,
+     "ci_low": -0.00907241396116226,
+     "ci_high": 0.023241857836486846,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.chain_validity": {
+     "difference": -0.01097222222222205,
+     "ci_low": -0.03619513888888897,
+     "ci_high": 0.01377777777777767,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.decomp_mean": {
+     "difference": -0.009746972132793963,
+     "ci_low": -0.023831701291874945,
+     "ci_high": 0.004250787710466113,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.composite_score": {
+     "difference": -0.00023697089947088967,
+     "ci_low": -0.009842144510582023,
+     "ci_high": 0.009040932539682543,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.exact_match": {
+     "difference": -0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.6476058959960938,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.hop_count_exact_match": {
+     "difference": -0.03,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.16207156803057038,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.break_exact_match": {
+     "difference": -0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.60723876953125,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.over_decomposition": {
+     "difference": -0.008333333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.6569924675863579,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.under_decomposition": {
+     "difference": 0.03833333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.045051739725735895,
+     "significant": true,
+     "favours": "system_b"
+    },
+    "t_test.rouge_l_f1": {
+     "difference": 0.005320933371642261,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.27743371003765777,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.step_f1": {
+     "difference": 0.00036243386243386223,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.9566052686865348,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ordered_step_accuracy": {
+     "difference": 0.00020833333333333224,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.9744708567993845,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.sari": {
+     "difference": 0.004738228554918695,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.35885174020749694,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ged": {
+     "difference": 0.007200585267812879,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.38435579661159175,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.chain_validity": {
+     "difference": -0.010972222222222218,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.38670909190336356,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.decomp_mean": {
+     "difference": -0.00974697213279391,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.17380669839675733,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.exact_match": {
+     "difference": -0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.4917537037514174,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.hop_count_exact_match": {
+     "difference": -0.03,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.1391159163458097,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.break_exact_match": {
+     "difference": -0.005,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.43903636158572296,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.over_decomposition": {
+     "difference": -0.008333333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.5789410644433766,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.under_decomposition": {
+     "difference": 0.03833333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.0364283285835992,
+     "significant": true,
+     "favours": "system_b"
+    }
+   }
+  },
+  "seed3_vs_exp021_as_is": {
+   "path": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-033/compare/seed3_vs_exp021_as_is/compare_metrics.json",
+   "difference_direction": "system_a minus system_b",
+   "num_aligned_items": 600,
+   "tests_reported": {
+    "bootstrap": 8,
+    "mcnemar": 5,
+    "paired_t_test": 12,
+    "headline_protocol": "bootstrap + McNemar (ADR 0009); the t-test is additive (ADR 0017)",
+    "multiple_comparison_correction": null
+   },
+   "beside_card_compared": false,
+   "beside_card_note": "not compared: exp-021's per-item file (runs/exp-021/eval) predates the beside-card columns; plan (a) names that file",
+   "significant_tests_uncorrected": [],
+   "rows": {
+    "bootstrap.rouge_l_f1": {
+     "difference": 0.002464768538445794,
+     "ci_low": -0.007311388039808445,
+     "ci_high": 0.01246587292184424,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.step_f1": {
+     "difference": 0.0036354016354016583,
+     "ci_low": -0.009424759499759496,
+     "ci_high": 0.01685502645502647,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ordered_step_accuracy": {
+     "difference": 0.0030575396825396894,
+     "ci_low": -0.009787748015873017,
+     "ci_high": 0.01596448412698412,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.sari": {
+     "difference": 0.0003097607592107421,
+     "ci_low": -0.00915364190736681,
+     "ci_high": 0.009720675695162847,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.ged": {
+     "difference": -0.0018098035843241433,
+     "ci_low": -0.017086583070627277,
+     "ci_high": 0.013555177073350142,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.chain_validity": {
+     "difference": 0.013222222222222357,
+     "ci_low": -0.008889583333333388,
+     "ci_high": 0.03516666666666657,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.decomp_mean": {
+     "difference": 8.300967380803215e-06,
+     "ci_low": -0.01364135019121889,
+     "ci_high": 0.013753719162606247,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "bootstrap.composite_score": {
+     "difference": 0.0011492003367003512,
+     "ci_low": -0.008261045725108208,
+     "ci_high": 0.010703017827080327,
+     "p_value": null,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.exact_match": {
+     "difference": 0.0016666666666666668,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 1.0,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.hop_count_exact_match": {
+     "difference": -0.018333333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.4249115601338554,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.break_exact_match": {
+     "difference": 0.0033333333333333335,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.79052734375,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.over_decomposition": {
+     "difference": 0.006666666666666667,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.7375543089843226,
+     "significant": false,
+     "favours": null
+    },
+    "mcnemar.under_decomposition": {
+     "difference": 0.011666666666666667,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.5760121204363974,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.rouge_l_f1": {
+     "difference": 0.0024647685384458938,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.6200503924274691,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.step_f1": {
+     "difference": 0.0036354016354016344,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.5843911248149106,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ordered_step_accuracy": {
+     "difference": 0.003057539682539683,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.637358592166856,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.sari": {
+     "difference": 0.00030976075921087,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.948470964498347,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.ged": {
+     "difference": -0.0018098035843241995,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.8163678605997333,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.chain_validity": {
+     "difference": 0.013222222222222222,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.2377261053218474,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.decomp_mean": {
+     "difference": 8.300967380830601e-06,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.9990434653470511,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.exact_match": {
+     "difference": 0.0016666666666666668,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.8085955611371981,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.hop_count_exact_match": {
+     "difference": -0.018333333333333333,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.38044347652121496,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.break_exact_match": {
+     "difference": 0.0033333333333333335,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.593398555063365,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.over_decomposition": {
+     "difference": 0.006666666666666667,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.6550977912083333,
+     "significant": false,
+     "favours": null
+    },
+    "t_test.under_decomposition": {
+     "difference": 0.011666666666666667,
+     "ci_low": null,
+     "ci_high": null,
+     "p_value": 0.5143670919205553,
+     "significant": false,
+     "favours": null
+    }
+   }
+  }
+ },
+ "c_spread_vs_family_and_size": {
+  "break_exact_match_rate": {
+   "direction": "higher_is_better",
+   "ordering_spread": {
+    "mean": 0.05566666666666667,
+    "sd_sample_n_minus_1": 0.0034560735588879525,
+    "min": 0.05,
+    "max": 0.058333333333333334,
+    "range": 0.008333333333333331,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.055,
+    "system_b": 0.04,
+    "difference": 0.015,
+    "abs_difference": 0.015,
+    "test": "mcnemar",
+    "p_value": 0.03515625,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.5555555555555555,
+    "ordering_sd_over_abs_difference": 0.23040490392586352,
+    "ordering_range_vs_difference": "comparable"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.03333333333333333,
+    "system_b": 0.055,
+    "difference": -0.021666666666666667,
+    "abs_difference": 0.021666666666666667,
+    "test": "mcnemar",
+    "p_value": 0.007197380065917969,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.3846153846153845,
+    "ordering_sd_over_abs_difference": 0.1595110873332901,
+    "ordering_range_vs_difference": "smaller"
+   }
+  },
+  "sari_macro": {
+   "direction": "higher_is_better",
+   "ordering_spread": {
+    "mean": 0.5741359310700278,
+    "sd_sample_n_minus_1": 0.002579823074047327,
+    "min": 0.572033130236507,
+    "max": 0.5771373593257034,
+    "range": 0.005104229089196388,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.572033130236507,
+    "system_b": 0.5767753062626554,
+    "difference": -0.004742176026148348,
+    "abs_difference": 0.004742176026148348,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": -0.016740922999758035,
+    "ci_high": 0.007220534454928769,
+    "significant": false,
+    "ordering_range_over_abs_difference": 1.0763474533740798,
+    "ordering_sd_over_abs_difference": 0.5440167256175621,
+    "ordering_range_vs_difference": "comparable"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.5794855995759548,
+    "system_b": 0.572033130236507,
+    "difference": 0.007452469339447765,
+    "abs_difference": 0.007452469339447765,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": -0.004743353836681036,
+    "ci_high": 0.019696721864647916,
+    "significant": false,
+    "ordering_range_over_abs_difference": 0.6849044064064028,
+    "ordering_sd_over_abs_difference": 0.3461702365404826,
+    "ordering_range_vs_difference": "comparable"
+   }
+  },
+  "ged_macro": {
+   "direction": "lower_is_better",
+   "ordering_spread": {
+    "mean": 0.47186195965989575,
+    "sd_sample_n_minus_1": 0.0034778122952352163,
+    "min": 0.46762880569311166,
+    "max": 0.47663919454524867,
+    "range": 0.009010388852137008,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.4694386092774358,
+    "system_b": 0.4815959456024564,
+    "difference": -0.012157336325020585,
+    "abs_difference": 0.012157336325020585,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": -0.030948458484207058,
+    "ci_high": 0.006789662655567034,
+    "significant": false,
+    "ordering_range_over_abs_difference": 0.741148275514353,
+    "ordering_sd_over_abs_difference": 0.28606696419820626,
+    "ordering_range_vs_difference": "comparable"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.46051979332568116,
+    "system_b": 0.4694386092774358,
+    "difference": -0.008918815951754644,
+    "abs_difference": 0.008918815951754644,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": -0.028925840282048712,
+    "ci_high": 0.010790702465721296,
+    "significant": false,
+    "ordering_range_over_abs_difference": 1.0102673831232438,
+    "ordering_sd_over_abs_difference": 0.38994103186432594,
+    "ordering_range_vs_difference": "comparable"
+   }
+  },
+  "chain_validity_macro": {
+   "direction": "higher_is_better",
+   "ordering_spread": {
+    "mean": 0.9204166666666667,
+    "sd_sample_n_minus_1": 0.011170949980050493,
+    "min": 0.908611111111111,
+    "max": 0.9342222222222222,
+    "range": 0.02561111111111114,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.9209999999999998,
+    "system_b": 0.962388888888889,
+    "difference": -0.04138888888888914,
+    "abs_difference": 0.04138888888888914,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": -0.06558333333333322,
+    "ci_high": -0.018527083333333156,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.6187919463087218,
+    "ordering_sd_over_abs_difference": 0.26990214716900357,
+    "ordering_range_vs_difference": "comparable"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.98375,
+    "system_b": 0.9209999999999998,
+    "difference": 0.0627500000000002,
+    "abs_difference": 0.0627500000000002,
+    "test": "bootstrap",
+    "p_value": null,
+    "ci_low": 0.0409722222222223,
+    "ci_high": 0.08513888888888899,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.4081451969898177,
+    "ordering_sd_over_abs_difference": 0.17802310725180015,
+    "ordering_range_vs_difference": "smaller"
+   }
+  },
+  "hop_count_exact_match_rate": {
+   "direction": "higher_is_better",
+   "ordering_spread": {
+    "mean": 0.5363333333333333,
+    "sd_sample_n_minus_1": 0.011328430311977626,
+    "min": 0.5233333333333333,
+    "max": 0.5533333333333333,
+    "range": 0.030000000000000027,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.5533333333333333,
+    "system_b": 0.5216666666666666,
+    "difference": 0.03166666666666667,
+    "abs_difference": 0.03166666666666667,
+    "test": "mcnemar",
+    "p_value": 0.22377658364650563,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": false,
+    "ordering_range_over_abs_difference": 0.9473684210526323,
+    "ordering_sd_over_abs_difference": 0.35773990458876714,
+    "ordering_range_vs_difference": "comparable"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.6166666666666667,
+    "system_b": 0.5533333333333333,
+    "difference": 0.06333333333333334,
+    "abs_difference": 0.06333333333333334,
+    "test": "mcnemar",
+    "p_value": 0.01203678813818822,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.47368421052631615,
+    "ordering_sd_over_abs_difference": 0.17886995229438357,
+    "ordering_range_vs_difference": "smaller"
+   }
+  },
+  "under_decomposition_rate": {
+   "direction": "lower_is_better",
+   "ordering_spread": {
+    "mean": 0.30733333333333335,
+    "sd_sample_n_minus_1": 0.017183648558376008,
+    "min": 0.29,
+    "max": 0.33166666666666667,
+    "range": 0.041666666666666685,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.29333333333333333,
+    "system_b": 0.17333333333333334,
+    "difference": 0.12,
+    "abs_difference": 0.12,
+    "test": "mcnemar",
+    "p_value": 9.028801681530523e-09,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.3472222222222224,
+    "ordering_sd_over_abs_difference": 0.14319707131980008,
+    "ordering_range_vs_difference": "smaller"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.10166666666666667,
+    "system_b": 0.29333333333333333,
+    "difference": -0.19166666666666668,
+    "abs_difference": 0.19166666666666668,
+    "test": "mcnemar",
+    "p_value": 7.322317539663456e-23,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.21739130434782616,
+    "ordering_sd_over_abs_difference": 0.08965381856544004,
+    "ordering_range_vs_difference": "smaller"
+   }
+  },
+  "over_decomposition_rate": {
+   "direction": "lower_is_better",
+   "ordering_spread": {
+    "mean": 0.15633333333333332,
+    "sd_sample_n_minus_1": 0.009309493362512637,
+    "min": 0.145,
+    "max": 0.17,
+    "range": 0.025000000000000022,
+    "n_orderings": 5
+   },
+   "family_exp021_minus_exp020": {
+    "system_a": 0.15333333333333332,
+    "system_b": 0.305,
+    "difference": -0.15166666666666667,
+    "abs_difference": 0.15166666666666667,
+    "test": "mcnemar",
+    "p_value": 1.9775810693297437e-13,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.16483516483516497,
+    "ordering_sd_over_abs_difference": 0.061381274917665735,
+    "ordering_range_vs_difference": "smaller"
+   },
+   "size_exp022_minus_exp021": {
+    "system_a": 0.2816666666666667,
+    "system_b": 0.15333333333333332,
+    "difference": 0.12833333333333333,
+    "abs_difference": 0.12833333333333333,
+    "test": "mcnemar",
+    "p_value": 1.8660893156355634e-10,
+    "ci_low": null,
+    "ci_high": null,
+    "significant": true,
+    "ordering_range_over_abs_difference": 0.19480519480519498,
+    "ordering_sd_over_abs_difference": 0.0725415067208777,
+    "ordering_range_vs_difference": "smaller"
+   }
+  }
+ },
+ "c_classification_rule": "ordering range (max-min over 5 orderings) vs |difference|: 'smaller' if range < 0.5*|diff|, 'larger' if range > 2*|diff|, else 'comparable'. A descriptive convention chosen by the runner at analysis time, not part of the pre-fixed plan; the raw ratios are given beside it.",
+ "c_sources": {
+  "family_exp021_minus_exp020": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-032/compare/exp-021_vs_exp-020/compare_metrics.json",
+  "size_exp022_minus_exp021": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-032/compare/exp-022_vs_exp-021/compare_metrics.json"
+ },
+ "d_few_shot_shuffle_coincidences": {
+  "seed1": {
+   "rows_with_k_at_least_2": 600,
+   "equal_to_as_is": 7,
+   "equal_to_reversed": 7,
+   "rows_with_k_below_2": 0
+  },
+  "seed2": {
+   "rows_with_k_at_least_2": 600,
+   "equal_to_as_is": 9,
+   "equal_to_reversed": 6,
+   "rows_with_k_below_2": 0
+  },
+  "seed3": {
+   "rows_with_k_at_least_2": 600,
+   "equal_to_as_is": 5,
+   "equal_to_reversed": 9,
+   "rows_with_k_below_2": 0
+  }
+ }
+}
