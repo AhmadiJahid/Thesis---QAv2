@@ -1,0 +1,41 @@
+# 0035 — Results-section decisions, the decomposer size exception confirmed, and the v2 pool-size sweep
+
+- **Status:** accepted (Jahid, 2026-10-14, in session; operational details decided by the lead under
+  his delegation — *"I am leaving you should work on your own"* — and his to reverse).
+- **Context:** the results-section redesign plan
+  ([`docs/plan/2026-10-14-results-section-redesign.md`](../plan/2026-10-14-results-section-redesign.md))
+  ended with five open questions; Jahid answered them the same day, and added a sixth fact.
+
+## Decisions (Jahid's words in italics)
+
+1. **Separate slides stay separate.** Pool construction, reranking and hop-matched retrieval keep
+   their own slides — *"lets keep it not move into one slide"*.
+2. **750-question slides stay in the section behind a badge** — Jahid deferred to the plan's
+   recommendation (*"do as recommended"*). They are never charted against pinned-600 numbers as if
+   comparable.
+3. **The v1 prior-work slides (masking, pool size) are dropped** — *"lets drop it"*. Pool size is
+   instead measured in v2 (item 7).
+4. **The legacy composite leaves every "k of n" count** — *"done remove composite"*.
+5. **A CPU-only re-analysis adds significance tests** for the per-hop and end-to-end numbers
+   (*"Yes"*), logged as its own experiment before any slide claims from it.
+6. **The decomposer's 15B exception is confirmed by the supervisor** — *"supervisor approved it"*.
+   This closes the "pending supervisor confirmation" status that ADR 0031 item 4 and ADR 0032 item
+   2 left open. `decomposer_max_params` stays 1.5e10; every other role stays at 8B.
+7. **Pool size is swept in v2, extended to 10k** — *"slowly increasing the number of elements in the
+   pool like 8k to 9k 10k"*. This widens issue #51 (2k–8k at 1k steps) to **2k–10k at 1k steps**.
+
+## Shape of the sweep (lead, under delegation)
+
+- **One factor moves:** pool size. Everything else is exp-020's: Mistral-7B-Instruct-v0.3, 4-bit,
+  `unguided`, pinned 600 (ADR 0007), `imbalanced` construction (ADR 0031 item 1), e5-small-v2 top-20
+  → cross-encoder rerank → top-5, seed 42. Reason: exp-020 is the cheapest #50 arm and is the 2k
+  point already, if — and only if — the rebuilt 2k pool and retrieval artifact are byte-identical
+  to exp-020's (sha256 checked); otherwise 2k is re-run too.
+- **Imbalanced only.** Re-crossing construction strategies would multiply cells; exp-019 found no
+  defect behind the "matching numbers" (issue #52) and a null construction effect, so #51's
+  blocking question is settled.
+- **Every pool is checked for zero overlap with the pinned 600**, and how the larger pools relate to
+  the smaller ones (nested, or independent draws at the same seed) is recorded in the run note, since
+  it decides whether size is confounded with a different draw.
+- **Tests:** each size against 2k with the evaluator's battery (ADR 0009); no correction unless a
+  slide states Holm.
