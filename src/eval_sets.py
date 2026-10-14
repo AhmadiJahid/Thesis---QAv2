@@ -1,4 +1,4 @@
-"""Named, non-pinned evaluation sets, asserted by id (issue #56, ADR 0037).
+"""Named, non-pinned evaluation sets, asserted by id (issue #56, ADR 0038).
 
 The ADR 0007 pinned 600 is asserted inside ``components/decomposer/run_decomposer.py``
 (:func:`assert_pinned_eval_set`), and that path is left exactly as it was. This module adds

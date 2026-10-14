@@ -1,4 +1,4 @@
-# 0037 — Sampling variance is measured by one full-dev run per arm and offline stratified resampling
+# 0038 — Sampling variance is measured by one full-dev run per arm and offline stratified resampling
 
 - **Status:** Accepted (lead decision under Jahid's delegation, 2026-10-14).
 - **Context:** Issue #56. The supervisor asked how much the MuSiQue decomposition metrics would move

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sampling variance of the decomposition report card under random stratified eval sets.
 
-Issue #56 / ADR 0037. Every MuSiQue number so far is one draw: the ADR 0007 pinned 600
+Issue #56 / ADR 0038. Every MuSiQue number so far is one draw: the ADR 0007 pinned 600
 (200 per hop). Decoding is greedy and few-shot retrieval is per question, so a question's
 decomposition - and hence its per-item score - does not depend on which sample it sits in.
 Each arm is therefore run ONCE over a population (``musique_dev_full``, all 2,417

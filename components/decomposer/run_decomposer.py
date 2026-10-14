@@ -2728,7 +2728,7 @@ def main() -> None:
     loaded_ids = {str(r["query_id"]) for r in inference_rows if r["query_id"] is not None}
     distinct_query_ids = len(loaded_ids)
     if args.eval_set is not None:
-        # A NAMED non-pinned set (issue #56, ADR 0037), selected explicitly. It replaces the
+        # A NAMED non-pinned set (issue #56, ADR 0038), selected explicitly. It replaces the
         # pinned-set assertion for this run only; it is asserted by id just as strictly.
         from eval_sets import assert_named_eval_set, load_named_eval_set
 

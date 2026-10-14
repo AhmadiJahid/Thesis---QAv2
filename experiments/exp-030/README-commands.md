@@ -1,7 +1,7 @@
 # exp-030: launch commands for the issue #56 full-dev runs (not yet run)
 
 This file contains commands only. No GPU run below has happened. Write the `experiments/log.md`
-row before launching (CLAUDE.md). See ADR 0037 for the design.
+row before launching (CLAUDE.md). See ADR 0038 for the design.
 
 Run every command from the repo root of the checkout that holds the merged code. All paths are
 relative to that root. Each arm's command is copied from its committed record:
@@ -130,7 +130,7 @@ Commit `resample_metrics.json`, `resample_summary.csv`, `resample_notes.md` and 
 - **The SD is shrunk by the finite-population correction.** Draws are without replacement from
   finite hop strata, so the SD is scaled by sqrt(1 − n/N) ≈ 0.92 / 0.86 / 0.71 at 2 / 3 / 4 hops.
   `sd_fpc_corrected` reports the SD with that correction removed. Overlap between draws only
-  correlates the K draws (ADR 0037 item 4).
+  correlates the K draws (ADR 0038 item 4).
 - **The gold join is by question text (an existing evaluator behaviour, unchanged here; issue #57).** The dev
   split has 6 pairs of rows (12 rows) with identical question text. In 5 of those pairs the gold
   decompositions differ, and the first row of each pair is scored against its twin's gold. One of these

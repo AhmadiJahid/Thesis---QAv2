@@ -3186,7 +3186,7 @@ def main() -> None:
     if not rows:
         raise SystemExit("No evaluable rows (no matched questions between predictions and gold).")
 
-    # A NAMED evaluation set (issue #56, ADR 0037), only when asked for: asserted by id on
+    # A NAMED evaluation set (issue #56, ADR 0038), only when asked for: asserted by id on
     # the rows that will actually be scored, before any scoring time is spent. Without
     # --eval-set nothing here runs and no key is added anywhere.
     eval_set_record: dict[str, Any] | None = None
