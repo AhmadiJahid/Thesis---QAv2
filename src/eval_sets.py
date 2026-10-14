@@ -1,4 +1,4 @@
-"""Named, non-pinned evaluation sets, asserted by id (issue #56, ADR 0035).
+"""Named, non-pinned evaluation sets, asserted by id (issue #56, ADR 0037).
 
 The ADR 0007 pinned 600 is asserted inside ``components/decomposer/run_decomposer.py``
 (:func:`assert_pinned_eval_set`), and that path is left exactly as it was. This module adds
@@ -25,6 +25,13 @@ from typing import Any
 from run_config import data_path, load_config, require
 
 EVAL_SETS_CONFIG = "eval_sets.json"
+
+#: A paths config may override a named set's ``expected_total`` under this key. Only the
+#: synthetic fixture tree uses it (``configs/smoke_paths.json``), the same way it overrides
+#: the fine-tune eval-set counts under ``eval_set_expected``: its fabricated dev file holds a
+#: handful of rows, so the count is declared there rather than relaxed in code.
+#: ``configs/paths.json`` carries no such key, so real runs assert the committed total.
+PATHS_EXPECTED_TOTAL_KEY = "named_eval_set_expected_total"
 
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
 
@@ -99,6 +106,9 @@ def load_named_eval_set(
     answerable_field = require(spec, "answerable_field")
     hops = [int(h) for h in require(spec, "hops")]
     expected_total = int(require(spec, "expected_total"))
+    override = (paths_cfg.get(PATHS_EXPECTED_TOTAL_KEY) or {}).get(name)
+    if override is not None:
+        expected_total = int(override)
 
     path = data_path(paths_cfg, source_key)
     problems: list[str] = []

@@ -25,6 +25,10 @@ Usage::
     .venv/bin/python scripts/build_dev_full_retrieval.py
     .venv/bin/python scripts/build_dev_full_retrieval.py --runs-root /abs/path/to/runs
     .venv/bin/python scripts/build_dev_full_retrieval.py --verify-only   # artifact exists
+
+A build writes its trail as ``build_{config,metrics,notes}`` in the output directory (plus the
+two sub-runs' own trails in ``similarity/`` and ``rerank/``); ``--verify-only`` writes
+``verify_*`` and never overwrites the build's trail.
 """
 from __future__ import annotations
 
@@ -91,14 +95,17 @@ def compare_to_reference(
     mismatch; they do not excuse one - ``equivalent`` stays strict):
 
     - ``mismatches_with_identical_score_sequence``: the two lists carry the same rerank
-      score at every position, i.e. the difference is only which of several exactly-tied
+      score at every position, i.e. the difference is which of several exactly-tied
       exemplars sits where;
+    - ``mismatches_with_different_top_k_set``: of those, the rows whose top-k SET differs,
+      because a tie straddles the rank-k cutoff (the rest only reorder within the set);
     - ``first_prompt_k_match``: rows whose first ``prompt_k`` exemplar ids, in order, match
       (the decomposer shows only its few-shot k of the retrieved list).
     """
     matched = 0
     first_k_matched = 0
     tie_only = 0
+    different_set = 0
     masked_query_matched = 0
     missing: list[str] = []
     mismatched: list[dict[str, Any]] = []
@@ -120,8 +127,16 @@ def compare_to_reference(
             scores_b = [nb.get("score") for nb in ref.get(f"{mode}_top_k") or []]
             if scores_a == scores_b:
                 tie_only += 1
+            if set(a) != set(b):
+                different_set += 1
             mismatched.append(
-                {"query_id": qid, "new": a, "reference": b, "identical_score_sequence": scores_a == scores_b}
+                {
+                    "query_id": qid,
+                    "new": a,
+                    "reference": b,
+                    "identical_score_sequence": scores_a == scores_b,
+                    "same_top_k_set": set(a) == set(b),
+                }
             )
     return {
         "mode": mode,
@@ -132,6 +147,10 @@ def compare_to_reference(
         "missing_ids_sample": missing[:10],
         "mismatched": len(mismatched),
         "mismatches_with_identical_score_sequence": tie_only,
+        "mismatches_with_different_top_k_set": different_set,
+        "mismatched_ids_with_different_top_k_set": [
+            m["query_id"] for m in mismatched if not m["same_top_k_set"]
+        ],
         "prompt_k": prompt_k,
         "first_prompt_k_match": first_k_matched,
         "mismatched_rows": mismatched,
@@ -334,12 +353,15 @@ def main() -> None:
             f"{equivalence['reference_rows']}; mismatches whose rerank-score sequence is "
             f"identical (exact ties reordered): "
             f"{equivalence['mismatches_with_identical_score_sequence']}/"
-            f"{equivalence['mismatched']}; first {equivalence['prompt_k']} exemplar ids match "
+            f"{equivalence['mismatched']}, of which "
+            f"{equivalence['mismatches_with_different_top_k_set']} have a different top-5 SET "
+            f"(a tie at the cutoff) and the rest only reorder; first {equivalence['prompt_k']} exemplar ids match "
             f"(what a k={equivalence['prompt_k']} prompt shows): "
             f"{equivalence['first_prompt_k_match']}/{equivalence['reference_rows']}",
             f"- Timings: {metrics['timings']}",
         ],
-        prefix="build_",
+        # A --verify-only pass writes its own trail and never overwrites the build's.
+        prefix="verify_" if args.verify_only else "build_",
     )
     if not artifact_ok:
         raise SystemExit(
@@ -350,7 +372,7 @@ def main() -> None:
         raise SystemExit(
             f"EQUIVALENCE FAILED: {equivalence['mismatched']} mismatched and "
             f"{equivalence['missing_from_new_artifact']} missing reference rows (see "
-            f"{out_dir}/build_metrics.json)"
+            f"{out_dir}/{'verify' if args.verify_only else 'build'}_metrics.json)"
         )
 
 

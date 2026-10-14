@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sampling variance of the decomposition report card under random stratified eval sets.
 
-Issue #56 / ADR 0035. Every MuSiQue number so far is one draw: the ADR 0007 pinned 600
+Issue #56 / ADR 0037. Every MuSiQue number so far is one draw: the ADR 0007 pinned 600
 (200 per hop). Decoding is greedy and few-shot retrieval is per question, so a question's
 decomposition - and hence its per-item score - does not depend on which sample it sits in.
 Each arm is therefore run ONCE over a population (``musique_dev_full``, all 2,417
@@ -22,17 +22,25 @@ Outputs (``--out-dir``): ``resample_metrics.json``, ``resample_summary.csv``,
 ``resample_per_draw.csv``, ``resample_ranks.csv``, ``resample_config.json``,
 ``resample_notes.md`` and three figures (PNG + PDF).
 
-CAVEAT, carried into the notes: draws overlap because the population is finite (a 200-of-405
-4-hop draw shares about half its questions with any other), so the spread is a LOWER BOUND
-on the spread for truly independent samples, and it measures question-sampling variation
-only - with greedy decoding there is no decoding variation in it.
+CAVEAT, carried into the notes: each draw is without replacement from finite hop strata,
+so the across-draw SD is shrunk by the finite-population correction sqrt(1 - n/N) (about
+0.92 / 0.86 / 0.71 at 2 / 3 / 4 hops for n = 200 of the full dev split); an FPC-corrected
+SD is reported beside the raw one. Overlap between draws only correlates the K draws, which
+limits how precisely the band is estimated. The spread measures question-sampling
+variation only - with greedy decoding there is no decoding variation in it.
+
+The population must be a named eval set: every arm's per-item file must carry the
+evaluator's ``evaluation_set`` record (``--eval-set``) for the same set with
+``matches_named_set`` true, and the population must equal that set's ids;
+``--allow-unnamed-population`` is the recorded smoke-run opt-out.
 
 Usage::
 
     .venv/bin/python scripts/resample_eval_sets.py \\
-        --arm "Qwen2.5-7B=runs/exp-029/qwen7b/eval/eval_per_item.json" \\
-        --arm "Mistral-7B=runs/exp-029/mistral/eval/eval_per_item.json" \\
-        --out-dir runs/exp-029/resample
+        --arm "Qwen2.5-7B=runs/exp-030/qwen7b/eval/eval_per_item.json" \\
+        --arm "Mistral-7B=runs/exp-030/mistral/eval/eval_per_item.json" \\
+        --committed-pinned "Qwen2.5-7B=runs/exp-021/eval/eval_metrics.json" \\
+        --out-dir runs/exp-030/resample
 """
 from __future__ import annotations
 
@@ -52,7 +60,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 import numpy as np  # noqa: E402
 
-from eval_sets import hop_from_id  # noqa: E402
+from eval_sets import hop_from_id, load_named_eval_set  # noqa: E402
 from run_artifacts import now_iso, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, resolve_path  # noqa: E402
 from seeding import set_global_seed  # noqa: E402
@@ -240,6 +248,130 @@ def competition_ranks(values: Sequence[float], lower_is_better: bool, tol: float
     return [1 + sum(1 for o in signed if o < s - tol) for s in signed]
 
 
+def check_named_population(
+    arm_records: list[dict[str, Any]],
+    population: set[str],
+    paths_cfg: dict[str, Any],
+    *,
+    allow: bool,
+) -> dict[str, Any]:
+    """Refuse unless every arm is stamped with the same named set, matched, = population.
+
+    The evaluator stamps its full ``evaluation_set`` record into the per-item file when it
+    ran with ``--eval-set`` (and asserted the set by id). This carries that guarantee here:
+    a per-item file scored without the flag, or with a recorded mismatch, or a population
+    that is not the set's ids, is not the population the study claims.
+    """
+    problems: list[str] = []
+    names: set[str] = set()
+    for rec in arm_records:
+        es = rec.get("evaluation_set")
+        if not isinstance(es, dict) or not es.get("named_eval_set"):
+            problems.append(f"arm {rec['label']!r}: per-item file carries no named eval-set record")
+            continue
+        names.add(str(es["named_eval_set"]))
+        if es.get("matches_named_set") is not True:
+            problems.append(
+                f"arm {rec['label']!r}: matches_named_set is {es.get('matches_named_set')!r}"
+            )
+    if len(names) > 1:
+        problems.append(f"arms are stamped with different named sets: {sorted(names)}")
+    named_record: dict[str, Any] | None = None
+    if len(names) == 1:
+        named = load_named_eval_set(next(iter(names)), paths_cfg)
+        named_record = named.as_record()
+        problems.extend(named.problems)
+        if named.ids != population:
+            problems.append(
+                f"population ({len(population)} ids) is not the ids of {named.name!r} "
+                f"({len(named.ids)}): {len(population - named.ids)} extra, "
+                f"{len(named.ids - population)} missing"
+            )
+    record = {
+        "named_eval_set": next(iter(names)) if len(names) == 1 else None,
+        "verified": not problems,
+        "problems": problems,
+        "allow_unnamed_population": allow,
+        "definition": named_record,
+    }
+    if problems and not allow:
+        raise SystemExit(
+            "the population is not a verified named eval set:\n  - "
+            + "\n  - ".join(problems)
+            + "\nScore each arm with musique_decompositions_evaluator.py --eval-set <name>, or "
+            "pass --allow-unnamed-population for a smoke run (recorded; not a result)."
+        )
+    if problems:
+        print("[resample] WARNING: population not verified (allowed by "
+              "--allow-unnamed-population):\n  - " + "\n  - ".join(problems))
+    return record
+
+
+def fpc_sd_factors(population_per_hop: dict[str, int], per_hop: int) -> dict[str, float]:
+    """sqrt(1 - n/N) per hop: the SD shrinkage of a without-replacement draw of n of N."""
+    return {h: math.sqrt(max(0.0, 1.0 - per_hop / n_h)) for h, n_h in population_per_hop.items()}
+
+
+def fpc_corrected_sd(
+    per_draw_scope: dict[str, dict[str, list[float]]],
+    metric: str,
+    scope: str,
+    hops: Sequence[int],
+    factors: dict[str, float],
+) -> float | None:
+    """The across-draw SD with the finite-population correction removed.
+
+    Per hop: raw SD / sqrt(1 - n/N_h). Overall: the overall value of a draw is the mean of its
+    hop values (equal n per hop, every term an item mean), and hop strata are drawn
+    independently, so Var(overall) = (1/H^2) * sum_h Var(hop_h); each hop variance is
+    corrected by its own factor before summing. None where a factor is 0 (n = N: no spread).
+    """
+    if scope == SCOPE_OVERALL:
+        total = 0.0
+        for h in hops:
+            f = factors[str(h)]
+            if f == 0.0:
+                return None
+            vals = np.asarray(per_draw_scope[f"hop{h}"][metric], dtype=float)
+            total += float(vals.var(ddof=1)) / (f * f)
+        return math.sqrt(total) / len(hops)
+    f = factors[scope.removeprefix("hop")]
+    if f == 0.0:
+        return None
+    return float(np.asarray(per_draw_scope[scope][metric], dtype=float).std(ddof=1)) / f
+
+
+def committed_pinned_values(
+    specs: Sequence[str], arms: list[str], metrics: Sequence[str], hops: Sequence[int],
+    recomputed: dict[str, dict[str, dict[str, float | None]]],
+) -> dict[str, Any]:
+    """Each arm's COMMITTED pinned-600 value beside the subset recomputed from this run."""
+    out: dict[str, Any] = {a: None for a in arms}
+    for label, path in parse_arm_specs(specs):
+        if label not in arms:
+            raise SystemExit(f"--committed-pinned label {label!r} is not an --arm label")
+        m = json.loads(path.read_text(encoding="utf-8"))
+        scopes: dict[str, dict[str, Any]] = {}
+        for scope in [SCOPE_OVERALL] + [f"hop{h}" for h in hops]:
+            src = m if scope == SCOPE_OVERALL else m["per_gold_hop_metrics"][scope.removeprefix("hop")]
+            scopes[scope] = {}
+            for metric in metrics:
+                committed = float(src[metric])
+                rec = recomputed[label][scope][metric]
+                scopes[scope][metric] = {
+                    "committed": committed,
+                    "recomputed": rec,
+                    "difference_recomputed_minus_committed": None if rec is None else rec - committed,
+                }
+        out[label] = {
+            "path": str(path.resolve()),
+            "sha256": _sha256(path),
+            "committed_total_evaluated": m.get("total_evaluated"),
+            "values": scopes,
+        }
+    return out
+
+
 # ----------------------------------------------------------------------------- figures
 
 
@@ -259,16 +391,21 @@ def _spread_panel(ax: Any, arms: list[str], colors: dict[str, str], per_draw: di
         ax.scatter(x + jitter, vals, s=fig_cfg["dot_size"], color=colors[arm],
                    alpha=fig_cfg["dot_alpha"], linewidths=0, zorder=2)
         s = summary[arm]
-        ax.vlines(x, s[lo_key], s[hi_key], color=dark, linewidth=2.0, zorder=3)
-        ax.hlines([s[lo_key], s[hi_key]], x - 0.12, x + 0.12, color=dark, linewidth=1.5, zorder=3)
-        ax.hlines(s["mean"], x - 0.32, x + 0.32, color=dark, linewidth=3.5, zorder=4)
+        ax.vlines(x, s[lo_key], s[hi_key], color=dark, linewidth=fig_cfg["whisker_linewidth"], zorder=3)
+        cap = float(fig_cfg["whisker_cap_half_width"])
+        ax.hlines([s[lo_key], s[hi_key]], x - cap, x + cap, color=dark,
+                  linewidth=fig_cfg["cap_linewidth"], zorder=3)
+        bar = float(fig_cfg["mean_bar_half_width"])
+        ax.hlines(s["mean"], x - bar, x + bar, color=dark, linewidth=fig_cfg["mean_linewidth"], zorder=4)
         if pinned.get(arm) is not None:
-            ax.scatter([x + 0.42], [pinned[arm]], marker="D", s=fig_cfg["pinned_marker_size"],
-                       facecolor="white", edgecolor="black", linewidth=1.5, zorder=5)
+            ax.scatter([x + float(fig_cfg["pinned_x_offset"])], [pinned[arm]], marker="D", s=fig_cfg["pinned_marker_size"],
+                       facecolor="white", edgecolor="black",
+                       linewidth=fig_cfg["pinned_edge_linewidth"], zorder=5)
     ax.set_xticks(range(len(arms)))
-    ax.set_xticklabels(arms, rotation=30, ha="right")
-    ax.set_xlim(-0.6, len(arms) - 0.4)
-    ax.grid(axis="y", alpha=0.3)
+    ax.set_xticklabels(arms, rotation=fig_cfg["xtick_rotation"], ha="right")
+    margin = float(fig_cfg["x_margin"])
+    ax.set_xlim(-margin, len(arms) - 1 + margin)
+    ax.grid(axis="y", alpha=fig_cfg["grid_alpha"])
 
 
 def _legend_handles(arms: list[str], colors: dict[str, str], fig_cfg: dict[str, Any],
@@ -276,14 +413,15 @@ def _legend_handles(arms: list[str], colors: dict[str, str], fig_cfg: dict[str, 
     from matplotlib.lines import Line2D
 
     handles = [
-        Line2D([], [], marker="o", linestyle="", color=colors[a], alpha=0.8, label=a)
+        Line2D([], [], marker="o", linestyle="", color=colors[a], alpha=fig_cfg["legend_dot_alpha"],
+               label=a)
         for a in arms
     ]
     handles += [
-        Line2D([], [], color=fig_cfg["summary_color"], linewidth=3.5,
+        Line2D([], [], color=fig_cfg["summary_color"], linewidth=fig_cfg["mean_linewidth"],
                label=f"mean, whisker {pct[0]:g}-{pct[1]:g} pct"),
         Line2D([], [], marker="D", linestyle="", markerfacecolor="white",
-               markeredgecolor="black", label="pinned 600 (ADR 0007)"),
+               markeredgecolor="black", label=fig_cfg["pinned_label"]),
     ]
     return handles
 
@@ -321,7 +459,7 @@ def make_figures(*, out_dir: Path, arms: list[str], metrics: list[str], directio
     n_total = per_hop * len(hops)
 
     # Fig 1 - one panel per report-card metric, overall.
-    ncols = 4
+    ncols = int(fig_cfg["ncols"])
     nrows = math.ceil((len(metrics) + 1) / ncols)
     fig, axes = plt.subplots(nrows, ncols, figsize=(pw * ncols, ph * nrows), squeeze=False)
     flat = list(axes.flat)
@@ -344,7 +482,7 @@ def make_figures(*, out_dir: Path, arms: list[str], metrics: list[str], directio
 
     # Fig 2 - rows = hop, columns = the headline metrics.
     fig, axes = plt.subplots(len(hops), len(hop_metrics),
-                             figsize=(pw * len(hop_metrics) + 2.2, ph * len(hops)), squeeze=False)
+                             figsize=(pw * len(hop_metrics) + float(fig_cfg["legend_extra_width"]), ph * len(hops)), squeeze=False)
     for r, hop in enumerate(hops):
         scope = f"hop{hop}"
         for c, m in enumerate(hop_metrics):
@@ -377,7 +515,7 @@ def make_figures(*, out_dir: Path, arms: list[str], metrics: list[str], directio
             for j in range(n):
                 v = mat[i, j]
                 ax.text(j, i, f"{v:.0f}", ha="center", va="center",
-                        color="white" if v >= 60 else "black", fontsize=fig_cfg["font_size"] - 1)
+                        color="white" if v >= float(fig_cfg["heatmap_text_white_at_or_above"]) else "black", fontsize=fig_cfg["font_size"] - 1)
         ax.set_xticks(range(n))
         ax.set_xticklabels([str(r + 1) for r in range(n)])
         ax.set_yticks(range(n))
@@ -387,7 +525,8 @@ def make_figures(*, out_dir: Path, arms: list[str], metrics: list[str], directio
     for ax in flat[len(metrics):]:
         ax.axis("off")
     if image is not None:
-        cbar = fig.colorbar(image, ax=flat[len(metrics)], fraction=0.6, location="left")
+        cbar = fig.colorbar(image, ax=flat[len(metrics)], fraction=float(fig_cfg["colorbar_fraction"]),
+                            location="left")
         cbar.set_label(f"% of the {k} samples")
     fig.suptitle(f"Rank stability: % of {k} samples in which each arm takes each rank")
     fig.tight_layout()
@@ -408,6 +547,14 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--per-hop", type=int, default=None,
                    help="Override per_hop (smoke runs on a small population). Recorded.")
+    p.add_argument("--allow-unnamed-population", action="store_true",
+                   help="Smoke runs only: proceed even when the arms are not all stamped with "
+                   "the same named eval set (matches_named_set true) whose ids equal the "
+                   "population. Recorded in every output; such a run is not a result.")
+    p.add_argument("--committed-pinned", action="append", default=[],
+                   help="LABEL=PATH to an arm's COMMITTED pinned-600 evaluator metrics JSON "
+                   "(runs/exp-0NN/eval/eval_metrics.json). Its values are recorded beside the "
+                   "pinned subset recomputed from this run, with the difference.")
     return p.parse_args()
 
 
@@ -462,6 +609,11 @@ def main() -> None:
         ids_by_hop[hop].append(iid)
     population_per_hop = {str(h): len(v) for h, v in ids_by_hop.items()}
 
+    # ---- the population must BE a named eval set, as every arm's evaluator run asserted
+    population_check = check_named_population(
+        arm_records, population, paths_cfg, allow=args.allow_unnamed_population
+    )
+
     pinned_ids = load_pinned_ids(paths_cfg, require(cfg, "pinned_ids_template_key"), hops)
     pinned_in_population = pinned_ids <= population
     pinned_order = sorted(pinned_ids)
@@ -488,6 +640,16 @@ def main() -> None:
         else:
             pinned[a] = {s: {m: None for m in metrics} for s in scopes}
 
+    # The overall value of a draw must be the mean of its hop values for the overall FPC
+    # correction to hold (equal n per hop; every report-card term is an item mean). Checked.
+    for a in arms:
+        for m in metrics:
+            for d in range(k):
+                hop_mean = sum(per_draw[a][f"hop{h}"][m][d] for h in hops) / len(hops)
+                if abs(hop_mean - per_draw[a][SCOPE_OVERALL][m][d]) > 1e-9:
+                    raise SystemExit(f"{a}/{m} draw {d}: overall != mean of hop values")
+    fpc_factors = fpc_sd_factors(population_per_hop, per_hop)
+
     summary: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
     for a in arms:
         summary[a] = {}
@@ -495,6 +657,7 @@ def main() -> None:
             summary[a][s] = {}
             for m in metrics:
                 row = summarize(per_draw[a][s][m], pct)
+                row["sd_fpc_corrected"] = fpc_corrected_sd(per_draw[a], m, s, hops, fpc_factors)
                 pv = pinned[a][s][m]
                 row["pinned_value"] = pv
                 row["pinned_percentile"] = (
@@ -526,12 +689,14 @@ def main() -> None:
     with (out_dir / "resample_summary.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["arm", "scope", "metric", "direction", "n_draws", "per_hop", "mean", "sd",
-                    "min", "max", lo_key, hi_key, "pinned_value", "pinned_percentile"])
+                    "sd_fpc_corrected", "min", "max", lo_key, hi_key,
+                    "pinned_subset_recomputed_value", "pinned_subset_percentile"])
         for a in arms:
             for s in scopes:
                 for m in metrics:
                     r = summary[a][s][m]
-                    w.writerow([a, s, m, directions[m], k, per_hop, r["mean"], r["sd"], r["min"],
+                    w.writerow([a, s, m, directions[m], k, per_hop, r["mean"], r["sd"],
+                                r["sd_fpc_corrected"], r["min"],
                                 r["max"], r[lo_key], r[hi_key], r["pinned_value"],
                                 r["pinned_percentile"]])
     with (out_dir / "resample_per_draw.csv").open("w", newline="", encoding="utf-8") as f:
@@ -556,15 +721,22 @@ def main() -> None:
     )
     overlap = draw_overlap(draws, hops)
     caveat = (
-        "Draws overlap because the population is finite: each hop's draws come from the same "
-        f"{population_per_hop} questions, so two draws share questions (measured mean shared "
-        "fraction per hop: "
+        f"Each draw takes {per_hop} questions per hop WITHOUT replacement from finite hop strata "
+        f"(N = {population_per_hop}), so the across-draw spread is smaller than the spread for "
+        "independent samples from an unlimited population by the finite-population correction: "
+        "the SD is scaled by sqrt(1 - n/N) = "
+        + ", ".join(f"{fpc_factors[str(h)]:.2f} at {h} hops" for h in hops)
+        + ". resample_metrics.json and resample_summary.csv report an FPC-corrected SD "
+        "(sd_fpc_corrected) beside the raw SD; the figures plot the raw spread. Overlap between "
+        "draws (measured mean shared fraction per hop: "
         + ", ".join(f"{h}-hop {overlap[str(h)].get('mean_shared_fraction', float('nan')):.2f}"
                     for h in hops)
-        + "). The spread is therefore a LOWER BOUND on the spread for truly independent "
-        "samples of this size, and it measures question-sampling variation only: decoding is "
-        "greedy, so there is no decoding variation in it."
+        + ") does not shrink the band: it only correlates the K draws, which limits how "
+        f"precisely K={k} draws estimate the band (SD, percentiles). The spread measures "
+        "question-sampling variation only: decoding is greedy, so there is no decoding "
+        "variation in it."
     )
+    committed = committed_pinned_values(args.committed_pinned, arms, metrics, hops, pinned)
     metrics_json = {
         "script": Path(__file__).name,
         "created_utc": now_iso(),
@@ -588,6 +760,19 @@ def main() -> None:
         "population_per_hop": population_per_hop,
         "pinned_ids": len(pinned_ids),
         "pinned_in_population": pinned_in_population,
+        "pinned_subset_note": "pinned_value is the pinned-600 subset RECOMPUTED from this run's "
+        "per-item files; committed_pinned holds each arm's committed pinned-run value (when "
+        "given with --committed-pinned) and the difference",
+        "committed_pinned": committed,
+        "population_check": population_check,
+        "finite_population_correction": {
+            "sd_factor_rule": "sqrt(1 - n/N) per hop stratum (n = per_hop, N = hop population)",
+            "sd_factor_per_hop": fpc_factors,
+            "sd_fpc_corrected_rule": "per hop: raw SD / sqrt(1 - n/N_h); overall: "
+            "sqrt(sum_h Var_h / (1 - n/N_h)) / H, valid because a draw's overall value is the "
+            "mean of its hop values (checked) and strata are drawn independently",
+            "plotted_quantity": "raw across-draw spread (not corrected)",
+        },
         "draw_overlap": overlap,
         "summary": summary,
         "rank_stability_pct": rank_pct,
@@ -601,11 +786,18 @@ def main() -> None:
         f"- Draws: K={k}, {per_hop} per hop ({per_hop * len(hops)} per draw), stratified, without "
         f"replacement within a draw, seeds {seeds[0]}..{seeds[-1]}, the same draws for every arm"
         + (" — **per_hop overridden on the command line (smoke run)**" if args.per_hop is not None else ""),
-        f"- Pinned 600 in the population: {pinned_in_population}",
+        f"- Pinned 600 in the population: {pinned_in_population} (the diamond is the pinned "
+        "600 subset recomputed from this run)",
+        f"- Population verified as a named eval set: {population_check['verified']} "
+        f"(`{population_check['named_eval_set']}`)"
+        + ("" if population_check["verified"] else
+           f" — **--allow-unnamed-population used; not a result**: "
+           f"{'; '.join(population_check['problems'][:3])}"),
         f"- **Caveat.** {caveat}",
         "",
-        f"| arm | metric | dir | mean | SD | min | max | {lo_key} | {hi_key} | pinned | pinned pct |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        f"| arm | metric | dir | mean | SD | SD (FPC-corrected) | min | max | {lo_key} | {hi_key} "
+        "| pinned subset (recomputed) | pinned pct |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for a in arms:
         for m in metrics:
@@ -614,7 +806,9 @@ def main() -> None:
             pp = "n/a" if r["pinned_percentile"] is None else f"{r['pinned_percentile']:.0f}"
             note_lines.append(
                 f"| {a} | {m} | {'⇓' if directions[m] == 'lower_is_better' else '⇑'} | "
-                f"{r['mean']:.4f} | {r['sd']:.4f} | {r['min']:.4f} | {r['max']:.4f} | "
+                f"{r['mean']:.4f} | {r['sd']:.4f} | "
+                + ("n/a" if r["sd_fpc_corrected"] is None else f"{r['sd_fpc_corrected']:.4f}")
+                + f" | {r['min']:.4f} | {r['max']:.4f} | "
                 f"{r[lo_key]:.4f} | {r[hi_key]:.4f} | {pv} | {pp} |"
             )
     note_lines += ["", "Figures: " + ", ".join(f"`{p}`" for ps in figures.values() for p in ps)]
@@ -625,6 +819,8 @@ def main() -> None:
             "config_path": cfg.get("_config_path"),
             "config": {key: v for key, v in cfg.items() if not key.startswith("_")},
             "per_hop_effective": per_hop,
+            "allow_unnamed_population": bool(args.allow_unnamed_population),
+            "committed_pinned": list(args.committed_pinned),
             "arms": [{"label": a, "path": str(p)} for a, p in arm_specs],
             "out_dir": str(out_dir),
         },

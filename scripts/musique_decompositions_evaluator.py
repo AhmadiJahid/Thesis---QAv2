@@ -3186,7 +3186,7 @@ def main() -> None:
     if not rows:
         raise SystemExit("No evaluable rows (no matched questions between predictions and gold).")
 
-    # A NAMED evaluation set (issue #56, ADR 0035), only when asked for: asserted by id on
+    # A NAMED evaluation set (issue #56, ADR 0037), only when asked for: asserted by id on
     # the rows that will actually be scored, before any scoring time is spent. Without
     # --eval-set nothing here runs and no key is added anywhere.
     eval_set_record: dict[str, Any] | None = None
@@ -3279,10 +3279,10 @@ def main() -> None:
         "items": per_item,
     }
     if eval_set_record is not None:
-        # Stamped so a reader (scripts/resample_eval_sets.py) can tell which population the
-        # file covers without re-deriving it. Absent on the default path, which keeps that
+        # The full record (name, matches_named_set, the set's definition) is stamped so
+        # scripts/resample_eval_sets.py can refuse a file that is not that set. Absent on the default path, which keeps that
         # file's schema byte-identical.
-        per_item_payload["evaluation_set"] = eval_set_record["named_eval_set"]
+        per_item_payload["evaluation_set"] = eval_set_record
     per_item_path.write_text(
         json.dumps(per_item_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

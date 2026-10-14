@@ -1,5 +1,5 @@
 {
-  "_note": "Config for scripts/build_dev_full_retrieval.py (issue #56, ADR 0035). Builds the few-shot retrieval artifact over EVERY question of a named evaluation set (configs/eval_sets.json) by exp-014's exact method - the method behind runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl, the artifact every issue #50 arm read: MusiQue/scripts/check_question_similarity.py (e5-small-v2, typed masking, top-20, no hop matching, CPU, seed 42) then MusiQue/scripts/rerank_similarity_results.py (cross-encoder ms-marco-MiniLM-L-12-v2, top-5, CPU, seed 42), over the size2000_imbalanced pool (ADR 0028 item 1). The embedding model, NER model and cross-encoder ids are NOT repeated here: they come from configs/similarity.json, as they did for exp-014. Only the query side changes (the named set's source file instead of the three pinned files). Paths under runs_root are relative to configs/paths.json runs_root (or --runs-root). The builder refuses a pool whose sha256 differs, a pool/eval-set id overlap above zero, and an artifact whose ids are not exactly the named set; it then compares the new artifact's rows for the reference artifact's ids (the pinned 600) exemplar-by-exemplar, in order, and records the match count.",
+  "_note": "Config for scripts/build_dev_full_retrieval.py (issue #56, ADR 0037). Builds the few-shot retrieval artifact over EVERY question of a named evaluation set (configs/eval_sets.json) by exp-014's exact method - the method behind runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl, the artifact every issue #50 arm read: MusiQue/scripts/check_question_similarity.py (e5-small-v2, typed masking, top-20, no hop matching, CPU, seed 42) then MusiQue/scripts/rerank_similarity_results.py (cross-encoder ms-marco-MiniLM-L-12-v2, top-5, CPU, seed 42), over the size2000_imbalanced pool (ADR 0028 item 1). The embedding model, NER model and cross-encoder ids are NOT repeated here: they come from configs/similarity.json, as they did for exp-014. Only the query side changes (the named set's source file instead of the three pinned files). Paths under runs_root are relative to configs/paths.json runs_root (or --runs-root). The builder refuses a pool whose sha256 differs, a pool/eval-set id overlap above zero, and an artifact whose ids are not exactly the named set; it then compares the new artifact's rows for the reference artifact's ids (the pinned 600) exemplar-by-exemplar, in order, and records the match count.",
 
   "seed": 42,
   "eval_set": "musique_dev_full",
@@ -20,7 +20,7 @@
     "device": "cpu"
   },
 
-  "out_dir": "exp-029/retrieval",
+  "out_dir": "exp-030/retrieval",
   "top20_name": "dev_full_top20.jsonl",
   "out_name": "dev_full_imbalanced_rerank_top5.jsonl",
 

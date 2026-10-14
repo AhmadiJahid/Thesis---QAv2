@@ -130,5 +130,62 @@ class NamedEvalSetTest(unittest.TestCase):
         self.assertEqual(rec["ids_missing_count"], 1)
 
 
+class NamedPopulationCheckTest(unittest.TestCase):
+    """The resampler's refusal, against the fixture tree's musique_dev_full (4 ids)."""
+
+    FIXTURE_IDS = {"2hop__d001_a", "3hop1__d002_b", "4hop1__d003_c", "2hop__d004_p"}
+
+    def setUp(self) -> None:
+        from run_config import load_paths
+
+        self.paths = load_paths("smoke_paths.json")
+
+    def _rec(self, label, name="musique_dev_full", matches=True):
+        es = None if name is None else {"named_eval_set": name, "matches_named_set": matches}
+        return {"label": label, "evaluation_set": es}
+
+    def test_pass(self) -> None:
+        rec = rs.check_named_population(
+            [self._rec("a"), self._rec("b")], set(self.FIXTURE_IDS), self.paths, allow=False
+        )
+        self.assertTrue(rec["verified"])
+        self.assertEqual(rec["named_eval_set"], "musique_dev_full")
+
+    def test_refusals(self) -> None:
+        cases = [
+            [self._rec("a"), self._rec("b", name=None)],          # unstamped arm
+            [self._rec("a"), self._rec("b", matches=False)],      # recorded mismatch
+        ]
+        for recs in cases:
+            with self.assertRaises(SystemExit):
+                rs.check_named_population(recs, set(self.FIXTURE_IDS), self.paths, allow=False)
+        with self.assertRaises(SystemExit):  # population is not the set's ids
+            rs.check_named_population(
+                [self._rec("a")], set(self.FIXTURE_IDS) - {"2hop__d001_a"}, self.paths, allow=False
+            )
+
+    def test_opt_out_is_recorded(self) -> None:
+        rec = rs.check_named_population(
+            [self._rec("a", name=None)], set(self.FIXTURE_IDS), self.paths, allow=True
+        )
+        self.assertFalse(rec["verified"])
+        self.assertTrue(rec["allow_unnamed_population"])
+
+
+class FpcTest(unittest.TestCase):
+    def test_factors(self) -> None:
+        f = rs.fpc_sd_factors({"2": 1252, "3": 760, "4": 405}, 200)
+        self.assertAlmostEqual(f["2"], 0.9166, places=3)
+        self.assertAlmostEqual(f["3"], 0.8584, places=3)
+        self.assertAlmostEqual(f["4"], 0.7112, places=3)
+
+    def test_corrected_sd(self) -> None:
+        per = {"hop2": {"m": [0.0, 1.0]}, "hop3": {"m": [0.0, 1.0]}, "overall": {"m": [0.0, 1.0]}}
+        f = {"2": 0.5, "3": 0.5}
+        self.assertAlmostEqual(rs.fpc_corrected_sd(per, "m", "hop2", [2, 3], f), 0.70710678 / 0.5)
+        # overall: sqrt(2 * 0.5 / 0.25) / 2
+        self.assertAlmostEqual(rs.fpc_corrected_sd(per, "m", "overall", [2, 3], f), 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
