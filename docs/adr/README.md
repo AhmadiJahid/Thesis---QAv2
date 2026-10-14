@@ -59,6 +59,7 @@ When **not** to write one:
 | [0029](./0029-the-decomposition-quality-suite-the-implementers-registration.md) | The Decomposition-Quality Suite: Six Unblended Terms as the Reported Primary, and the Composite Frozen as Legacy | Accepted (implementer registration, pending Jahid and his supervisor) |
 | [0030](./0030-remove-the-router-from-the-decomposition-critical-path.md) | Remove the Router from the Decomposition Pipeline's Critical Path | Accepted (lead, 2026-08-23; supervisor may overturn) |
 | [0038](./0038-sampling-variance-via-full-dev-run-and-offline-stratified-resampling.md) | Sampling Variance Is Measured by One Full-Dev Run per Arm and Offline Stratified Resampling | Accepted (lead under Jahid's delegation, 2026-10-14) |
+| [0039](./0039-anchor-set-follow-ups-additive-metrics-parser-fix-and-ordering-noise-floor.md) | Anchor-Set Follow-Ups: Two Additive Terms, a Parser Fix, and an Ordering Noise Floor | Accepted (Jahid, 2026-10-14) |
 
 ---
 
