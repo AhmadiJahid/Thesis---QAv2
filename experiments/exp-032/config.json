@@ -1,0 +1,62 @@
+{
+ "exp_id": "exp-032",
+ "issue": 60,
+ "adr": "0039 (items 2-4 + 2026-10-14 implementation choices)",
+ "code_commit": "5c4e442aee149561a4bb3c7a8b21045016fc2284",
+ "worktree": "/cta/users/fyilmaz/worktrees/exp-032-033 (clean, detached)",
+ "python": "/cta/users/fyilmaz/Thesis---QAv2/.venv/bin/python",
+ "seed": 42,
+ "gpu": "none",
+ "lock": "not taken (CPU only)",
+ "configs_unedited": [
+  "configs/decomposer_musique.json",
+  "configs/musique_eval.json"
+ ],
+ "arms_results_json": {
+  "exp-008": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-008/20260822_100745/results.json",
+  "exp-015": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-015/decomposer/20260823_055045/results.json",
+  "exp-020": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-020/decomposer/20260919_223903/results.json",
+  "exp-021": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-021/decomposer/20260920_001740/results.json",
+  "exp-022": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-022/decomposer/20260920_003811/results.json",
+  "exp-023": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-023/decomposer/20260920_011726/results.json",
+  "exp-024": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-024/decomposer/20260920_015937/results.json",
+  "exp-025": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-025/decomposer/20260920_021624/results.json",
+  "exp-026": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-026/decomposer/20260920_031350/results.json",
+  "exp-027": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-027/decomposer/20260920_102503/results.json",
+  "exp-028": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-028/decomposer/20260920_105428/results.json"
+ },
+ "step1_reparse": "scripts/reparse_decompositions.py --results <arm results.json> --output-dir runs/exp-032/<arm>/reparse  (run config = config.json beside results.json)",
+ "step2_eval": "scripts/musique_decompositions_evaluator.py --predictions runs/exp-032/<arm>/reparse/results.json --run-dir runs/exp-032/<arm>/eval --out-prefix eval --seed 42  (default gold from configs/musique_eval.json, as the originals)",
+ "step2b_stored_baseline": "same evaluator on the STORED results.json of exp-015/020/023 into runs/exp-032/<arm>/eval_stored_same_code, to isolate the parser effect",
+ "step3_compare": "scripts/musique_decompositions_evaluator.py --compare runs/exp-032/exp-A/eval/eval_per_item.json runs/exp-032/exp-B/eval/eval_per_item.json --run-dir runs/exp-032/compare/exp-A_vs_exp-B --out-prefix compare --seed 42",
+ "compare_pairs": [
+  "exp-015_vs_exp-008",
+  "exp-020_vs_exp-008",
+  "exp-020_vs_exp-015",
+  "exp-021_vs_exp-008",
+  "exp-021_vs_exp-020",
+  "exp-022_vs_exp-008",
+  "exp-022_vs_exp-020",
+  "exp-022_vs_exp-021",
+  "exp-023_vs_exp-020",
+  "exp-024_vs_exp-021",
+  "exp-025_vs_exp-022",
+  "exp-026_vs_exp-008",
+  "exp-026_vs_exp-015",
+  "exp-026_vs_exp-020",
+  "exp-027_vs_exp-008",
+  "exp-027_vs_exp-020",
+  "exp-027_vs_exp-021",
+  "exp-027_vs_exp-022",
+  "exp-028_vs_exp-027"
+ ],
+ "compare_pairs_source": "every runs/<id>/compare* dir of exp-015, exp-020..028 plus exp-026/arm_comparison/compare_* (the latter map to 015v008 reversed and 026v008); exp-015_vs_exp-008 predates the #50 block",
+ "verdict_rule": "report-card terms + step_f1: headline = bootstrap (sari, ged, chain_validity, step_f1) or exact McNemar (break EM, hop-count EM, under, over) per ADR 0009; t_test tracked separately (ADR 0017); beside-card terms bootstrap only, never in a tally (ADR 0039)",
+ "expected_changed_rows": {
+  "exp-020": 24,
+  "exp-023": 31,
+  "exp-015": 7,
+  "others": 0
+ },
+ "assembly": "experiments/exp-032/build_metrics.py (+ identity_check.py) -> experiments/exp-032/metrics.json"
+}

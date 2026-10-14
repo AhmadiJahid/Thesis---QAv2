@@ -1,0 +1,28 @@
+{
+ "exp_id": "exp-033",
+ "issue": 60,
+ "adr": "0039 item 5 (H4)",
+ "code_commit": "5c4e442aee149561a4bb3c7a8b21045016fc2284",
+ "worktree": "/cta/users/fyilmaz/worktrees/exp-032-033 (clean, detached; waiter refuses a moved or dirty HEAD)",
+ "base_arm": "exp-021 (committed command)",
+ "only_changes": [
+  "--ordering shuffled",
+  "--ordering-seed S, S in [1,2,3]",
+  "--output-root runs/exp-033/seedS/decomposer"
+ ],
+ "decompose": "run_decomposer.py --model qwen2_5_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --quantization 4bit --ordering shuffled --ordering-seed S --retrieval-input /cta/users/fyilmaz/Thesis---QAv2/runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl --output-root runs/exp-033/seedS/decomposer",
+ "evaluate": "musique_decompositions_evaluator.py --predictions <results.json> --run-dir runs/exp-033/seedS/eval --out-prefix eval --seed 42",
+ "configs_unedited": [
+  "configs/decomposer_musique.json",
+  "configs/musique_eval.json"
+ ],
+ "launcher": "experiments/exp-033/waiter.sh in detached tmux session exp033; log runs/exp-033/run.log; status runs/exp-033/chain_status.txt",
+ "lock": "waits for runs/run.lock absent AND GPU free >= 9000 MiB (poll 300 s); atomic noclobber 'exp-033 <ISO> experiment-runner'; released on any exit only if held",
+ "dry_run": "DRY_RUN=1 SCRATCH=runs/exp-033-dryrun-scratch: seed 1, --dry-run --dry-run-limit 3, rc=0; recorded few_shot_ordering=shuffled, few_shot_ordering_seed=1, quantization=4bit, condition=unguided",
+ "seed": 42,
+ "ordering_seeds": [
+  1,
+  2,
+  3
+ ]
+}
