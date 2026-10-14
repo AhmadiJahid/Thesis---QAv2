@@ -47,8 +47,9 @@ Counts first. Each is expanded below with its section.
    ("Was Sarah married to #1?"). **35/600** exp-022 and **47/600** exp-025 items, against ≤7/600
    in every other arm and **0** in gold (§5).
 6. **Hallucinated entities are essentially not a failure mode here.** Across 360 item×arm pairs,
-   **9** carry an entity that is in neither the question nor the few-shot block, and exactly
-   **1** of those is an entity copied from the prompt's own examples (§1.4).
+   **9** carry an entity that is in neither the question nor the few-shot block, and **1 more**
+   carries an entity copied from the prompt's own examples — 10 flagged pairs in all (§1.4;
+   corrected 2026-10-14, see §10).
 7. **Ahmmad's hypothesis, answered with counts: partly.** On the 12 items where exp-020 is
    worst, Qwen-7B is better on 5, same on 6, worse on 1; Qwen-14B better on 6, same on 5, worse
    on 1. Over all 45, Qwen-7B is better on 9, same on 20, **worse on 16** — no net advantage. The
@@ -161,13 +162,17 @@ since the fine-tunes were never optimised for this property.
 ### 1.4 Hallucinated entities: almost absent
 
 Across 360 item×arm pairs, only **9** contain a capitalised entity that appears neither in the
-question nor (for the six prompting arms) in that item's own few-shot block: `Islam` (exp-021,
+question nor (for the six prompting arms) in that item's own few-shot block (JSON `novel_entity`:
+0/1/1/1/0/1/2/3 across the column order). Eight of them are named here: `Islam` (exp-021,
 exp-024), `Pakistan` (exp-025), `EMI Group` (exp-008), `California` (exp-026), `Romance`
-(exp-023), `John` (exp-008), `American` (exp-026), `Genius of Victory` (exp-022). Hand-checked,
-about **7** are genuine *pre-solved hops* — the model answers a hop inside the sub-question instead
-of leaving a slot for it. Two (`John`, `American`) are elaborations, not inventions.
+(exp-023), `John` (exp-008), `American` (exp-026); exp-026's third was not named in this note
+and the scratch script is gone. Hand-checked, most are genuine *pre-solved hops* — the model
+answers a hop inside the sub-question instead of leaving a slot for it. Two (`John`, `American`)
+are elaborations, not inventions.
 
-Exactly **one** of the nine is entity bleed from the prompt's own examples, and it is instructive:
+**One further** pair — a tenth, counted separately (JSON `exemplar_entity_bleed`) — is entity
+bleed from the prompt's own examples, and it is instructive *(corrected 2026-10-14: the original
+text listed it among the nine, which a bleed entity by definition cannot be; see §10)*:
 
 > **Excerpt 4** — `2hop__115515_779396`, question *"Where was the creator of the Lap Engine
 > educated?"*, exp-022 step 1: `The Genius of Victory >> creator` — *The Genius of Victory* is the
@@ -195,8 +200,10 @@ reader can see how much it depends on one** — gives:
 | exp-008 | 0.3004 | 0.6756 | 0.8146 |
 | exp-026 | 0.3045 | 0.6537 | 0.7649 |
 
-Two things follow. **(a)** The fine-tune advantage survives relaxation but shrinks: +0.11 exact,
-+0.08 to +0.18 at 0.60. Fine-tuning is doing more than learning gold phrasing, but a large part of
+Two things follow. **(a)** The fine-tune advantage survives relaxation and shrinks *relative to
+the score level*, not in absolute terms: the fine-tune-minus-prompting gap is +0.11 to +0.15
+exact and +0.06 to +0.18 at 0.60, but the ratio falls from 1.5–2.0× to 1.1–1.4× *(corrected
+2026-10-14, see §10)*. Fine-tuning is doing more than learning gold phrasing, but a large part of
 what it does is learn gold phrasing. **(b)** The *ranking among prompting arms is not stable under
 relaxation* — exp-020 is last on exact `step_f1` and first among prompting arms at the 0.50
 threshold. Any claim of the form "model X writes better steps than model Y" that rests on exact
@@ -374,7 +381,8 @@ extras by hand, they are of five kinds, and the mix differs by model:
   step in §5's first half, and the most common extra in both Mistral and Qwen-14B.
 - **Conjunct split** — one gold step over two entities becomes one step per entity
   (*"When did #1 open US assembly plants?"* / *"When did #2 open US assembly plants?"*).
-- **Yes/no verification** — **Qwen-14B's signature, and it belongs to no other arm.**
+- **Yes/no verification** — **Qwen-14B's signature**: on the anchors no other arm has one; on
+  the full 600 the other arms have 1–7 each against 35 and 47 *(wording corrected 2026-10-14)*.
 - **Scaffold leak** — Mistral only (§1.2).
 
 The verification step is measured, not impressionistic:
@@ -420,11 +428,13 @@ What changes with depth, per arm:
   deficit grows sharply — 8 and 6 of 15 at four hops. Its reference failures are a **two-hop**
   problem on the anchors (`no #k at all`: 1 and 2 of 15 at two hops), matching the block report's
   600-item finding.
-- **Qwen-14B (022/025):** the *only* arms with zero under-decomposition at two hops, and the
-  highest over-decomposition at two hops (5 and 4 of 15). Its dangling-step count peaks at 3–4
+- **Qwen-14B (022/025):** zero under-decomposition at two hops (shared with exp-020, exp-008 and
+  exp-026 — corrected 2026-10-14, the original said "the *only* arms"), and the highest
+  over-decomposition at two hops (5 and 4 of 15). Its dangling-step count peaks at 3–4
   hops (7 and 10 of 15 for exp-022). Perfect `chain_validity` at every depth on the anchors.
 - **Fine-tunes (008/026):** flawless on length at two hops (15/15 exact for both), and the
-  shortfall is entirely at four hops (8 and 11 of 15 too few). exp-026 has **zero** dangling steps
+  shortfall is concentrated at four hops (8 and 11 of 15 too few) — but not entirely: exp-008 has
+  1 and exp-026 has **5** too-short plans at three hops (corrected 2026-10-14). exp-026 has **zero** dangling steps
   at four hops — when it shortens a plan it shortens it coherently.
 
 **Do not read the anchor per-hop step_f1 as the per-hop story.** As flagged in §0, the three-hop
@@ -532,3 +542,19 @@ suggestive (24–40% granularity lifts), not established.
   model understood it.
 - **No claim about hop 3 vs hop 4 difficulty should be taken from the anchors** (§0).
 - **Nothing here is a comparison to exp-005 or exp-015**; those arms are not on this sheet.
+
+---
+
+## 10. Corrections, 2026-10-14 (lead review)
+
+Reviewed against this note's own tables and JSON and against the seed-43 replication, which
+reproduced every count in §1–§3 and §5–§6 exactly. No count changed; five sentences did:
+
+1. §0 item 6 / §1.4 — the bleed entity (*Genius of Victory*) was listed among the 9 "in neither"
+   entities. It is a tenth pair, counted separately. exp-026's third novel entity is unnamed.
+2. §1.5(a) — "the advantage shrinks" holds as a ratio, not in absolute points.
+3. §5 — the yes/no step is absent from other arms on the anchors only, not on the 600.
+4. §6 — zero two-hop under-decomposition is shared by exp-020, exp-008 and exp-026, not Qwen-14B only.
+5. §6 — the fine-tunes' shortfall is not entirely at four hops: exp-026 has 5 short plans at three hops.
+
+H5 (§8) is not being pursued — Jahid, 2026-10-14.
