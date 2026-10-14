@@ -39,3 +39,22 @@
   it decides whether size is confounded with a different draw.
 - **Tests:** each size against 2k with the evaluator's battery (ADR 0009); no correction unless a
   slide states Holm.
+
+## Amendment, 2026-10-14: one nested chain for the sweep's pools (lead, under delegation)
+
+- **Finding (ml-engineer, measured).** `sample_pool.py --balance imbalanced` is
+  `random.Random(42).sample(rows, size)` over the 19,938 enriched train rows. Under Python 3.13,
+  `random.sample` switches algorithm at size ≥ 5,462 of 19,938: set-based below that size,
+  pool-swap from it upward. Each method is prefix-consistent, so the builder gives two nested
+  chains, 2k ⊂ … ⊂ 5k and 6k ⊂ … ⊂ 10k. 5k and 6k share only 3,553 ids, so the 5k→6k step
+  would have changed the draw as well as the size.
+- **Decision.** Use one nested chain, anchored on the adopted 2k pool (`cc364662…`, ADR 0028/0031).
+  2k–5k are kept as `sample_pool.py` builds them, each an exact prefix of the next. 6k–10k are
+  the 5k pool plus a prefix of the remaining 14,938 rows, sorted by id and shuffled once with
+  seed 42 (`scripts/extend_pool_nested.py`). There is no hop stratification, so proportions are
+  natural. Size is then the only moving factor, and the 2k point is the pool every #50 arm used.
+- **2k gate.** The rebuilt 2k pool is byte-identical. The retrieval artifacts are not: the
+  pinned-600 query files were rewritten on 2026-09-14 (same ids, different order), so their
+  sha256 differs from exp-014's by row order only. Per the rule above, 2k is re-run, and the
+  2k-re-run vs exp-020 comparison serves as the reproducibility check. Hashes and commands:
+  `configs/pool_size_sweep_v2.json`.
