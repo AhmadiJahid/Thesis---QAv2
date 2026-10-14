@@ -16,6 +16,10 @@ Scoring techniques (all string-level, no model in the loop):
   QDMR-operation-specific
 - Chain validity: the repaired per-item chaining term (bare ``#k``, no free credit for a
   prediction that emits no reference where the gold chains)
+- Beside the report card (ADR 0039, issue #60): ``step_f1_soft_<ttt>`` (step match by
+  token-overlap F1 >= threshold, one-to-one) and ``plan_connectedness`` (fraction of
+  non-final steps a later step references). Never report-card terms, never in a composite,
+  and reported by ``--compare`` in a block of their own (docs/METRICS.md section 2.5)
 
 The last two blocks are **additive**: they are new columns beside the existing ones, they do
 not enter ``composite_score``, and no metric that existed before them changes value.
@@ -312,6 +316,25 @@ METRIC_DEFINITIONS: dict[str, Any] = {
         "'ged' column and 'ged_macro'). The list is emitted as a top-level key of the "
         "metrics JSON as well, so a program reading this file can discover the direction "
         "without parsing prose"
+    ),
+    "step_f1_soft": (
+        "BESIDE the report card (ADR 0039 item 2). step_f1 with exact string equality "
+        "relaxed: over the same de-duplicated sets of normalised steps step_f1 uses, a "
+        "predicted and a gold step match when their normalised strings are identical or when "
+        "the multiset token-overlap F1 of their tokens, after removing the configured "
+        "stopwords, is >= the threshold. Matching is one-to-one and the true-positive count is "
+        "the maximum number of disjoint matching pairs (a maximum bipartite matching), so it "
+        "does not depend on a tie-break. P = tp / |pred set|, R = tp / |gold set|, F1 per "
+        "item, then macro-averaged; both empty scores 1.0, as in step_f1. Reported at every "
+        "configured threshold as step_{precision,recall,f1}_soft_<ttt> (ttt = whole percent)"
+    ),
+    "plan_connectedness": (
+        "BESIDE the report card (ADR 0039 item 3). Per item, the fraction of the predicted "
+        "plan's non-final steps (1..n-1) that some later step references with '#k' (bare "
+        "#k or [#k], the regex chain_validity reads). It sees the dangling step "
+        "chain_validity cannot (a step computed and never used). n < 2: null, excluded from "
+        "plan_connectedness_macro and counted in plan_connectedness_null_items. "
+        "gold_plan_connectedness is the same function on the gold steps, as a check"
     ),
     "not_a_semantic_metric": (
         "every metric here is string-level. Two decompositions that mean the same thing "
@@ -1124,6 +1147,202 @@ def _exact_decomposition_match(pred_steps: list[str], gold_steps: list[str]) -> 
     return 1.0
 
 
+# --------------------------------------------------------------------------------------
+# Beside the report card (ADR 0039 items 2-3, issue #60): step_f1_soft, plan_connectedness
+# --------------------------------------------------------------------------------------
+# Neither term is a report-card term, neither enters any composite or blend, and --compare
+# reports them in their own block so no "k of n significant" tally can pick them up.
+# step_f1 above is untouched (ADR 0039 item 1).
+
+#: Per-item column names of the soft step match, one triple per threshold.
+_SOFT_COLUMN_RX = re.compile(r"^step_f1_soft_(\d{3})$")
+
+
+def _soft_suffix(threshold: float) -> str:
+    """``0.5 -> "050"``: the threshold in whole percent, zero-padded to three digits."""
+    return f"{int(round(threshold * 100)):03d}"
+
+
+def _soft_policy(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Validate ``beside_report_card.step_f1_soft`` and return the policy a run applies.
+
+    Thresholds must be whole percents in (0, 1] so the field name states the threshold
+    exactly, and distinct. Stopwords go through :func:`_normalize_step` (the same
+    normalisation a step gets) so an entry like ``aren't`` matches the token ``arent``.
+    """
+    block = require(cfg, "beside_report_card.step_f1_soft")
+    thresholds = require(block, "thresholds")
+    if not isinstance(thresholds, list) or not thresholds:
+        raise SystemExit("beside_report_card.step_f1_soft.thresholds must be a non-empty list")
+    suffixes: dict[str, float] = {}
+    for t in thresholds:
+        if isinstance(t, bool) or not isinstance(t, (int, float)) or not 0.0 < float(t) <= 1.0:
+            raise SystemExit(f"step_f1_soft threshold {t!r} is not a number in (0, 1]")
+        if abs(float(t) * 100 - round(float(t) * 100)) > 1e-9:
+            raise SystemExit(f"step_f1_soft threshold {t!r} is not a whole percent")
+        suffix = _soft_suffix(float(t))
+        if suffix in suffixes:
+            raise SystemExit(f"step_f1_soft threshold {t!r} is listed twice")
+        suffixes[suffix] = float(t)
+    words = require(block, "stopwords")
+    if not isinstance(words, list) or not all(isinstance(w, str) for w in words):
+        raise SystemExit("beside_report_card.step_f1_soft.stopwords must be a list of strings")
+    normalized = sorted({_normalize_step(w) for w in words} - {""})
+    return {
+        "thresholds": {suffix: suffixes[suffix] for suffix in sorted(suffixes)},
+        "stopwords_source": require(block, "stopwords_source"),
+        "stopwords_config_count": len(words),
+        "stopwords_normalized": normalized,
+    }
+
+
+def _content_tokens(normalized_step: str, stopwords: frozenset[str]) -> list[str]:
+    return [t for t in normalized_step.split(" ") if t and t not in stopwords]
+
+
+def _token_f1(a: list[str], b: list[str]) -> float:
+    """Multiset token-overlap F1, ``2 * overlap / (len(a) + len(b))``; 0.0 if either is empty.
+
+    Written as one division so a value that equals a threshold exactly (e.g. 3/5) is the
+    same double as the threshold literal.
+    """
+    if not a or not b:
+        return 0.0
+    counts: dict[str, int] = {}
+    for t in a:
+        counts[t] = counts.get(t, 0) + 1
+    overlap = 0
+    for t in b:
+        if counts.get(t, 0) > 0:
+            counts[t] -= 1
+            overlap += 1
+    return 2.0 * overlap / (len(a) + len(b))
+
+
+def _max_matching_size(adjacency: list[list[int]], right_size: int) -> int:
+    """Maximum bipartite matching size (augmenting paths). Unique, whatever the visit order."""
+    match_right = [-1] * right_size
+
+    def augment(u: int, seen: list[bool]) -> bool:
+        for v in adjacency[u]:
+            if seen[v]:
+                continue
+            seen[v] = True
+            if match_right[v] == -1 or augment(match_right[v], seen):
+                match_right[v] = u
+                return True
+        return False
+
+    return sum(1 for u in range(len(adjacency)) if augment(u, [False] * right_size))
+
+
+def _soft_step_prf(
+    pred_steps: list[str],
+    gold_steps: list[str],
+    threshold: float,
+    stopwords: frozenset[str],
+) -> tuple[float, float, float]:
+    """``_step_prf`` with exact string equality relaxed to token-overlap F1 >= threshold.
+
+    Same sets as ``_step_prf`` (normalised, de-duplicated), same empty-case rule, same
+    P/R/F1. Two steps match when their normalised strings are identical, or when the
+    :func:`_token_f1` of their stopword-free tokens is at least ``threshold``; the
+    true-positive count is the maximum number of disjoint matching pairs, so every exact
+    match ``step_f1`` counts is still counted here when the pairing allows it.
+    """
+    pset = sorted({_normalize_step(s) for s in pred_steps if s.strip()})
+    gset = sorted({_normalize_step(s) for s in gold_steps if s.strip()})
+    if not pset and not gset:
+        return (1.0, 1.0, 1.0)
+    gold_tokens = [_content_tokens(g, stopwords) for g in gset]
+    adjacency: list[list[int]] = []
+    for p in pset:
+        p_tokens = _content_tokens(p, stopwords)
+        adjacency.append(
+            [
+                j
+                for j, g in enumerate(gset)
+                if p == g or _token_f1(p_tokens, gold_tokens[j]) >= threshold
+            ]
+        )
+    tp = _max_matching_size(adjacency, len(gset))
+    precision = _safe_div(tp, len(pset))
+    recall = _safe_div(tp, len(gset))
+    f1 = 0.0 if (precision + recall) == 0 else 2.0 * precision * recall / (precision + recall)
+    return (precision, recall, f1)
+
+
+def _plan_connectedness(steps: list[str]) -> tuple[float | None, int, int]:
+    """Fraction of non-final steps that some LATER step references with ``#k``.
+
+    Returns ``(value, referenced, non_final)``. Steps 1..n-1 are the non-final ones; step i
+    counts as referenced when a step j > i contains ``#i`` under :data:`_BARE_REF_RX` (bare
+    ``#k`` and ``[#k]`` alike, the regex ``chain_validity`` reads). For n < 2 there is no
+    non-final step and the value is ``None`` - excluded from the mean, and counted.
+    """
+    n = len(steps)
+    if n < 2:
+        return (None, 0, 0)
+    referenced: set[int] = set()
+    for j in range(1, n):
+        for ref in _BARE_REF_RX.findall(steps[j]):
+            k = int(ref)
+            if 1 <= k <= j:
+                referenced.add(k)
+    return (len(referenced) / (n - 1), len(referenced), n - 1)
+
+
+def _beside_card_columns(
+    pred_steps: list[str], gold_steps: list[str], policy: dict[str, Any]
+) -> dict[str, Any]:
+    """Every per-item column of the two beside-card terms, plus the gold connectedness check."""
+    stopwords = frozenset(policy["stopwords_normalized"])
+    out: dict[str, Any] = {}
+    for suffix, threshold in policy["thresholds"].items():
+        p, r, f = _soft_step_prf(pred_steps, gold_steps, threshold, stopwords)
+        out[f"step_precision_soft_{suffix}"] = p
+        out[f"step_recall_soft_{suffix}"] = r
+        out[f"step_f1_soft_{suffix}"] = f
+    value, referenced, non_final = _plan_connectedness(pred_steps)
+    out["plan_connectedness"] = value
+    out["plan_connectedness_referenced_steps"] = referenced
+    out["plan_connectedness_non_final_steps"] = non_final
+    out["gold_plan_connectedness"] = _plan_connectedness(gold_steps)[0]
+    return out
+
+
+def _beside_card_aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Macro keys of the beside-card terms, or ``{}`` when the items do not carry them.
+
+    The soft terms are plain macro means over every item. ``plan_connectedness_macro`` is
+    the mean over the items where it is defined (n >= 2 predicted steps): its denominator
+    depends on what the model emitted, which is one reason it is beside the card and not in
+    it, and why ``plan_connectedness_null_items`` is reported with it.
+    """
+    if not items or not all("plan_connectedness" in it for it in items):
+        return {}
+    m = len(items)
+    suffixes = sorted(
+        match.group(1)
+        for match in (_SOFT_COLUMN_RX.match(k) for k in items[0])
+        if match is not None
+    )
+    out: dict[str, Any] = {}
+    for suffix in suffixes:
+        for stem in ("step_precision_soft", "step_recall_soft", "step_f1_soft"):
+            column = f"{stem}_{suffix}"
+            out[f"{column}_macro"] = sum(float(it[column]) for it in items) / m
+    defined = [float(it["plan_connectedness"]) for it in items if it["plan_connectedness"] is not None]
+    out["plan_connectedness_macro"] = sum(defined) / len(defined) if defined else None
+    out["plan_connectedness_n_items"] = len(defined)
+    out["plan_connectedness_null_items"] = m - len(defined)
+    gold = [it["gold_plan_connectedness"] for it in items]
+    out["gold_plan_connectedness_items_at_1"] = sum(1 for g in gold if g == 1.0)
+    out["gold_plan_connectedness_items_below_1"] = sum(1 for g in gold if g is not None and g < 1.0)
+    out["gold_plan_connectedness_null_items"] = sum(1 for g in gold if g is None)
+    return out
+
+
 def _join_steps(steps: list[str]) -> str:
     return "\n".join(s.strip() for s in steps if s.strip())
 
@@ -1171,6 +1390,7 @@ def score_item(
     ged_time_budget: float,
     decomp_mean_components: tuple[str, ...],
     ged_clamp: float,
+    beside_card_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Every per-item column for one evaluation row.
 
@@ -1247,6 +1467,11 @@ def score_item(
     }
     # Last, because it is a function of the columns above it.
     item_row["decomp_mean"] = decomp_mean(item_row, decomp_mean_components, ged_clamp)
+    # The beside-card terms (ADR 0039), appended after every pre-existing column so no
+    # existing value or key order moves. Callers that pass no policy (the junk battery, the
+    # deck script) get exactly the columns they got before.
+    if beside_card_policy is not None:
+        item_row.update(_beside_card_columns(row.pred_steps, row.gold_steps, beside_card_policy))
     return item_row
 
 
@@ -1348,6 +1573,8 @@ def _aggregate(items: list[dict[str, Any]]) -> dict[str, Any]:
         "hop_count_exact_match_rate": mean("hop_count_exact_match"),
         "hop_count_abs_error_mae": mean("hop_count_abs_error"),
         "predicted_hop_distribution": pred_dist,
+        # Beside the report card (ADR 0039); empty when the items do not carry the columns.
+        **_beside_card_aggregate(items),
     }
 
 
@@ -1886,6 +2113,103 @@ def _report_card_note_lines(report_card: dict[str, Any]) -> list[str]:
         f"- {report_card['adoption']} (issue #6 item 5).",
     ]
     return lines
+
+
+#: The label every beside-card output carries, in the scoring metrics and in --compare.
+BESIDE_CARD_LABEL = (
+    "BESIDE the report card (ADR 0039): not a decomposition_report_card term, not in "
+    "composite_score or decomp_mean, and not part of any 'k of n significant' tally; no arm "
+    "ranking is taken from it. step_f1 is unchanged (ADR 0039 item 1)"
+)
+
+
+def _beside_card_block(overall: dict[str, Any], policy: dict[str, Any], n: int) -> dict[str, Any]:
+    """``beside_report_card`` for the scoring metrics JSON: values, definitions, guards."""
+    soft_terms = [
+        {
+            "metric": f"step_f1_soft_{suffix}_macro",
+            "per_item_column": f"step_f1_soft_{suffix}",
+            "threshold": threshold,
+            "value": overall[f"step_f1_soft_{suffix}_macro"],
+            "precision_macro": overall[f"step_precision_soft_{suffix}_macro"],
+            "recall_macro": overall[f"step_recall_soft_{suffix}_macro"],
+            "direction": "higher_is_better",
+            "range": "[0,1]",
+            "n_items": n,
+        }
+        for suffix, threshold in policy["thresholds"].items()
+    ]
+    return {
+        "label": BESIDE_CARD_LABEL,
+        "adr": "ADR 0039 items 2-3 (issue #60)",
+        "terms": soft_terms
+        + [
+            {
+                "metric": "plan_connectedness_macro",
+                "per_item_column": "plan_connectedness",
+                "value": overall["plan_connectedness_macro"],
+                "direction": "higher_is_better",
+                "range": "[0,1]",
+                "n_items": overall["plan_connectedness_n_items"],
+                "null_items": overall["plan_connectedness_null_items"],
+                "null_rule": (
+                    "an item with fewer than 2 predicted steps has no non-final step; its "
+                    "value is null and it is excluded from the mean, so this mean's "
+                    "denominator depends on what the model emitted"
+                ),
+            }
+        ],
+        "gold_plan_connectedness_check": {
+            "items_at_1": overall["gold_plan_connectedness_items_at_1"],
+            "items_below_1": overall["gold_plan_connectedness_items_below_1"],
+            "null_items": overall["gold_plan_connectedness_null_items"],
+            "n_items": n,
+            "expectation": (
+                "every MuSiQue gold decomposition consumes each non-final step, so all "
+                "items should be at 1; a count below 1 means the term or the gold changed"
+            ),
+        },
+        "step_f1_soft_policy": {
+            "thresholds": policy["thresholds"],
+            "stopwords_source": policy["stopwords_source"],
+            "stopwords_config_count": policy["stopwords_config_count"],
+            "stopwords_normalized_count": len(policy["stopwords_normalized"]),
+        },
+        "definitions": {
+            "step_f1_soft": METRIC_DEFINITIONS["step_f1_soft"],
+            "plan_connectedness": METRIC_DEFINITIONS["plan_connectedness"],
+        },
+    }
+
+
+def _beside_card_note_lines(block: dict[str, Any]) -> list[str]:
+    lines = [
+        "### Beside the report card (ADR 0039) — NOT report-card terms",
+        "",
+        f"- {block['label']}.",
+    ]
+    for term in block["terms"]:
+        if term["per_item_column"] == "plan_connectedness":
+            value = "null" if term["value"] is None else f"{term['value']:.4f}"
+            lines.append(
+                f"- `plan_connectedness_macro` = {value} (higher ⇑) over {term['n_items']} "
+                f"items; {term['null_items']} item(s) with < 2 predicted steps are null and "
+                f"excluded"
+            )
+        else:
+            lines.append(
+                f"- `{term['metric']}` = {term['value']:.4f} (higher ⇑; threshold "
+                f"{term['threshold']:.2f}; P {term['precision_macro']:.4f} / R "
+                f"{term['recall_macro']:.4f}) over {term['n_items']} items"
+            )
+    gold = block["gold_plan_connectedness_check"]
+    lines.append(
+        f"- Gold check: gold `plan_connectedness` is 1.0 on {gold['items_at_1']} of "
+        f"{gold['n_items']} items (below 1: {gold['items_below_1']}; null: "
+        f"{gold['null_items']})"
+    )
+    return lines
+
 
 #: Top-level shape of ``<prefix>_per_item.json``. It is an object rather than a bare list
 #: because the composite-score weights the rows were scored under have to travel with them:
@@ -2734,6 +3058,178 @@ def _significance_floor(n: int, min_items: int) -> dict[str, Any]:
     }
 
 
+def _finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _beside_card_compare(
+    ids: list[str],
+    rows_a: list[dict[str, Any]],
+    rows_b: list[dict[str, Any]],
+    *,
+    iterations: int,
+    alpha: float,
+    seed: int,
+    weights: dict[str, float],
+    scale: float,
+    chunk_size: int,
+    min_items: int,
+) -> dict[str, Any]:
+    """Paired bootstrap of the beside-card terms, in a block of its own (ADR 0039).
+
+    Kept OUT of the ``bootstrap`` / ``mcnemar`` / ``t_test`` blocks on purpose: those are
+    what a "k of n significant" tally or a Holm family reads, and these terms must not
+    enter one. The bootstrap is the same function, seed and parameters as the main battery,
+    run as separate calls so the main battery's numbers cannot move.
+
+    ``step_f1_soft_<ttt>`` is paired over every aligned item. ``plan_connectedness`` is null
+    for an item with < 2 predicted steps, so it is paired over the items where BOTH files
+    define it, and the exclusions are counted per side. A file scored before these columns
+    existed simply does not carry them; what is missing is named.
+    """
+    def carried(column: str) -> bool:
+        return all(column in r for r in rows_a) and all(column in r for r in rows_b)
+
+    soft_columns = sorted(
+        {k for k in (rows_a[0] if rows_a else {}) if _SOFT_COLUMN_RX.match(k)}
+    )
+    soft_columns = [c for c in soft_columns if carried(c)]
+    for column in soft_columns:
+        for side, rows in (("system_a", rows_a), ("system_b", rows_b)):
+            bad = [r["item_id"] for r in rows if not _finite_number(r[column])]
+            if bad:
+                raise SystemExit(
+                    f"{side}: '{column}' is not a finite number for item(s) {bad[:5]}"
+                )
+    block: dict[str, Any] = {
+        "label": BESIDE_CARD_LABEL,
+        "adr": "ADR 0039 items 2-3 (issue #60)",
+        "test": "paired percentile bootstrap only (same iterations, seed and alpha as the "
+        "main battery); not in tests_reported and not in any multiple-comparison family",
+        "bootstrap": {},
+        "plan_connectedness_pairing": None,
+        "not_available_in_inputs": [],
+    }
+    n = len(ids)
+    if soft_columns:
+        block["bootstrap"].update(
+            _paired_bootstrap(
+                {c: np.array([float(r[c]) for r in rows_a]) for c in soft_columns},
+                {c: np.array([float(r[c]) for r in rows_b]) for c in soft_columns},
+                n=n,
+                iterations=iterations,
+                alpha=alpha,
+                seed=seed,
+                weights=weights,
+                scale=scale,
+                chunk_size=chunk_size,
+                underpowered=n < min_items,
+                statistics=tuple(soft_columns),
+            )
+        )
+    else:
+        block["not_available_in_inputs"].append("step_f1_soft_<ttt>")
+
+    if carried("plan_connectedness"):
+        for side, rows in (("system_a", rows_a), ("system_b", rows_b)):
+            bad = [
+                r["item_id"]
+                for r in rows
+                if r["plan_connectedness"] is not None
+                and not _finite_number(r["plan_connectedness"])
+            ]
+            if bad:
+                raise SystemExit(
+                    f"{side}: 'plan_connectedness' is neither null nor a finite number for "
+                    f"item(s) {bad[:5]}"
+                )
+        both = [
+            i
+            for i, (a, b) in enumerate(zip(rows_a, rows_b))
+            if a["plan_connectedness"] is not None and b["plan_connectedness"] is not None
+        ]
+        null_a = sum(1 for r in rows_a if r["plan_connectedness"] is None)
+        null_b = sum(1 for r in rows_b if r["plan_connectedness"] is None)
+        null_both = sum(
+            1
+            for a, b in zip(rows_a, rows_b)
+            if a["plan_connectedness"] is None and b["plan_connectedness"] is None
+        )
+        block["plan_connectedness_pairing"] = {
+            "n_paired": len(both),
+            "n_aligned": n,
+            "null_in_system_a": null_a,
+            "null_in_system_b": null_b,
+            "null_in_both": null_both,
+            "rule": "paired over the items where both files define it (>= 2 predicted "
+            "steps on both sides); the rest are excluded and counted here",
+        }
+        if both:
+            block["bootstrap"].update(
+                _paired_bootstrap(
+                    {"plan_connectedness": np.array([float(rows_a[i]["plan_connectedness"]) for i in both])},
+                    {"plan_connectedness": np.array([float(rows_b[i]["plan_connectedness"]) for i in both])},
+                    n=len(both),
+                    iterations=iterations,
+                    alpha=alpha,
+                    seed=seed,
+                    weights=weights,
+                    scale=scale,
+                    chunk_size=chunk_size,
+                    underpowered=len(both) < min_items,
+                    statistics=("plan_connectedness",),
+                )
+            )
+    else:
+        block["not_available_in_inputs"].append("plan_connectedness")
+    return block
+
+
+def _beside_card_compare_note_lines(block: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "### Beside the report card (ADR 0039) — NOT in the battery above",
+        "",
+        f"- {block['label']}.",
+        f"- Test: {block['test']}.",
+    ]
+    if block["bootstrap"]:
+        lines += [
+            "",
+            "| beside-card statistic | better | a | b | a - b | 95% CI | n | significant | underpowered |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for name, r in block["bootstrap"].items():
+            verdict = (
+                "no"
+                if not r["significant"]
+                else f"yes (favours {'a' if r['favours'] == 'system_a' else 'b'})"
+            )
+            lines.append(
+                f"| {name} | higher | {r['system_a']:.4f} | {r['system_b']:.4f} | "
+                f"{r['difference']:+.4f} | [{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | "
+                f"{r['n']} | {verdict} | {'yes' if r['underpowered'] else 'no'} |"
+            )
+    pairing = block["plan_connectedness_pairing"]
+    if pairing is not None:
+        lines.append(
+            f"- plan_connectedness is paired over {pairing['n_paired']} of "
+            f"{pairing['n_aligned']} aligned items (null, i.e. < 2 predicted steps: "
+            f"{pairing['null_in_system_a']} in a, {pairing['null_in_system_b']} in b, "
+            f"{pairing['null_in_both']} in both)."
+        )
+    if block["not_available_in_inputs"]:
+        lines.append(
+            "- NOT COMPARED (the inputs do not carry these beside-card columns): "
+            + ", ".join(block["not_available_in_inputs"])
+        )
+    return lines
+
+
 def _compare(
     args: argparse.Namespace,
     cfg: dict[str, Any],
@@ -2841,6 +3337,19 @@ def _compare(
     )
     mcnemar = _mcnemar(rows_a, rows_b, alpha, underpowered, statistics=mcnemar_statistics)
     t_test = _paired_t_test(rows_a, rows_b, alpha, underpowered, statistics=t_test_statistics)
+    # ADR 0039: the beside-card terms, in their own block, after the battery is complete.
+    beside_card = _beside_card_compare(
+        ids,
+        rows_a,
+        rows_b,
+        iterations=iterations,
+        alpha=alpha,
+        seed=seed,
+        weights=weights,
+        scale=scale,
+        chunk_size=chunk_size,
+        min_items=min_items,
+    )
     tests_reported = {
         "bootstrap": len(bootstrap_statistics),
         "mcnemar": len(mcnemar_statistics),
@@ -2893,6 +3402,9 @@ def _compare(
         "per_item_composite_step_count_error_scale": per_item_scale,
         "config_weights_match_per_item_files": weights_match_config,
         "comparison_definitions": COMPARISON_DEFINITIONS,
+        # Outside bootstrap / mcnemar / t_test on purpose (ADR 0039): nothing that tallies
+        # significant rows over those blocks can count these.
+        "beside_report_card": beside_card,
     }
 
     snapshot = {
@@ -3009,6 +3521,8 @@ def _compare(
         "over-decomposition is tolerable and under-decomposition is not, so read the two "
         "verdicts separately rather than as one 'wrong length' result."
     )
+    note_lines += _beside_card_compare_note_lines(beside_card)
+    note_lines.append("")
     if unavailable:
         note_lines.append(
             f"- NOT COMPARED (the inputs do not carry these per-item columns): "
@@ -3157,6 +3671,8 @@ def main() -> None:
     decomp_mean_policy = _decomp_mean_policy(cfg)
     decomp_mean_components = tuple(decomp_mean_policy["components"])
     ged_clamp = decomp_mean_policy["ged_clamp"]
+    # The beside-card terms' parameters (ADR 0039): thresholds and stopwords, from config.
+    beside_card_policy = _soft_policy(cfg)
 
     gold_path = (
         args.gold
@@ -3220,6 +3736,7 @@ def main() -> None:
             ged_time_budget=ged_time_budget,
             decomp_mean_components=decomp_mean_components,
             ged_clamp=ged_clamp,
+            beside_card_policy=beside_card_policy,
         )
         per_item.append(item_row)
         gold_hops = int(item_row["gold_hop_count"])
@@ -3230,6 +3747,7 @@ def main() -> None:
     n = len(per_item)
     composite = _composite_score(overall, weights, scale)
     report_card = _report_card(overall, per_item, decomp_mean_policy, composite)
+    beside_card = _beside_card_block(overall, beside_card_policy, n)
 
     metrics = {
         "script": Path(__file__).name,
@@ -3249,6 +3767,8 @@ def main() -> None:
         # THE REPORTED PRIMARY. It is placed above composite_score deliberately: the
         # composite below it is legacy, kept so committed numbers stay quotable.
         "decomposition_report_card": report_card,
+        # Beside the card, never in it (ADR 0039): its own block, after the card.
+        "beside_report_card": beside_card,
         "composite_score": composite,
         "composite_score_status": COMPOSITE_SCORE_STATUS,
         "composite_score_weights": weights,
@@ -3302,6 +3822,7 @@ def main() -> None:
         "composite_score_status": COMPOSITE_SCORE_STATUS,
         "ged_policy": ged_policy,
         "decomp_mean_policy": decomp_mean_policy,
+        "beside_report_card_policy": beside_card_policy,
     }
     if eval_set_record is not None:
         snapshot["eval_set"] = args.eval_set
@@ -3327,6 +3848,8 @@ def main() -> None:
             ),
             "",
             *_report_card_note_lines(report_card),
+            "",
+            *_beside_card_note_lines(beside_card),
             "",
             "### The rest of the report (not the primary)",
             "",

@@ -110,6 +110,38 @@ def strip_generation_artifacts(
     return out
 
 
+def with_scaffold_truncate_markers(post_cfg: dict, scaffold_markers: list[str]) -> dict:
+    """``post_cfg`` with the decomposer's scaffold markers appended to ``truncate_at``.
+
+    Issue #60 / ADR 0039 item 4 (H3). A model that runs past its plan into a fresh few-shot
+    block was already cut at the model folder's ``Question:`` marker, but the scaffold label
+    printed *before* that ``Question:`` line (``Task:``, and a hallucinated ``Answer:``) was
+    left behind and scored as a step. The scaffold markers get exactly the ``Question:``
+    semantics - :func:`strip_generation_artifacts` cuts the text at the first occurrence of
+    any marker - by being appended to the same list, not by a second rule.
+
+    They are appended here rather than written into the model folders' ``truncate_at``
+    because the answerer reuses those folders' ``post_process`` block for its reader
+    (``components/answerer/run_answerer.py``, ADR 0019), where an ``Answer:`` marker would
+    cut a reader's ``"Answer: Paris"`` down to nothing. The marker list lives in the
+    decomposer's shared config (``step_parser.scaffold_truncate_at``).
+
+    Cutting at the earliest of several markers does not depend on their order, so the
+    result is the same whatever order the list is in. Markers already present are not
+    repeated. ``post_cfg`` itself is not modified.
+    """
+    if not isinstance(scaffold_markers, list) or not all(
+        isinstance(m, str) and m for m in scaffold_markers
+    ):
+        raise ValueError(
+            f"scaffold truncate markers must be a list of non-empty strings, got "
+            f"{scaffold_markers!r}"
+        )
+    existing = list(post_cfg.get("truncate_at") or [])
+    merged = existing + [m for m in scaffold_markers if m not in existing]
+    return {**post_cfg, "truncate_at": merged}
+
+
 def post_process_generation(
     text: str, *, strip_think: bool, truncate_at: list[str] | tuple[str, ...] | None
 ) -> str:

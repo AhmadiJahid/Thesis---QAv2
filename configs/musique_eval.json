@@ -60,5 +60,34 @@
     }
   },
 
+  "beside_report_card": {
+    "_note": "ADR 0039 items 2-3 (issue #60): two terms computed BESIDE decomposition_report_card. Neither is a report-card term, neither enters composite_score or decomp_mean, and no arm ranking or 'k of n significant' tally is taken from either: --compare reports them in their own 'beside_report_card' block (paired bootstrap), outside the bootstrap / mcnemar / t_test blocks a tally reads. step_f1 itself is unchanged (ADR 0039 item 1). Definitions: docs/METRICS.md section 2.5.",
+    "step_f1_soft": {
+      "_note": "A predicted step matches a gold step when their token-overlap F1 reaches the threshold, after the evaluator's step normalisation (_normalize_step) and removal of the stopwords below; identical normalised strings always match. Matching is one-to-one over the same de-duplicated sets of normalised steps step_f1 uses, and the matched count is the MAXIMUM number of disjoint (pred, gold) pairs at or above the threshold, so the value does not depend on which pairs a tie-break would pick. Precision / recall / F1 then follow step_f1 exactly. Reported at BOTH thresholds as a sensitivity pair (ADR 0039 item 2); per-item columns step_{precision,recall,f1}_soft_<ttt> and macro keys <column>_macro, where <ttt> is the threshold in whole percent, zero-padded (0.50 -> 050). A threshold must be a whole percent in (0, 1] so the field name states it exactly.",
+      "thresholds": [
+        0.5,
+        0.6
+      ],
+      "stopwords_source": "NLTK stopwords corpus, English list, verbatim: https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/corpora/stopwords.zip, member stopwords/english (198 entries, sha256 f6d005956f407dbc6ea32e5ff0c7e8e6f71488d3239b9023efdc7fc139d6375b), fetched 2026-10-14. Chosen as a published standard list rather than a hand-made one. Each entry is put through the evaluator's own step normalisation before use (so \"aren't\" becomes 'arent', the token a normalised step contains); the run records the normalised set it used.",
+      "stopwords": [
+        "a", "about", "above", "after", "again", "against", "ain", "all", "am", "an", "and", "any", "are", "aren",
+        "aren't", "as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can",
+        "couldn", "couldn't", "d", "did", "didn", "didn't", "do", "does", "doesn", "doesn't", "doing", "don", "don't", "down",
+        "during", "each", "few", "for", "from", "further", "had", "hadn", "hadn't", "has", "hasn", "hasn't", "have", "haven",
+        "haven't", "having", "he", "he'd", "he'll", "her", "here", "hers", "herself", "he's", "him", "himself", "his", "how",
+        "i", "i'd", "if", "i'll", "i'm", "in", "into", "is", "isn", "isn't", "it", "it'd", "it'll", "it's",
+        "its", "itself", "i've", "just", "ll", "m", "ma", "me", "mightn", "mightn't", "more", "most", "mustn", "mustn't",
+        "my", "myself", "needn", "needn't", "no", "nor", "not", "now", "o", "of", "off", "on", "once", "only",
+        "or", "other", "our", "ours", "ourselves", "out", "over", "own", "re", "s", "same", "shan", "shan't", "she",
+        "she'd", "she'll", "she's", "should", "shouldn", "shouldn't", "should've", "so", "some", "such", "t", "than", "that", "that'll",
+        "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they", "they'd", "they'll", "they're", "they've", "this",
+        "those", "through", "to", "too", "under", "until", "up", "ve", "very", "was", "wasn", "wasn't", "we", "we'd",
+        "we'll", "we're", "were", "weren", "weren't", "we've", "what", "when", "where", "which", "while", "who", "whom", "why",
+        "will", "with", "won", "won't", "wouldn", "wouldn't", "y", "you", "you'd", "you'll", "your", "you're", "yours", "yourself",
+        "yourselves", "you've"
+      ]
+    }
+  },
+
   "paths_config": "paths.json"
 }

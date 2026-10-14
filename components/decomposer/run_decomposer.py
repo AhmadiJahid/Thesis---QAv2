@@ -60,6 +60,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import random
 import re
 import statistics
 import sys
@@ -95,6 +96,7 @@ from step_lines import (  # noqa: E402
     split_step_lines,
     step_line_count,
     trim_to_step_lines,
+    with_scaffold_truncate_markers,
 )
 
 _ID_HOP_RX = re.compile(r"^(?P<h>\d+)hop")
@@ -709,7 +711,15 @@ def examples_from_reranked_row(
 #: supervisor on 2026-08-27 (assignment item A5, "the order is matter"): ``as_is`` is the
 #: retrieval-rank order - highest similarity first - which is what every run up to exp-015 did
 #: and is the default, and ``reversed`` is the same k exemplars lowest similarity first.
-FEW_SHOT_ORDERINGS = ("as_is", "reversed")
+#: ``shuffled`` (issue #60 / ADR 0039 item 5, the H4 ordering noise floor) is the same k
+#: exemplars in a seeded per-question permutation: it needs ``--ordering-seed``, and the
+#: permutation depends only on (ordering seed, query id), never on row order or on the
+#: decoding seed - see :func:`shuffled_permutation`.
+FEW_SHOT_ORDERINGS = ("as_is", "reversed", "shuffled")
+
+#: Orderings that take an ordering seed. Every other ordering refuses one, so a seed can
+#: never be recorded for a run it did not affect.
+FEW_SHOT_SEEDED_ORDERINGS = ("shuffled",)
 
 #: Orderings whose NAME is reserved but whose implementation is deliberately absent, mapped to
 #: the refusal each one prints. The supervisor named a third ordering, least-complex to
@@ -757,20 +767,72 @@ def resolve_few_shot_ordering(value: Any, *, src: str) -> str:
 _Exemplar = TypeVar("_Exemplar")
 
 
+def check_ordering_seed(ordering: str, ordering_seed: Any, *, src: str) -> int | None:
+    """Refuse a seeded ordering without a seed, and a seed with any other ordering."""
+    if ordering in FEW_SHOT_SEEDED_ORDERINGS:
+        if ordering_seed is None:
+            raise SystemExit(
+                f"[{src}] few-shot ordering {ordering!r} needs --ordering-seed <int>: the "
+                "permutation is seeded per question from (ordering seed, query id), and a "
+                "run without a stated seed could not be reproduced"
+            )
+        if isinstance(ordering_seed, bool) or not isinstance(ordering_seed, int):
+            raise SystemExit(f"[{src}] --ordering-seed must be an int, got {ordering_seed!r}")
+        return ordering_seed
+    if ordering_seed is not None:
+        raise SystemExit(
+            f"[{src}] --ordering-seed {ordering_seed!r} was given with few-shot ordering "
+            f"{ordering!r}, which takes no seed (only {list(FEW_SHOT_SEEDED_ORDERINGS)} do); "
+            "refusing rather than recording a seed that changed nothing"
+        )
+    return None
+
+
+def shuffled_permutation(k: int, ordering_seed: int, query_id: str) -> list[int]:
+    """The ``shuffled`` ordering's permutation of ``range(k)`` for one question.
+
+    A ``random.Random`` is seeded from the first 8 bytes of
+    ``sha256("few_shot_shuffled|<ordering_seed>|<query_id>")`` - a stable function of the
+    two values, NOT Python's ``hash`` (salted per process) - and shuffles ``range(k)``. So the
+    permutation of a question is the same whatever position the question has in the run,
+    whatever other rows exist, and whatever the decoding seed is.
+    """
+    material = f"few_shot_shuffled|{ordering_seed}|{query_id}".encode("utf-8")
+    rng = random.Random(int.from_bytes(hashlib.sha256(material).digest()[:8], "big"))
+    perm = list(range(k))
+    rng.shuffle(perm)
+    return perm
+
+
 def order_few_shot_examples(
-    examples: Sequence[_Exemplar], ordering: str
+    examples: Sequence[_Exemplar],
+    ordering: str,
+    *,
+    ordering_seed: int | None = None,
+    query_id: Any = None,
 ) -> list[_Exemplar]:
     """Return the exemplars in presentation order. Same multiset, never a different k.
 
     ``as_is`` hands back the input list unchanged (retrieval-rank order, highest similarity
-    first); ``reversed`` hands back the same objects in the opposite order. Nothing is
-    dropped, added or re-selected here - that is the property the A5 contrast rests on.
+    first); ``reversed`` hands back the same objects in the opposite order; ``shuffled``
+    hands them back in :func:`shuffled_permutation` order for (``ordering_seed``,
+    ``query_id``), both required. Nothing is dropped, added or re-selected here - that is
+    the property the A5 contrast rests on.
 
-    This is the ONE implementation of the reversal in the file; the prompt-log header calls
-    it too rather than reversing its own copy, so a future third ordering cannot be applied
-    to the prompt and forgotten in the log.
+    This is the ONE implementation of the reordering in the file; the prompt-log header calls
+    it too rather than reordering its own copy, so an ordering cannot be applied to the
+    prompt and forgotten in the log.
     """
     ordering = resolve_few_shot_ordering(ordering, src="order_few_shot_examples")
+    ordering_seed = check_ordering_seed(ordering, ordering_seed, src="order_few_shot_examples")
+    if ordering == "shuffled":
+        if query_id is None or not str(query_id).strip():
+            raise SystemExit(
+                "few-shot ordering 'shuffled' needs the question's query id (the permutation "
+                "is seeded from it); this row has none"
+            )
+        items = list(examples)
+        return [items[i] for i in shuffled_permutation(len(items), ordering_seed, str(query_id))]
     if ordering == "reversed":
         return list(examples)[::-1]
     return list(examples)
@@ -859,6 +921,8 @@ def format_few_shot_examples(
     *,
     exemplar_hop_mode: str,
     ordering: str,
+    ordering_seed: int | None = None,
+    query_id: Any = None,
 ) -> str:
     """Format (question, decomposition) pairs. Omit the hop line when unguided.
 
@@ -883,7 +947,9 @@ def format_few_shot_examples(
             f"{list(EXEMPLAR_HOP_MODES)})"
         )
     blocks = []
-    for ex in order_few_shot_examples(examples, ordering):
+    for ex in order_few_shot_examples(
+        examples, ordering, ordering_seed=ordering_seed, query_id=query_id
+    ):
         if hop_count is not None:
             exemplar_hop = (
                 exemplar_gold_hop_count(ex)
@@ -1922,9 +1988,18 @@ def _parse_args() -> argparse.Namespace:
         "'few_shot.ordering' the way --quantization overrides loader.quantization. "
         f"{list(FEW_SHOT_ORDERINGS)}: 'as_is' is retrieval-rank order (highest similarity "
         "first, the behaviour of every run up to exp-015), 'reversed' is the same k "
-        f"exemplars lowest similarity first. {sorted(FEW_SHOT_ORDERINGS_RESERVED)} is a "
-        "reserved name and is refused - see ADR 0032 item 5. Selection is unaffected: both "
-        "orderings show the same k exemplars.",
+        "exemplars lowest similarity first, 'shuffled' is a seeded per-question permutation "
+        f"of them (needs --ordering-seed; issue #60). {sorted(FEW_SHOT_ORDERINGS_RESERVED)} "
+        "is a reserved name and is refused - see ADR 0032 item 5. Selection is unaffected: "
+        "every ordering shows the same k exemplars.",
+    )
+    p.add_argument(
+        "--ordering-seed",
+        type=int,
+        default=None,
+        help="Required with --ordering shuffled and refused with every other ordering (issue "
+        "#60, ADR 0039 item 5). Seeds each question's exemplar permutation from (this seed, "
+        "query id); the decoding seed (--seed) is untouched.",
     )
     p.add_argument(
         "--adapter",
@@ -2266,6 +2341,11 @@ def main() -> None:
         ),
     )
     few_shot_ordering_source = "--ordering" if args.ordering is not None else "config"
+    # Refused before any work: a shuffled run with no seed, or a seed on a run it would not
+    # affect (issue #60). Only the CLI carries a seed, so the source is --ordering-seed.
+    few_shot_ordering_seed = check_ordering_seed(
+        few_shot_ordering, args.ordering_seed, src="--ordering-seed"
+    )
     hops = [int(h) for h in require(cfg, "hops")]
     unguided_hop_placeholder = require(cfg, "unguided_hop_placeholder")
     # Required in every config rather than defaulted here: what an exemplar's hop line says is
@@ -2286,7 +2366,18 @@ def main() -> None:
     )
     loader = dict(require(model_cfg, "loader"))
     few_shot_cfg = dict(require(model_cfg, "few_shot"))
-    post_cfg = dict(require(model_cfg, "post_process"))
+    model_post_cfg = dict(require(model_cfg, "post_process"))
+    # Issue #60 / ADR 0039 item 4 (H3): the decomposer's scaffold labels get the model
+    # folder's 'Question:' semantics (truncate at the first occurrence). Required in both
+    # shared configs rather than defaulted, like few_shot.ordering: what counts as a step is
+    # a scoring decision and must not be acquired by omission.
+    scaffold_truncate_at = require(cfg, "step_parser.scaffold_truncate_at")
+    try:
+        post_cfg = with_scaffold_truncate_markers(model_post_cfg, scaffold_truncate_at)
+    except ValueError as exc:
+        raise SystemExit(
+            f"step_parser.scaffold_truncate_at in {cfg.get('_config_path', '<config>')}: {exc}"
+        ) from exc
     prompt_log_every = int(require(model_cfg, "logging.prompt_log_every"))
     # Which items get a prompt logged BY ID, on top of the every-Nth positional sample
     # (ADR 0033, supervisor item A4). Required in the shared config rather than defaulted
@@ -2465,6 +2556,7 @@ def main() -> None:
         # is checkable from the committed artifacts rather than from the command line.
         "few_shot_ordering": few_shot_ordering,
         "few_shot_ordering_source": few_shot_ordering_source,
+        "few_shot_ordering_seed": few_shot_ordering_seed,
         "questions_template_key": require(cfg, "questions_template_key"),
         "questions_format": require(cfg, "questions_format"),
         "device": device,
@@ -2490,7 +2582,12 @@ def main() -> None:
         "generation_overrides": generation_overrides,
         "loader": {**loader, "quantization": quantization},
         "few_shot": few_shot_cfg,
+        # The EFFECTIVE block the run applied: the model folder's own post_process with the
+        # shared config's scaffold markers appended (issue #60). Both inputs are recorded
+        # beside it, so scripts/reparse_decompositions.py can tell what a run cut at.
         "post_process": post_cfg,
+        "post_process_model_folder": model_post_cfg,
+        "step_parser": {"scaffold_truncate_at": scaffold_truncate_at},
         "shared_config": cfg.get("_config_path"),
         "model_config": model_cfg.get("_config_path"),
         # What the prompts_log of this run contains, so a later reader can tell an empty
@@ -2824,6 +2921,15 @@ def main() -> None:
         if r.get("query_id") is not None and str(r.get("query_id")) in anchor_ids
     }
     anchor_prompts_logged = 0
+    # The 'shuffled' ordering's by-chance coincidences (issue #60): a permutation of k
+    # exemplars equals as_is or reversed with probability 1/k! each, and such a row is not a
+    # shuffled presentation at all. Counted, not dropped.
+    shuffle_tally = {
+        "rows_with_k_at_least_2": 0,
+        "equal_to_as_is": 0,
+        "equal_to_reversed": 0,
+        "rows_with_k_below_2": 0,
+    }
 
     for i, row in enumerate(inference_rows):
         question = row["question"]
@@ -2875,10 +2981,25 @@ def main() -> None:
                 hop_input,
                 exemplar_hop_mode=exemplar_hop_mode,
                 ordering=few_shot_ordering,
+                ordering_seed=few_shot_ordering_seed,
+                query_id=row.get("query_id"),
             )
             if sampled
             else ""
         )
+        permutation: list[int] | None = None
+        if few_shot_ordering == "shuffled" and sampled:
+            permutation = shuffled_permutation(
+                len(sampled), few_shot_ordering_seed, str(row.get("query_id"))
+            )
+            if len(permutation) < 2:
+                shuffle_tally["rows_with_k_below_2"] += 1
+            else:
+                shuffle_tally["rows_with_k_at_least_2"] += 1
+                shuffle_tally["equal_to_as_is"] += permutation == list(range(len(permutation)))
+                shuffle_tally["equal_to_reversed"] += permutation == list(
+                    range(len(permutation) - 1, -1, -1)
+                )
         cost: dict[str, Any] = {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -2960,13 +3081,25 @@ def main() -> None:
                 # So a single logged prompt is attributable to its ordering arm without
                 # opening metrics.json: the A5 arms differ in nothing else, and a prompt
                 # read on its own otherwise cannot say which one it came from.
-                f"Few-shot ordering: {few_shot_ordering} ({few_shot_ordering_source})",
+                f"Few-shot ordering: {few_shot_ordering} ({few_shot_ordering_source})"
+                + (
+                    f", ordering seed {few_shot_ordering_seed}, permutation of the "
+                    f"retrieval-rank order {permutation}"
+                    if few_shot_ordering_seed is not None
+                    else ""
+                ),
             ]
             # Ordered with the same function the prompt body uses, so the numbered list
             # below is in the order the exemplars actually appear in the prompt rather than
             # in selection order. Empty on the reranked path (no per-candidate scores).
             for j, (item, score) in enumerate(
-                order_few_shot_examples(sampled_with_scores, few_shot_ordering), start=1
+                order_few_shot_examples(
+                    sampled_with_scores,
+                    few_shot_ordering,
+                    ordering_seed=few_shot_ordering_seed,
+                    query_id=row.get("query_id"),
+                ),
+                start=1,
             ):
                 header.append(
                     f"  {j}. sim={score:.4f} | masked={item.get('masked')} | question={item.get('question')}"
@@ -3014,6 +3147,17 @@ def main() -> None:
                 "hit_max_new_tokens": gen["hit_max_new_tokens"] if gen else None,
                 "stopped_at_step_line_cap": gen["stopped_at_step_line_cap"] if gen else None,
                 **cost,
+                # Only on a seeded ordering, so an as_is / reversed results.json keeps its
+                # schema byte for byte: the seed and the permutation of the retrieval-rank
+                # order this row's prompt showed (issue #60).
+                **(
+                    {
+                        "few_shot_ordering_seed": few_shot_ordering_seed,
+                        "few_shot_permutation": permutation,
+                    }
+                    if few_shot_ordering_seed is not None
+                    else {}
+                ),
             }
         )
 
@@ -3124,6 +3268,12 @@ def main() -> None:
         # metrics file that does not name its ordering cannot be told from its comparator.
         "few_shot_ordering": few_shot_ordering,
         "few_shot_ordering_source": few_shot_ordering_source,
+        "few_shot_ordering_seed": few_shot_ordering_seed,
+        # Null unless the ordering is shuffled: how many rows' permutation happened to equal
+        # as_is or reversed (each 1/k! per row).
+        "few_shot_shuffle_coincidences": (
+            shuffle_tally if few_shot_ordering == "shuffled" else None
+        ),
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
         "adapter_base_model": adapter_base_model_record,
@@ -3217,7 +3367,16 @@ def main() -> None:
             ),
             f"- Few-shot: enabled={few_shot_enabled} k={few_shot_k} mode={few_shot_source_mode}; "
             f"ordering: {few_shot_ordering} ({few_shot_ordering_source}); "
-            f"self-examples dropped: {self_excluded_examples}",
+            + (
+                f"ordering seed: {few_shot_ordering_seed} (permutation per question from "
+                f"(seed, query id); {shuffle_tally['equal_to_as_is']} of "
+                f"{shuffle_tally['rows_with_k_at_least_2']} rows with k >= 2 came out equal to "
+                f"as_is and {shuffle_tally['equal_to_reversed']} equal to reversed; "
+                f"{shuffle_tally['rows_with_k_below_2']} rows had k < 2); "
+                if few_shot_ordering_seed is not None
+                else ""
+            )
+            + f"self-examples dropped: {self_excluded_examples}",
             (
                 f"- Truncation: {metrics['rows_at_max_new_tokens']} row(s) reached "
                 f"max_new_tokens={metrics['max_new_tokens']}; "
