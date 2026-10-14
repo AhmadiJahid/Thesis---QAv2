@@ -1,0 +1,199 @@
+{
+  "_note": "The v2 pool-size sweep (issue #51, widened to 2k-10k at 1k steps by Jahid on 2026-10-14; shape fixed in ADR 0035). ONE factor moves: pool size. Everything else is exp-020's arm (Mistral-7B-Instruct-v0.3, 4-bit, unguided, ADR 0007 pinned 600, imbalanced construction per ADR 0031 item 1, e5-small-v2 top-20 -> ms-marco cross-encoder rerank -> top-5, seed 42). This file is read by the experiment-runner, not by a script: it names the sizes, every flag of every stage, and the sha256 each prebuilt input must have, so a run can be checked against it before launch. It is deliberately separate from configs/pool_sweep.json, which drives scripts/pool_sweep_orchestrator.py's full construction x mode x retriever cross - widening that file's imbalanced_sizes would make the orchestrator re-run the v1-shaped matrix ADR 0035 rules out. {size} and {exp_id} are the only template fields; paths are relative to the repo root of the main checkout.",
+  "issue": 51,
+  "adr": "docs/adr/0035-jahid-2026-10-14-results-section-and-pool-size-sweep.md",
+  "exp_id": "exp-030",
+  "_exp_id_note": "Next free id when this file was written (exp-029 is the concurrent CPU re-analysis). The experiment-runner confirms it against experiments/log.md and writes the log row before launch; if the id has been taken, use the next free one and substitute it everywhere {exp_id} appears.",
+  "seed": 42,
+  "sizes": [
+    2000,
+    3000,
+    4000,
+    5000,
+    6000,
+    7000,
+    8000,
+    9000,
+    10000
+  ],
+  "baseline_size": 2000,
+  "pool": {
+    "builder": "MusiQue/scripts/sample_pool.py",
+    "builder_config": "configs/musique_prep.json",
+    "input_key": "musique_pool_enriched",
+    "input_rows": 19938,
+    "input_bucket_counts": {
+      "2hop": 14376,
+      "3hop": 4387,
+      "4hop": 1175
+    },
+    "balance": "imbalanced",
+    "pool_seed": 42,
+    "out_dir_template": "runs/pool_size_sweep_v2/pools/size{size}_imbalanced_poolseed42",
+    "command_template": ".venv/bin/python MusiQue/scripts/sample_pool.py --size {size} --balance imbalanced --seed 42 --out-dir runs/pool_size_sweep_v2/pools/size{size}_imbalanced_poolseed42",
+    "_nesting_note": "The imbalanced strategy is Python's random.Random(42).sample(rows, size) over all 19,938 enriched train rows. random.sample picks its algorithm from the requested size: for size <= 5461 it uses the set-based method, for size >= 5462 (n=19938 <= 21 + 4**ceil(log4(3*size))) the pool-swap method. Each method is prefix-consistent, so the pools form TWO nested chains, not one: 2k c 3k c 4k c 5k (each the exact prefix of the next) and 6k c 7k c 8k c 9k c 10k (likewise), but 5k is NOT a subset of 6k - they share 3,553 of 5,000 ids - and 2k shares 1,946 of its 2,000 ids with 10k. The 5k->6k step therefore changes the draw as well as the size. Measured 2026-10-14 (ml-engineer, issue #51 prep)."
+  },
+  "retrieval": {
+    "similarity_script": "MusiQue/scripts/check_question_similarity.py",
+    "rerank_script": "MusiQue/scripts/rerank_similarity_results.py",
+    "query_glob": "musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl",
+    "n_per_hop_file": 200,
+    "mode": "typed",
+    "embed_model": "e5-small (intfloat/e5-small-v2, configs/similarity.json default)",
+    "top_k": 20,
+    "cross_encoder": "cross-encoder/ms-marco-MiniLM-L-12-v2 (configs/similarity.json default)",
+    "rerank_k": 5,
+    "device": "cpu",
+    "hop_match": false,
+    "cache": "disabled (--no-cache): every size's pool embeddings are computed fresh, so no artifact depends on an embedding-cache entry of unknown provenance, and nothing is written into the v1 cache directory the data root symlinks to",
+    "out_dir_template": "runs/pool_size_sweep_v2/retrieval/size{size}",
+    "similarity_command_template": ".venv/bin/python MusiQue/scripts/check_question_similarity.py --pool-file runs/pool_size_sweep_v2/pools/size{size}_imbalanced_poolseed42/pool.jsonl --query-glob 'musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl' --n 200 --mode typed --top-k 20 --device cpu --seed 42 --no-hop-match --no-cache --out runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_top20.jsonl --run-dir runs/pool_size_sweep_v2/retrieval/size{size}/similarity",
+    "rerank_command_template": ".venv/bin/python MusiQue/scripts/rerank_similarity_results.py --input runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_top20.jsonl --out runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_imbalanced_rerank_top5.jsonl --rerank-k 5 --device cpu --seed 42 --run-dir runs/pool_size_sweep_v2/retrieval/size{size}/rerank",
+    "retrieval_input_template": "runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_imbalanced_rerank_top5.jsonl"
+  },
+  "decompose": {
+    "_note": "exp-020's step_1 command with only --retrieval-input and --output-root moved. --quantization 4bit and --retrieval-input are passed explicitly (configs/decomposer_musique.json _runnable_models_note; the model folder default stays quantization none). few_shot.ordering stays at the config default as_is, which is the behaviour exp-020 ran under (it predates the key).",
+    "model": "mistral_7b_instruct",
+    "config": "decomposer_musique.json",
+    "condition": "unguided",
+    "quantization": "4bit",
+    "seed": 42,
+    "command_template": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --quantization 4bit --retrieval-input runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_imbalanced_rerank_top5.jsonl --output-root runs/{exp_id}/size{size}/decomposer"
+  },
+  "evaluate": {
+    "command_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions runs/{exp_id}/size{size}/decomposer/<timestamp>/results.json --run-dir runs/{exp_id}/size{size}/eval --out-prefix eval --seed 42"
+  },
+  "compare": {
+    "_note": "Each size against the 2k point with the evaluator's battery (ADR 0009); no multiple-comparison correction unless a slide states Holm (ADR 0035). The 2k point is this sweep's own 2k re-run (see reproducibility_gate_2k), so every pair is same-run, same-code, same eval set. The extra pair 2k-rerun vs exp-020 measures whether re-generating the 2k arm reproduces exp-020.",
+    "command_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/{exp_id}/size{size}/eval/eval_per_item.json runs/{exp_id}/size2000/eval/eval_per_item.json --run-dir runs/{exp_id}/compare/size{size}_vs_size2000 --out-prefix compare --seed 42",
+    "pairs": "size{size} vs size2000 for size in sizes[1:] (8 pairs)",
+    "extra_pair_command": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/{exp_id}/size2000/eval/eval_per_item.json runs/exp-020/eval/eval_per_item.json --run-dir runs/{exp_id}/compare/size2000_vs_exp020 --out-prefix compare --seed 42"
+  },
+  "reproducibility_gate_2k": {
+    "verdict": "FAIL on the sha256 rule - the sweep re-runs 2k; exp-020 is not reused as the 2k point",
+    "pool": "MATCH: rebuilt size2000 pool sha256 cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646 = exp-020/exp-014 input, 2000 rows, 1461/413/126",
+    "retrieval": "NO MATCH: rebuilt top-20 sha256 15adefdf... vs exp-014 493360b4...; rebuilt rerank top-5 sha256 bbbdb63f... vs exp-014/exp-020 3f95c7dc.... The difference is ROW ORDER ONLY: keyed by query_id, all 600 rows of both stages are identical in every field (same top-k ids, same scores, same masked query). Cause: the three pinned-600 query files under musique/dev_data were rewritten on 2026-09-14 15:01 (mtime), after exp-014 (2026-08-23); they hold the same 600 ids in a different order, and the retrieval scripts write rows in query-file order.",
+    "why_rerun_anyway": "ADR 0035 makes byte identity the rule. Re-running 2k also puts all nine sizes on the same code, the same day and the same input order, and the extra compare (2k re-run vs exp-020) measures whether re-generating the arm reproduces exp-020.",
+    "measured": "2026-10-14, ml-engineer, issue #51 prep; --no-cache (fresh CPU embeddings)"
+  },
+  "expected_inputs": {
+    "2000": {
+      "pool_sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "pool_rows": 2000,
+      "pool_hop_mix": {
+        "2hop": 1461,
+        "3hop": 413,
+        "4hop": 126
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "15adefdfa97ef4b8a8a72e9034a825809c8cf70a521f6a89cf67fa74438a2af6",
+      "rerank_top5_sha256": "bbbdb63fc3876f6324ff0580f1340067f5fe6c74d5f7a45a293635ad7d80eff0"
+    },
+    "3000": {
+      "pool_sha256": "3468c17c860c2d66c0d19890ce54155dd3df4f65670f93d913b2d25f0b66d0cf",
+      "pool_rows": 3000,
+      "pool_hop_mix": {
+        "2hop": 2178,
+        "3hop": 639,
+        "4hop": 183
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "ed4724c355224f6768518af8da42d1ec8dcee34651209bdd77917ed56287bbb3",
+      "rerank_top5_sha256": "eba8c7a318393cb2c13cd573d5c58ab779b8a7aa8cd34fd9877d870d585dc12c"
+    },
+    "4000": {
+      "pool_sha256": "9c594903a034ceb5fd1e5c7a82cb3db9e080d33a4a4ea39e9d7f4639e935be44",
+      "pool_rows": 4000,
+      "pool_hop_mix": {
+        "2hop": 2889,
+        "3hop": 866,
+        "4hop": 245
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "87083a4c23991e1ee68af00d6a08db3ce12d00fdbd94bb1c65bb7850e92c61d8",
+      "rerank_top5_sha256": "d65422fd6ffdd3b1f231940dbc42faac14ad0fb6677a40bf670d7bd0b72ff5f4"
+    },
+    "5000": {
+      "pool_sha256": "c7bb61787452b8e9d29c2472c14ac31b2b5e938daf85db152714cc785dde1a23",
+      "pool_rows": 5000,
+      "pool_hop_mix": {
+        "2hop": 3610,
+        "3hop": 1089,
+        "4hop": 301
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "9c97143da13a56be68b60622b2df7905ea44c518277a6a4dde08270e8ec0e63e",
+      "rerank_top5_sha256": "abe2ae3ff640e013f47a4079ba83e5275577a5aea171d288936d2a147faf81de"
+    },
+    "6000": {
+      "pool_sha256": "46646d8d7a2cf13e4451443860d8375863dd09f1fd6a1dfb7c822a7f1ddedad2",
+      "pool_rows": 6000,
+      "pool_hop_mix": {
+        "2hop": 4339,
+        "3hop": 1274,
+        "4hop": 387
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "26fa988a2db9e7b73dba2bed555b5fb03b44663ee32251daebdd404f832da672",
+      "rerank_top5_sha256": "b78f2f7951740e97e30370ccfc91b3b8d092d0013e75a156065053ae276e7faa"
+    },
+    "7000": {
+      "pool_sha256": "87ac9105aef3146ce07ff301e0e72600c8f4f75703b832c996b333268d3b3b8d",
+      "pool_rows": 7000,
+      "pool_hop_mix": {
+        "2hop": 5071,
+        "3hop": 1481,
+        "4hop": 448
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "0d2cc6aa1cd95474425c8ff40eba981a5741442ff97c7b4b72019d53ae16897e",
+      "rerank_top5_sha256": "5969845bb3762218b6c37253043ab846b7e2be3aa76524b8d224e811726956cf"
+    },
+    "8000": {
+      "pool_sha256": "cca90df030e4e5aa7748b41a1426a6a3c9444a2d439d4e6403208fa3f11d2e77",
+      "pool_rows": 8000,
+      "pool_hop_mix": {
+        "2hop": 5788,
+        "3hop": 1717,
+        "4hop": 495
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "6c7d156a0cda1fb000b900094fd610e1ef0856db225e238ee1ba4765602644a7",
+      "rerank_top5_sha256": "4ae4a7552283255ec5569a4b1826d5864ef08a12b4a5ef8aa2c10cddd659b700"
+    },
+    "9000": {
+      "pool_sha256": "8636221e528d875da5877f1a4c5cafef2ea862b10dca63b33d1fe44eba79b0be",
+      "pool_rows": 9000,
+      "pool_hop_mix": {
+        "2hop": 6497,
+        "3hop": 1958,
+        "4hop": 545
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "8b3b73cc9ade89f9d4a17f3bed0bf83722b9d5f89261f1b53082f6c084a317f9",
+      "rerank_top5_sha256": "cec2694d15f795b9d94433d937dad391d6c58735b1004ca439f6c6a89bed46ea"
+    },
+    "10000": {
+      "pool_sha256": "a509d05cca0d8e5019ac21aae0413f1d706667f3cb3d9f062ce63cbcf1ef803e",
+      "pool_rows": 10000,
+      "pool_hop_mix": {
+        "2hop": 7194,
+        "3hop": 2196,
+        "4hop": 610
+      },
+      "pinned600_id_overlap": 0,
+      "pinned600_question_text_overlap": 0,
+      "top20_sha256": "e82621bc2db5ea9c3d2e8fd948a9844b321a064b3f7c85744847a8df32e88ed3",
+      "rerank_top5_sha256": "760c37bf854070b58c39cbc8fe4a8a22d6d63ab6b58763def4e4b968a09e04b4"
+    }
+  },
+  "_expected_inputs_note": "sha256 of every prebuilt input, built 2026-10-14 on the commands above (pool and retrieval, --device cpu, --no-cache, seed 42). Before launching a size, recompute the sha256 of its pool.jsonl and pinned600_imbalanced_rerank_top5.jsonl and refuse to run on a mismatch. Every pool has 0 id overlap and 0 exact question-text overlap with the pinned 600; every retrieval file has 600 rows (200/200/200), the pinned-600 id set exactly, k=20 / k=5 per row, and no candidate outside its own pool."
+}
