@@ -2,8 +2,8 @@
   "_note": "The v2 pool-size sweep (issue #51, widened to 2k-10k at 1k steps by Jahid on 2026-10-14; shape fixed in ADR 0035). ONE factor moves: pool size. Everything else is exp-020's arm (Mistral-7B-Instruct-v0.3, 4-bit, unguided, ADR 0007 pinned 600, imbalanced construction per ADR 0031 item 1, e5-small-v2 top-20 -> ms-marco cross-encoder rerank -> top-5, seed 42). This file is read by the experiment-runner, not by a script: it names the sizes, every flag of every stage, and the sha256 each prebuilt input must have, so a run can be checked against it before launch. It is deliberately separate from configs/pool_sweep.json, which drives scripts/pool_sweep_orchestrator.py's full construction x mode x retriever cross - widening that file's imbalanced_sizes would make the orchestrator re-run the v1-shaped matrix ADR 0035 rules out. {size} and {exp_id} are the only template fields; paths are relative to the repo root of the main checkout.",
   "issue": 51,
   "adr": "docs/adr/0035-jahid-2026-10-14-results-section-and-pool-size-sweep.md",
-  "exp_id": "exp-030",
-  "_exp_id_note": "Next free id when this file was written (exp-029 is the concurrent CPU re-analysis). The experiment-runner confirms it against experiments/log.md and writes the log row before launch; if the id has been taken, use the next free one and substitute it everywhere {exp_id} appears.",
+  "exp_id": "exp-031",
+  "_exp_id_note": "Next free id when this file was revised (exp-029 = CPU re-analysis, exp-030 = issue #56 full-dev runs). Before launch the experiment-runner checks that the id is free in ALL of experiments/log.md, experiments/ and runs/; if it is taken, use the next id free in all three and substitute it everywhere {exp_id} appears. The runner writes the log row before launch.",
   "seed": 42,
   "sizes": [
     2000,
@@ -91,22 +91,43 @@
     "_template_fields_note": "{pool_file} is pool.pool_file_by_size[size]."
   },
   "decompose": {
-    "_note": "exp-020's step_1 command with only --retrieval-input and --output-root moved. --quantization 4bit and --retrieval-input are passed explicitly (configs/decomposer_musique.json _runnable_models_note; the model folder default stays quantization none). few_shot.ordering stays at the config default as_is, which is the behaviour exp-020 ran under (it predates the key).",
+    "_note": "exp-020's step_1 command with only --retrieval-input and --output-root moved. --quantization 4bit and --retrieval-input are passed explicitly (configs/decomposer_musique.json _runnable_models_note; the model folder default stays quantization none). --ordering as_is is passed explicitly; it equals the config default and the behaviour exp-020 ran under (exp-020 predates the key). The prompt shows the 5 reranked exemplars of the retrieval file (retrieval.k 5 on the reranked path; the dry run logs few_shot_source_counts reranked 5).",
     "model": "mistral_7b_instruct",
     "config": "decomposer_musique.json",
     "condition": "unguided",
     "quantization": "4bit",
     "seed": 42,
-    "command_template": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --quantization 4bit --retrieval-input runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_imbalanced_rerank_top5.jsonl --output-root runs/{exp_id}/size{size}/decomposer"
+    "command_template": ".venv/bin/python components/decomposer/run_decomposer.py --model mistral_7b_instruct --config decomposer_musique.json --condition unguided --seed 42 --quantization 4bit --ordering as_is --retrieval-input runs/pool_size_sweep_v2/retrieval/size{size}/pinned600_imbalanced_rerank_top5.jsonl --output-root runs/{exp_id}/size{size}/decomposer",
+    "ordering": "as_is"
   },
   "evaluate": {
     "command_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --predictions runs/{exp_id}/size{size}/decomposer/<timestamp>/results.json --run-dir runs/{exp_id}/size{size}/eval --out-prefix eval --seed 42"
   },
   "compare": {
-    "_note": "Each size against the 2k point with the evaluator's battery (ADR 0009); no multiple-comparison correction unless a slide states Holm (ADR 0035). The 2k point is this sweep's own 2k re-run (see reproducibility_gate_2k), so every pair is same-run, same-code, same eval set. The extra pair 2k-rerun vs exp-020 measures whether re-generating the 2k arm reproduces exp-020.",
+    "_note": "Each size against the 2k point with the evaluator's battery (ADR 0009); multiple-comparison handling is the holm_family block below (ADR 0036). The 2k point is this sweep's own 2k re-run (see reproducibility_gate_2k), so every pair is same-run, same-code, same eval set. The extra pair 2k-rerun vs exp-020 measures whether re-generating the 2k arm reproduces exp-020.",
     "command_template": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/{exp_id}/size{size}/eval/eval_per_item.json runs/{exp_id}/size2000/eval/eval_per_item.json --run-dir runs/{exp_id}/compare/size{size}_vs_size2000 --out-prefix compare --seed 42",
     "pairs": "size{size} vs size2000 for size in sizes[1:] (8 pairs)",
-    "extra_pair_command": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/{exp_id}/size2000/eval/eval_per_item.json runs/exp-020/eval/eval_per_item.json --run-dir runs/{exp_id}/compare/size2000_vs_exp020 --out-prefix compare --seed 42"
+    "extra_pair_command": ".venv/bin/python scripts/musique_decompositions_evaluator.py --compare runs/{exp_id}/size2000/eval/eval_per_item.json runs/exp-020/eval/eval_per_item.json --run-dir runs/{exp_id}/compare/size2000_vs_exp020 --out-prefix compare --seed 42",
+    "holm_family": {
+      "_note": "Fixed before any p-value is seen (ADR 0036 item 5); the runner copies this block into the pre-run log row.",
+      "pairs": "the 8 pairs size{N} vs this sweep's own size2000 re-run, N in 3000..10000",
+      "metrics": {
+        "break_exact_match_rate": "binary - exact McNemar p (compare_metrics.json mcnemar.break_exact_match)",
+        "sari_macro": "continuous - paired-t p (t_test.sari)",
+        "ged_macro": "continuous - paired-t p (t_test.ged)",
+        "chain_validity_macro": "continuous - paired-t p (t_test.chain_validity)",
+        "hop_count_exact_match_rate": "binary - exact McNemar p (mcnemar.hop_count_exact_match)",
+        "under_decomposition_rate": "binary - exact McNemar p (mcnemar.under_decomposition)",
+        "over_decomposition_rate": "binary - exact McNemar p (mcnemar.over_decomposition)",
+        "step_f1_macro": "continuous - paired-t p (t_test.step_f1)"
+      },
+      "strata": "overall only (no per-hop strata in this family)",
+      "family_size": 64,
+      "family_size_arithmetic": "8 pairs x 8 metrics (the 7 report-card terms - break EM, SARI, GED, chain validity, hop-count EM, under-decomposition, over-decomposition - plus step F1) x 1 stratum = 64",
+      "excluded": "composite_score (legacy, ADR 0035 item 4) and every other evaluator statistic; the reproducibility pair size2000 vs exp-020 is NOT in the family - it is a reproducibility check, reported uncorrected on its own",
+      "correction": "Holm-Bonferroni at alpha 0.05 over the 64 p-values, reported in a separate labelled column BESIDE the evaluator's uncorrected verdict, never overwriting it (ADR 0036 items 1-3); where the bootstrap CI and the paired-t disagree on a continuous cell, the disagreement is disclosed",
+      "wording": "non-significance is worded not distinguishable / not significant, never equal (ADR 0036 item 4)"
+    }
   },
   "reproducibility_gate_2k": {
     "verdict": "FAIL on the sha256 rule - the sweep re-runs 2k; exp-020 is not reused as the 2k point",
@@ -253,5 +274,10 @@
       "rerank_top5_sha256": "ea9483b85e6416c8d04f8fa18fefda9212f52c2829634c38f45c6f14d15556b6"
     }
   },
-  "_expected_inputs_note": "sha256 of every prebuilt input, built 2026-10-14 on the commands above (pool and retrieval, --device cpu, --no-cache, seed 42). Before launching a size, recompute the sha256 of its pool.jsonl and pinned600_imbalanced_rerank_top5.jsonl and refuse to run on a mismatch. Every pool has 0 id overlap and 0 exact question-text overlap with the pinned 600; every retrieval file has 600 rows (200/200/200), the pinned-600 id set exactly, k=20 / k=5 per row, and no candidate outside its own pool."
+  "_expected_inputs_note": "sha256 of every prebuilt input, built 2026-10-14 on the commands above (pool and retrieval, --device cpu, --no-cache, seed 42). Before launching a size, recompute the sha256 of its pool.jsonl and pinned600_imbalanced_rerank_top5.jsonl and refuse to run on a mismatch. Every pool has 0 id overlap and 0 exact question-text overlap with the pinned 600; every retrieval file has 600 rows (200/200/200), the pinned-600 id set exactly, k=20 / k=5 per row, and no candidate outside its own pool.",
+  "preflight": {
+    "script": "scripts/preflight_pool_sweep.py",
+    "command_template": ".venv/bin/python scripts/preflight_pool_sweep.py --config pool_size_sweep_v2.json --size {size}",
+    "_note": "Recomputes the sha256 of the size's pool and top-20/top-5 retrieval files against expected_inputs and exits non-zero on any mismatch or missing file. Run it immediately before each size's decompose step."
+  }
 }

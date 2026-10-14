@@ -6,6 +6,9 @@ Three pool-construction strategies (the ``--balance`` flag, which the sweep read
 
 - ``imbalanced``: uniform random draw without replacement over the whole pool, so the
   hop-bucket distribution mirrors the input (the natural imbalance of MuSiQue train).
+  WARNING: pools from separate calls do NOT nest across Python 3.13's ``random.sample``
+  algorithm switch (size >= 5,462 of 19,938 input rows), so e.g. ``configs/pool_sweep.json``'s
+  4k and 8k pools are not nested; use ``scripts/extend_pool_nested.py`` (issue #51).
 - ``balanced``: ``size // 3`` rows per coarse hop bucket (2-hop, 3-hop, 4-hop), failing
   fast if a bucket does not have enough rows (4-hop is the tight constraint).
 - ``clustered``: seeded k-means over bi-encoder embeddings of the input rows, keeping the
