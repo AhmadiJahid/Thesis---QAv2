@@ -2924,7 +2924,12 @@ def main() -> None:
     # The 'shuffled' ordering's by-chance coincidences (issue #60): a permutation of k
     # exemplars equals as_is or reversed with probability 1/k! each, and such a row is not a
     # shuffled presentation at all. Counted, not dropped.
-    shuffle_tally = {"rows_with_k_at_least_2": 0, "equal_to_as_is": 0, "equal_to_reversed": 0, "rows_with_k_below_2": 0}
+    shuffle_tally = {
+        "rows_with_k_at_least_2": 0,
+        "equal_to_as_is": 0,
+        "equal_to_reversed": 0,
+        "rows_with_k_below_2": 0,
+    }
 
     for i, row in enumerate(inference_rows):
         question = row["question"]

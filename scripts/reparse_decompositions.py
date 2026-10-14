@@ -247,6 +247,9 @@ def main() -> None:
         f"- **Rows whose pred_steps changed: {len(changed)}** "
         f"({steps_removed} step(s) removed in total)",
         f"- Output: `{out_path}` (sha256 `{metrics['output_results_sha256']}`)",
+        "- Only `decomposition` and `step_lines` are rewritten. `hit_max_new_tokens`, "
+        "`stopped_at_step_line_cap`, token counts and latency are copied as they were, "
+        "and describe the original generation.",
         "",
     ]
     for c in changed:
