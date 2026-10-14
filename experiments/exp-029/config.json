@@ -1,0 +1,212 @@
+{
+  "exp_id": "exp-029",
+  "kind": "re-analysis, not a run",
+  "git_head_at_compute": "43b6290a034a43d3f0db923aebe79052280c6ecc",
+  "evaluator": {
+    "path": "scripts/musique_decompositions_evaluator.py",
+    "sha256": "e6e96fd9cc65e3caa80bb95186b7245583441cde593c6e1fd9d1c3abe208c0df",
+    "functions_used_unchanged": [
+      "_paired_bootstrap",
+      "_statistics_for (via _paired_bootstrap)",
+      "_mcnemar",
+      "_paired_t_test_row",
+      "_significance_floor"
+    ]
+  },
+  "config": {
+    "path": "configs/musique_eval.json",
+    "sha256": "0ca629d80d2a772fc08089933904716593a9cf2e2b9d28df6cceaf1c30ceb9a6"
+  },
+  "settings": {
+    "seed": 42,
+    "bootstrap_iterations": 10000,
+    "bootstrap_chunk_size": 1000,
+    "alpha": 0.05,
+    "min_items_for_significance_claim": 30,
+    "source": "configs/musique_eval.json paired_comparison",
+    "bootstrap_seeding": "fresh default_rng(seed) per pair x stratum, exactly as one --compare call on the stratum's rows",
+    "excluded": "composite_score (legacy, ADR 0035 item 4); decomp_mean is computed in the full battery but is in no family",
+    "holm": "Holm-Bonferroni within each slide family; p basis = exact McNemar for binary metrics, paired t for continuous (the percentile bootstrap emits a CI, not a p). Evaluator verdicts are uncorrected; holm is a separate field."
+  },
+  "inputs": {
+    "exp009_mixed": {
+      "path": "runs/exp-016/exp009_mixed/eval_per_item.json",
+      "sha256": "a03e2c4ce304b4f7a848e36799d89c1902e99a2f3e2ddb5cce37d21de73aa628"
+    },
+    "exp009_oracle_hop_matched": {
+      "path": "runs/exp-016/exp009_oracle_hop_matched/eval_per_item.json",
+      "sha256": "2245b16a5796bf3472ee8da57e9b0235b0772b4a6c190733d01c83f1d75fb194"
+    },
+    "exp004_unguided": {
+      "path": "runs/exp-016/exp004_unguided/eval_per_item.json",
+      "sha256": "a03bbad5b1b87ca180ed610e4e42c01e61636148fbd20dcefacd5ad7d22d239b"
+    },
+    "exp004_oracle_guided": {
+      "path": "runs/exp-016/exp004_oracle_guided/eval_per_item.json",
+      "sha256": "6e8e846199d9c2b3de3e958bbaacad82d838bc96fedd0fb9dff10510f94cad2e"
+    },
+    "exp005_unguided": {
+      "path": "runs/exp-016/exp005_unguided/eval_per_item.json",
+      "sha256": "297c8b16b42d57470b688498c3f55317d81b147c26645b75bcd6be4cad5349d9"
+    },
+    "exp005_oracle_guided": {
+      "path": "runs/exp-016/exp005_oracle_guided/eval_per_item.json",
+      "sha256": "fe1fdc050c5b14a64b032141af2ba644fddb82dadfbaf3407b4d64026ca28c1f"
+    },
+    "exp020_mistral7b_4bit": {
+      "path": "runs/exp-020/eval/eval_per_item.json",
+      "sha256": "17938f422778dea7676ed9da3532827d8f769a91a2fb69e3b0f2d7dc12ed70b2"
+    },
+    "exp021_qwen25_7b_4bit": {
+      "path": "runs/exp-021/eval/eval_per_item.json",
+      "sha256": "931e1bb38fa55b3961ba1a935790408cf0013aeb2d61d4c7172593d58719ffa9"
+    },
+    "exp022_qwen25_14b_4bit": {
+      "path": "runs/exp-022/eval/eval_per_item.json",
+      "sha256": "cfdfd62d662442eff0d37606c2b91552e9072ffe2996185d4c872930ddd66e8d"
+    },
+    "exp027_qwen35_9b_4bit": {
+      "path": "runs/exp-027/eval/eval_per_item.json",
+      "sha256": "37147ac149f622b5a50c747d88e346d388a02211e2346c04e14ca01015f7791c"
+    },
+    "exp008_full_train": {
+      "path": "runs/exp-016/exp008_full_train/eval_per_item.json",
+      "sha256": "fcb24737a5bbd0dee7388a04c40c9e5ad986f5edefe2ea5b54318eafbeb6ee5f"
+    },
+    "exp026_pool_only_ft": {
+      "path": "runs/exp-026/eval/eval_per_item.json",
+      "sha256": "10d256c928496431d1e2064251422243ad86836874561c7057177a73624f18fe"
+    },
+    "exp013_gen_ft_hop4": {
+      "path": "runs/exp-013/eval/eval_per_item_hop4_only.json",
+      "sha256": "f28b8e08c77754f6614173f9efaaf62fb0e5f7194cb7ee63ec88cf81af9670c0"
+    },
+    "exp017_oracle": {
+      "path": "runs/exp-017/oracle/20260823_070959/answer_per_item.json",
+      "sha256": "c7b127634825c2c9e854c1c107f912fed12a61acbd5d0a3f0233a92b5d9c2998"
+    },
+    "exp017_full_train": {
+      "path": "runs/exp-017/full_train/20260823_073434/answer_per_item.json",
+      "sha256": "00166f2dc5bd3400108ee1f54e40077a9d9a95c5f008a1ba2ff6a6ab00601802"
+    },
+    "exp017_unguided": {
+      "path": "runs/exp-017/unguided/20260823_075723/answer_per_item.json",
+      "sha256": "cb9d9a342e81647003f82056affc272fa4d28006a02e4554586a92e9e7fe9e7c"
+    },
+    "exp017_no_decomposition_control": {
+      "path": "runs/exp-017/no_decomposition_control/20260823_082452/answer_per_item.json",
+      "sha256": "5027550c82b078fbff9898c5c5aa5ff096524e7f9dae1bd8ff5bd2429439cef1"
+    }
+  },
+  "cross_check_inputs": {
+    "exp011_exp009_mixed": {
+      "path": "runs/exp-011/exp009_mixed/eval_per_item.json",
+      "sha256": "51ad28f04ff85eebbc73dbd95a86bd3d236fab9cd0831abcb595825cf5ce4383"
+    },
+    "exp011_exp009_oracle_hop_matched": {
+      "path": "runs/exp-011/exp009_oracle_hop_matched/eval_per_item.json",
+      "sha256": "8edca206433da216db3dc9ca8448419c74b501d2d87ae5c36b2b3a361f9af1f6"
+    },
+    "exp011_exp004_unguided": {
+      "path": "runs/exp-011/exp004_unguided/eval_per_item.json",
+      "sha256": "6c06db4f86bedf0a40c679c818a25600f913420d437e6d33a1d4b7114fd3f7e7"
+    },
+    "exp011_exp004_oracle_guided": {
+      "path": "runs/exp-011/exp004_oracle_guided/eval_per_item.json",
+      "sha256": "08f869d860f066ea2b351dd74dab929798144781fd75985960ea53091c4dec49"
+    },
+    "exp011_exp005_unguided": {
+      "path": "runs/exp-011/exp005_unguided/eval_per_item.json",
+      "sha256": "50eb0b9fbe171a6bdf9ac2fa10af8429136d9d44312d75ae180b3722df533178"
+    },
+    "exp011_exp005_oracle_guided": {
+      "path": "runs/exp-011/exp005_oracle_guided/eval_per_item.json",
+      "sha256": "6fd5dcc3081fbf9cefabcf347350a9e246398de0f5d2133bcbda32fdbbf3d413"
+    },
+    "exp011_exp008_full_train": {
+      "path": "runs/exp-011/exp008_full_train/eval_per_item.json",
+      "sha256": "7ccd4e47f65b45df7675060c7b18584889583bca4ac3e22526128d490feef767"
+    },
+    "exp026_arm_comparison_pool_only": {
+      "path": "runs/exp-026/arm_comparison/finetuned_pool_2000_imbalanced_exp026/eval_per_item.json",
+      "sha256": "938e88ac35a0dc34f22f5a64b9556ad0e613399a70b79c40a6ddb4d4f4fb3748"
+    },
+    "exp013_baseline_unguided_4hop": {
+      "path": "runs/exp-013/baseline_unguided_4hop_per_item.json",
+      "sha256": "9d6c6076ff1b98af03d650d6f5f43f6ae59c34fc8d0452e15ff067a8e87d5c77"
+    },
+    "exp013_baseline_exp008_4hop": {
+      "path": "runs/exp-013/baseline_exp008_4hop_per_item.json",
+      "sha256": "35b97c5f1478c4958fbd0b1b54eb01cd6cc8a9f472c1a46c66de08cd9f8b09f5"
+    }
+  },
+  "families": {
+    "A7": {
+      "metrics": [
+        "step_f1",
+        "ordered_step_accuracy",
+        "hop_count_exact_match",
+        "exact_match"
+      ],
+      "strata": [
+        "overall",
+        "2",
+        "3",
+        "4"
+      ]
+    },
+    "B1": {
+      "metrics": [
+        "sari",
+        "ged",
+        "chain_validity",
+        "step_f1",
+        "ordered_step_accuracy",
+        "rouge_l_f1",
+        "exact_match",
+        "hop_count_exact_match",
+        "break_exact_match"
+      ],
+      "strata": [
+        "overall",
+        "2",
+        "3",
+        "4"
+      ]
+    },
+    "D2": {
+      "metrics": [
+        "step_f1",
+        "under_decomposition"
+      ],
+      "strata": [
+        "2",
+        "3",
+        "4"
+      ]
+    },
+    "D3": {
+      "metrics": [
+        "chain_validity",
+        "under_decomposition",
+        "hop_count_exact_match",
+        "step_f1"
+      ],
+      "strata": [
+        "4"
+      ]
+    },
+    "E1": {
+      "metrics": [
+        "answer_em",
+        "answer_f1"
+      ],
+      "strata": [
+        "overall",
+        "2",
+        "3",
+        "4"
+      ]
+    }
+  }
+}
