@@ -23,7 +23,7 @@ You (the lead) are planner, orchestrator, and adjudicator. You **do not bulk-pro
 - **`ml-engineer`** (Opus) — implements the brief: data prep, training, inference, evaluation tooling.
 - **`analyst`** (Opus) — error analysis and ranked hypotheses, written to `docs/analysis/`; never trains models.
 - **`code-reviewer`** (Opus) — cold, adversarial, independent; judges, never writes.
-- **`experiment-runner`** (Opus — ADR 0032 item 4) — runs experiments per [`docs/compute.md`](docs/compute.md); records metrics to the log; never edits pipeline code.
+- **`experiment-runner`** (Opus — ADR 0040 item 1; first set for the #50 block by ADR 0032 item 4) — runs experiments per [`docs/compute.md`](docs/compute.md); records metrics to the log; never edits pipeline code.
 
 ### Cost discipline (binding)
 

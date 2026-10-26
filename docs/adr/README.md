@@ -67,6 +67,7 @@ When **not** to write one:
 | [0037](./0037-results-section-presentation-conventions.md) | Presentation Conventions for the Deck's Results Section | Accepted (lead under Jahid's delegation, 2026-10-14) |
 | [0038](./0038-sampling-variance-via-full-dev-run-and-offline-stratified-resampling.md) | Sampling Variance Is Measured by One Full-Dev Run per Arm and Offline Stratified Resampling | Accepted (lead under Jahid's delegation, 2026-10-14) |
 | [0039](./0039-anchor-set-follow-ups-additive-metrics-parser-fix-and-ordering-noise-floor.md) | Anchor-Set Follow-Ups: Two Additive Terms, a Parser Fix, and an Ordering Noise Floor | Accepted (Jahid, 2026-10-14) |
+| [0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) | Harness Conventions: Opus-Only Agents Are Standing; Exp Ids and ADR Numbers Are Reserved on Main Before Use | Accepted (item 1 Jahid, 2026-10-26; item 2 implementer convention under #62) |
 
 ---
 
@@ -95,7 +96,7 @@ What changes because of this decision? What's now easier? What's now harder? Wha
 Other options on the table and why they lost. This is what stops the next person from re-litigating the same debate.
 ```
 
-Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number.
+Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number. A number is claimed before it is cited by an index row with status `Reserved (<who>, <date>) — <one line>` and no link — never a stub file; an abandoned reservation keeps its row, marked `abandoned (number never reused)` (ADR [0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) item 2).
 
 **Amendments are marked on both ends.** An ADR that changes an earlier one carries an `Amends [NNNN]` line under its status, **and** the earlier ADR gets a dated in-place note pointing forward — at the changed clause, or under the status block when the amendment touches the record as a whole — never a silent rewrite, and never an unmarked contradiction. (Convention made explicit 2026-08-20; earlier ADRs follow it in varying shapes.)
 
