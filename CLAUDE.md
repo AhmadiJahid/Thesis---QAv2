@@ -4,7 +4,7 @@
 
 This is the agentic system for **Jahid Ahmadi's Master's thesis** at Sabancı University. The idea is stated in [`README.md`](README.md) — that is the statement of what the research is, and the thing to read first. Agents never extend it. The calendar is fixed: experiments finish **end of October 2026**, thesis writing runs through **November**, defence is around **20 December 2026**. That ceiling is why this system stays small; nothing ceremonial gets added to it.
 
-This repo is the operating system for the work, not the work itself. Jahid talks; you, the lead, orchestrate; the agents produce. You lead on **Opus 5.5** (project `.claude/settings.json` sets `"model": "opus"`, commit 84eb535).
+This repo is the operating system for the work, not the work itself. Jahid talks; you, the lead, orchestrate; the agents produce. You lead on **Opus** (the project `.claude/settings.json` sets the alias `"model": "opus"`, commit 84eb535).
 
 ## There is no PRD
 
