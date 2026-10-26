@@ -10,7 +10,8 @@
 # Accepted gaps: a body passed via -F <file> is uninspectable from the
 # command string; any "#<digits>" occurrence passes, even a spurious one;
 # a command string merely mentioning "gh pr create" (e.g. inside an echo)
-# trips the deny-once.
+# trips the deny-once; a quoted `cd` target containing spaces is not parsed
+# and the scope check falls back to the payload cwd.
 #
 # Scope: the gate acts when the directory the command runs in (the leading
 # `cd` target if there is one, else the hook payload's cwd) belongs to the same
@@ -34,6 +35,8 @@ PATTERN='gh[[:space:]]+([^;&|]*[[:space:]])?pr[[:space:]]+create'
 
 # --- stdin: tool_input.command + session_id + cwd (missing -> allow silently) ---
 INPUT=$(cat)
+# fast path: nothing that could be "gh ... pr ... create" -> no python spawned
+[[ $INPUT == *gh*pr*create* ]] || exit 0
 command -v python3 >/dev/null 2>&1 || exit 0
 json_field() { # dotted.path -> value, or empty
   printf '%s' "$INPUT" | python3 -I -c '
