@@ -19,6 +19,7 @@
 3. **The reversed few-shot ordering runs** in this block (A5, G3). Jahid asked for it explicitly.
 4. **Agents run on Opus only** for this block — an operational constraint from Jahid on cost.
    The `experiment-runner` role, defined on Sonnet, is spawned with an Opus override.
+   *(Amended 2026-10-26 by [ADR 0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) item 1: the rule is standing, not scoped to this block; `experiment-runner` is now defined on Opus.)*
 
 ## Defaulted by the lead (Jahid did not answer; each is reversible)
 

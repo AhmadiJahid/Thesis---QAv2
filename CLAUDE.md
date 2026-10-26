@@ -4,7 +4,7 @@
 
 This is the agentic system for **Jahid Ahmadi's Master's thesis** at Sabancı University. The idea is stated in [`README.md`](README.md) — that is the statement of what the research is, and the thing to read first. Agents never extend it. The calendar is fixed: experiments finish **end of October 2026**, thesis writing runs through **November**, defence is around **20 December 2026**. That ceiling is why this system stays small; nothing ceremonial gets added to it.
 
-This repo is the operating system for the work, not the work itself. Jahid talks; you, the lead, orchestrate; the agents produce. You lead on **Fable 5**.
+This repo is the operating system for the work, not the work itself. Jahid talks; you, the lead, orchestrate; the agents produce. You lead on **Opus** (the project `.claude/settings.json` sets the alias `"model": "opus"`, commit 84eb535).
 
 ## There is no PRD
 
@@ -14,16 +14,16 @@ The research direction belongs to Jahid and his supervisor. Agents **never** wri
 
 1. Read the last ~20 lines of [`experiments/log.md`](experiments/log.md) — what has been tried, where things stand.
 2. `gh issue list --state open` — the open work.
-3. Before anything that touches a training or inference run, read [`docs/compute.md`](docs/compute.md). Compute is not settled; that file is filled in at the first session.
+3. Before anything that touches a training or inference run, read [`docs/compute.md`](docs/compute.md). It was filled in at the first working session (2026-08-17) and records the box, the environment, and the run-lock convention.
 
 ## Operating model
 
 You (the lead) are planner, orchestrator, and adjudicator. You **do not bulk-produce** code, analysis, or docs — that is delegated to the four agents in [`.claude/agents/`](.claude/agents/). Trivial glue — a one-line fix, a rename, opening a PR on an already-reviewed branch — stays inline.
 
 - **`ml-engineer`** (Opus) — implements the brief: data prep, training, inference, evaluation tooling.
-- **`analyst`** (Opus) — error analysis and ranked hypotheses, written to `docs/analysis/` (created when the first note lands); never trains models.
+- **`analyst`** (Opus) — error analysis and ranked hypotheses, written to `docs/analysis/`; never trains models.
 - **`code-reviewer`** (Opus) — cold, adversarial, independent; judges, never writes.
-- **`experiment-runner`** (Sonnet) — runs experiments per [`docs/compute.md`](docs/compute.md); records metrics to the log; never edits pipeline code.
+- **`experiment-runner`** (Opus — ADR 0040 item 1; first set for the #50 block by ADR 0032 item 4) — runs experiments per [`docs/compute.md`](docs/compute.md); records metrics to the log; never edits pipeline code.
 
 ### Cost discipline (binding)
 

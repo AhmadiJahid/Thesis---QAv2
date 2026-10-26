@@ -58,8 +58,16 @@ When **not** to write one:
 | [0028](./0028-jahid-2026-08-23-delegations-pool-choice-router-call-composite-authorized.md) | Jahid's 2026-08-23 Delegations: Pool Choice and the Router Call Move to the Lead; the Composite Replacement Is Authorized to Implement | Accepted (Jahid, 2026-08-23) |
 | [0029](./0029-the-decomposition-quality-suite-the-implementers-registration.md) | The Decomposition-Quality Suite: Six Unblended Terms as the Reported Primary, and the Composite Frozen as Legacy | Accepted (implementer registration, pending Jahid and his supervisor) |
 | [0030](./0030-remove-the-router-from-the-decomposition-critical-path.md) | Remove the Router from the Decomposition Pipeline's Critical Path | Accepted (lead, 2026-08-23; supervisor may overturn) |
+| [0031](./0031-jahid-2026-09-14-gate-decisions-for-the-supervisor-assignment.md) | Jahid's 2026-09-14 Gate Decisions for the 2026-08-27 Supervisor Assignment | Accepted (Jahid, 2026-09-14; item 4's pending supervisor confirmation resolved by ADR 0035 item 6; item 5 flagged for Jahid's veto) |
+| [0032](./0032-jahid-2026-09-20-go-ahead-for-the-50-block.md) | Jahid's 2026-09-20 Go-Ahead for the Issue #50 Block, and the Defaults Taken for What He Left Open | Accepted (Jahid, 2026-09-20) |
+| [0033](./0033-the-anchor-set-is-a-frozen-id-list-inspected-by-post-filtering.md) | The Anchor Set Is a Frozen 45-Id List, Inspected by Post-Filtering Finished Evaluations | Accepted (lead under delegation, 2026-09-20; Jahid may veto) |
+| [0034](./0034-lead-2026-09-20-g2-and-g3-shape-under-delegation.md) | The Shape of G2 (Pool-Only Fine-Tune) and G3 (Reversed Ordering), Decided by the Lead Under Delegation | Accepted (lead, 2026-09-20; Jahid's to reverse) |
+| [0035](./0035-jahid-2026-10-14-results-section-and-pool-size-sweep.md) | Results-Section Decisions, the Decomposer Size Exception Confirmed, and the v2 Pool-Size Sweep | Accepted (Jahid, 2026-10-14; operational details by the lead under delegation) |
+| [0036](./0036-holm-correction-convention-for-reported-families.md) | How Multiple-Comparison Correction Is Applied to Reported Families | Accepted (lead under Jahid's delegation, 2026-10-14) |
+| [0037](./0037-results-section-presentation-conventions.md) | Presentation Conventions for the Deck's Results Section | Accepted (lead under Jahid's delegation, 2026-10-14) |
 | [0038](./0038-sampling-variance-via-full-dev-run-and-offline-stratified-resampling.md) | Sampling Variance Is Measured by One Full-Dev Run per Arm and Offline Stratified Resampling | Accepted (lead under Jahid's delegation, 2026-10-14) |
 | [0039](./0039-anchor-set-follow-ups-additive-metrics-parser-fix-and-ordering-noise-floor.md) | Anchor-Set Follow-Ups: Two Additive Terms, a Parser Fix, and an Ordering Noise Floor | Accepted (Jahid, 2026-10-14) |
+| [0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) | Harness Conventions: Opus-Only Agents Are Standing; Exp Ids and ADR Numbers Are Reserved on Main Before Use | Accepted (item 1 Jahid, 2026-10-26; item 2 implementer convention under #62) |
 
 ---
 
@@ -88,7 +96,7 @@ What changes because of this decision? What's now easier? What's now harder? Wha
 Other options on the table and why they lost. This is what stops the next person from re-litigating the same debate.
 ```
 
-Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number.
+Numbering is **gap-free**, starting at `0001`. If a record is superseded, **leave it in place** and mark its status — never renumber, and never reuse a number. A number is claimed before it is cited by an index row with status `Reserved (<who>, <date>) — <one line>` and no link — never a stub file; an abandoned reservation keeps its row, marked `abandoned (number never reused)` (ADR [0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) item 2).
 
 **Amendments are marked on both ends.** An ADR that changes an earlier one carries an `Amends [NNNN]` line under its status, **and** the earlier ADR gets a dated in-place note pointing forward — at the changed clause, or under the status block when the amendment touches the record as a whole — never a silent rewrite, and never an unmarked contradiction. (Convention made explicit 2026-08-20; earlier ADRs follow it in varying shapes.)
 

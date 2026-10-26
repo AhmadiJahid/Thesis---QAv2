@@ -54,9 +54,12 @@
   - 7 of the 11 only reorder tied exemplars within the same top-5 set.
   - 4 have a different top-5 set, because a tie straddles the rank-5 cutoff: `2hop__115515_779396`,
     `2hop__554167_451128`, `2hop__765180_123956` and `2hop__168816_144857`.
-  - The first 3 exemplars, which are what a k = 3 prompt shows, match for 597/600.
+  - The first 3 exemplars match for 597/600. That figure does not describe the prompt: reranked
+    prompts show **k = 5** exemplars (prompts_log header `Few-shot source: reranked (k=5)`; the
+    run notes' `k=3` is the mislabel tracked in issue #53), so the prompt differs on all 11.
   - So an arm's full-dev outputs on the pinned 600 are not guaranteed to equal its committed pinned
-    run on those 3 questions. The few-shot-free fine-tuned arm is unaffected.
+    run on those 11 questions *(corrected 2026-10-26: 3→11 / k=5, issues #53, #62)*. The few-shot-free
+    fine-tuned arm is unaffected.
 - The evaluator joins gold by question text, and some dev questions share their text with another
   row whose gold differs. That flaw is tracked in issue #57 and is left unchanged here. It affects
   the full-dev runs and the committed pinned runs alike.

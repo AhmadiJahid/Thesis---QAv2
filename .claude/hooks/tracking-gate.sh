@@ -10,14 +10,22 @@
 # Accepted gaps: a body passed via -F <file> is uninspectable from the
 # command string; any "#<digits>" occurrence passes, even a spurious one;
 # a command string merely mentioning "gh pr create" (e.g. inside an echo)
-# trips the deny-once. The CLAUDE_PROJECT_DIR scope check makes this gate a
-# no-op whenever the session's project dir and the repo root differ — a
-# session driving a git worktree of this repo, or a checkout reached through
-# a symlinked path — and the review of the PR remains the second barrier in
-# that case.
+# trips the deny-once; a quoted `cd` target containing spaces is not parsed
+# and the scope check falls back to the payload cwd.
 #
-# Fail-open by construction: every error path exits 0 and stdout stays empty
-# unless the gate has actually decided to deny.
+# Scope: the gate acts when the directory the command runs in (the leading
+# `cd` target if there is one, else the hook payload's cwd) belongs to the same
+# repository as $CLAUDE_PROJECT_DIR, compared by resolved `git rev-parse
+# --git-common-dir`. Every git worktree of this repo shares that common dir,
+# so a PR opened from a worktree is in scope; any other repo is not.
+#
+# Parsing uses `python3 -I` (jq is not installed on the compute box; with jq
+# the gate silently never ran — issue #62). Telemetry goes to the project
+# root, not to whichever worktree the command ran in.
+#
+# Fail-open by construction: every error path (python3 missing, unparsable
+# payload, not a git repo) exits 0 and stdout stays empty unless the gate has
+# actually decided to deny.
 
 set -u
 
@@ -25,33 +33,62 @@ GATE="tracking-gate"
 MODE="deny-once"
 PATTERN='gh[[:space:]]+([^;&|]*[[:space:]])?pr[[:space:]]+create'
 
-# --- stdin: tool_input.command + session_id (missing -> allow silently) ---
+# --- stdin: tool_input.command + session_id + cwd (missing -> allow silently) ---
 INPUT=$(cat)
-COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
-SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+# fast path: nothing that could be "gh ... pr ... create" -> no python spawned
+[[ $INPUT == *gh*pr*create* ]] || exit 0
+command -v python3 >/dev/null 2>&1 || exit 0
+json_field() { # dotted.path -> value, or empty
+  printf '%s' "$INPUT" | python3 -I -c '
+import json, sys
+try:
+    v = json.load(sys.stdin)
+    for k in sys.argv[1].split("."):
+        v = v.get(k) if isinstance(v, dict) else None
+    if isinstance(v, str):
+        sys.stdout.write(v)
+except Exception:
+    pass
+' "$1" 2>/dev/null
+}
+COMMAND=$(json_field tool_input.command)
+SESSION_ID=$(json_field session_id)
+HOOK_CWD=$(json_field cwd)
 [ -z "$COMMAND" ] && exit 0
 [ -z "$SESSION_ID" ] && exit 0
+[ -n "$HOOK_CWD" ] && [ -d "$HOOK_CWD" ] || HOOK_CWD=$PWD
 
 # --- defensive re-check: act only on commands this gate is about ---
 printf '%s' "$COMMAND" | grep -Eq "$PATTERN" || exit 0
 
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+# resolved absolute git common dir of a directory (empty if not a git repo)
+common_dir() {
+  local d
+  d=$(cd "$1" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null) || return 0
+  [ -n "$d" ] || return 0
+  (cd "$1" && cd "$d" 2>/dev/null && pwd -P)
+}
 
 # --- scope: this gate enforces its own project's rules, nothing else ---
-if [ -n "${CLAUDE_PROJECT_DIR:-}" ] && [ "$REPO_ROOT" != "$CLAUDE_PROJECT_DIR" ]; then
-  exit 0
-fi
-# best-effort: a command that first cd's outside this repo is out of scope
+PROJECT_DIR=${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." 2>/dev/null && pwd)}
+[ -n "$PROJECT_DIR" ] || exit 0
+PROJECT_COMMON=$(common_dir "$PROJECT_DIR")
+[ -n "$PROJECT_COMMON" ] || exit 0
+# best-effort: a leading cd decides where the command actually runs
+RUN_DIR=$HOOK_CWD
 FIRST_CD=$(printf '%s' "$COMMAND" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:];&|]+).*/\1/p')
+FIRST_CD=${FIRST_CD#[\"\']}; FIRST_CD=${FIRST_CD%[\"\']}
+case $FIRST_CD in "~"|"~/"*) FIRST_CD="$HOME${FIRST_CD#\~}" ;; esac
 if [ -n "$FIRST_CD" ]; then
-  CD_TARGET=$(cd "$FIRST_CD" 2>/dev/null && pwd)
-  if [ -n "$CD_TARGET" ] && [ "$CD_TARGET" != "$REPO_ROOT" ] && [ "${CD_TARGET#$REPO_ROOT/}" = "$CD_TARGET" ]; then
-    exit 0
-  fi
+  CD_TARGET=$(cd "$HOOK_CWD" 2>/dev/null && cd "$FIRST_CD" 2>/dev/null && pwd)
+  [ -n "$CD_TARGET" ] && RUN_DIR=$CD_TARGET
 fi
+RUN_COMMON=$(common_dir "$RUN_DIR")
+[ -n "$RUN_COMMON" ] || exit 0
+[ "$RUN_COMMON" = "$PROJECT_COMMON" ] || exit 0
 
 log_decision() { # decision
-  local file="$REPO_ROOT/.gate-telemetry.jsonl"
+  local file="$PROJECT_DIR/.gate-telemetry.jsonl"
   mkdir -p "$(dirname "$file")"
   printf '{"ts":"%s","gate":"%s","decision":"%s","session":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GATE" "$1" "$SESSION_ID" >> "$file"
