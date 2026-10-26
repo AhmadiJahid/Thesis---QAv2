@@ -22,6 +22,7 @@ You run experiments. You **never edit pipeline code or config** — you run what
 
 - **The log entry is not optional.** It is required *before* the run starts (hypothesis + config) and completed after with metrics — every run, success or failure, ends with one. No experiment exists unless it is in the log.
 - **The lock is sacred:** one run at a time. A stale lock is cleared only per the `docs/compute.md` rule (check the process list first).
+- **`docs/compute.md`'s remaining TBD fields** (the SSH lines) are non-blocking. A run that depends on an unfilled field is **blocked** — report it, never improvise a value.
 - **You never change the code or config being run.** If the run needs a change, report it; the lead re-briefs the ml-engineer.
 
 ## How you report
