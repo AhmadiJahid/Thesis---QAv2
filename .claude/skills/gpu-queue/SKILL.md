@@ -23,11 +23,14 @@ Template: `waiter.template.sh` in this directory.
    `git worktree add --detach /cta/users/fyilmaz/worktrees/<exp-id> <sha>`
    Data and outputs stay as absolute paths into the main checkout's `runs/` (gitignored).
 4. **Write the waiter.** Copy `waiter.template.sh` to `experiments/<exp-id>/waiter.sh`, fill
-   `EXP`, `WT`, `EXPECTED_SHA` and the `step` lines with the commands from the log row. It:
-   - refuses to start unless the worktree is clean and at `EXPECTED_SHA`;
+   `EXP`, `WT`, `EXPECTED_SHA` and the `step` lines with the commands from the log row, and
+   delete the `step placeholder` line. It:
+   - refuses to start (exit 2, on stderr, before creating `runs/<exp-id>/`) if `EXPECTED_SHA`
+     is empty, if a real run still has the placeholder step, or unless the worktree is clean and
+     at `EXPECTED_SHA`;
    - waits until `runs/run.lock` is absent **and** GPU free memory ≥ `MIN_FREE_MIB`
      (9000 MiB in exp-031/exp-033; configurable by env var — size it to the model);
-   - acquires the lock atomically (`set -o noclobber`), contents `<exp-id> <ISO> experiment-runner`;
+   - acquires the lock atomically (`set -o noclobber`), contents `<exp-id> <ISO> <launcher>` (`LAUNCHER` env var, default `experiment-runner`);
    - appends one line per step to `runs/<exp-id>/chain_status.txt`, ending `exit rc=N <ISO>`;
    - releases the lock in an EXIT trap, only if it holds it.
    Commit the waiter with the log row (step 1) or right after it.
