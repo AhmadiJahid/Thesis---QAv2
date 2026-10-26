@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Print the next free experiment id and ADR number, scanning every place another
 # session may already have used one: all local and remote-tracking branches
-# (experiments/log.md rows, experiments/ dirs, docs/adr/ files) plus the working
+# (experiments/log.md rows, experiments/ dirs, docs/adr/ files, and docs/adr/README.md
+# index rows -- which include Reserved and abandoned numbers, ADR 0040 item 2) plus the working
 # files of every worktree (uncommitted claims). Read-only; run `git fetch` first.
 # Usage: next_id.sh [repo-dir]   (default: the repo containing the cwd)
 set -uo pipefail
@@ -19,6 +20,7 @@ for ref in $(git for-each-ref --format='%(refname:short)' refs/heads refs/remote
   for n in $(git show "$ref:experiments/log.md" 2>/dev/null | grep -oE '^\| exp-[0-9]{3}' | grep -oE '[0-9]{3}'); do bump exp "$n" "$ref:log"; done
   for n in $(git ls-tree --name-only "$ref" experiments/ 2>/dev/null | grep -oE 'exp-[0-9]{3}$' | grep -oE '[0-9]{3}'); do bump exp "$n" "$ref:dir"; done
   for n in $(git ls-tree --name-only "$ref" docs/adr/ 2>/dev/null | grep -oE '/[0-9]{4}-' | grep -oE '[0-9]{4}'); do bump adr "$n" "$ref"; done
+  for n in $(git show "$ref:docs/adr/README.md" 2>/dev/null | grep -oE '^\| \[?[0-9]{4}' | grep -oE '[0-9]{4}'); do bump adr "$n" "$ref:index"; done
 done
 
 while read -r wt; do
@@ -26,6 +28,7 @@ while read -r wt; do
   for n in $(grep -oE '^\| exp-[0-9]{3}' "$wt/experiments/log.md" 2>/dev/null | grep -oE '[0-9]{3}'); do bump exp "$n" "worktree:$wt"; done
   for n in $(ls "$wt/experiments" 2>/dev/null | grep -oE '^exp-[0-9]{3}$' | grep -oE '[0-9]{3}'); do bump exp "$n" "worktree:$wt"; done
   for n in $(ls "$wt/docs/adr" 2>/dev/null | grep -oE '^[0-9]{4}-' | grep -oE '[0-9]{4}'); do bump adr "$n" "worktree:$wt"; done
+  for n in $(grep -oE '^\| \[?[0-9]{4}' "$wt/docs/adr/README.md" 2>/dev/null | grep -oE '[0-9]{4}'); do bump adr "$n" "worktree:$wt:index"; done
 done < <(git worktree list --porcelain | sed -n 's/^worktree //p')
 
 printf 'highest exp: exp-%03d (seen on %s)\n' "$max_exp" "$exp_src"

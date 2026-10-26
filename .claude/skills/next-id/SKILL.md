@@ -24,11 +24,13 @@ sampling-variance ADR to 0038 — 0037 taken on main"). Numbers are gap-free and
    moving the shared checkout's HEAD:
    - **exp id:** commit the pre-run row to `experiments/log.md` (schema in that file; metrics
      `PENDING — …`). This is an experiment-only commit, allowed directly on main (CLAUDE.md, Git).
-   - **ADR:** commit `docs/adr/NNNN-<slug>.md` as a stub (title line + `- **Status:** reserved
-     (<who>, <date>) for <one line>`) and its index row in `docs/adr/README.md` in the same
-     commit (docs/adr/README.md requires the index row with every new record).
+   - **ADR:** commit **an index row only** to `docs/adr/README.md`:
+     `| NNNN | <working title> | Reserved (<who>, <date>) — <one line> |` (no link). **Never a
+     stub ADR file** — an ADR records a decision that was made, never a proposal
+     (docs/adr/README.md). The file, the row's link and its real status land together once the
+     decision is made. (ADR 0040 item 2.)
    Push: `git push origin HEAD:main`. If the push is rejected, fetch, re-run step 2 and take the
    next number — someone else claimed it first.
 4. **Only then** put the number in briefs, branch names, configs or `Refs`.
-5. A reservation that is later abandoned keeps its number; mark the row or stub's status as
-   abandoned rather than deleting it (numbers are never reused).
+5. A reservation that is later abandoned keeps its number: the log row's metrics, or the ADR
+   index row's status, become `abandoned (number never reused)`. Never delete the row.
