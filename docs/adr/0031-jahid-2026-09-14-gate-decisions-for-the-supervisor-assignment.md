@@ -1,6 +1,6 @@
 # 0031 — Jahid's 2026-09-14 gate decisions for the 2026-08-27 supervisor assignment
 
-- **Status:** accepted (Jahid, 2026-09-14, in session). Item 4 is *pending supervisor confirmation*; item 5 is the lead's reading of items 1–4 and is flagged for Jahid's veto.
+- **Status:** accepted (Jahid, 2026-09-14, in session). Item 4 is *pending supervisor confirmation*; item 5 is the lead's reading of items 1–4 and is flagged for Jahid's veto. *(Status note 2026-10-26, #62: item 4's pending supervisor confirmation is resolved — the supervisor approved the decomposer exception, ADR [0035](./0035-jahid-2026-10-14-results-section-and-pool-size-sweep.md) item 6.)*
 - **Context:** [`docs/plan/2026-09-14-post-supervisor-meeting-phase.md`](../plan/2026-09-14-post-supervisor-meeting-phase.md) §7 listed seven decisions that gate the experiment block Ahmmad assigned on 2026-08-27 (issue #50). Jahid answered them in session. This ADR records the answers; it adds nothing to them.
 
 ## Decisions (Jahid's, at his altitude)
