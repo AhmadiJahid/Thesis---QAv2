@@ -1336,7 +1336,7 @@ $d=A-B$ & \textbf{0.2} & \textbf{0.1} & \textbf{0.3} & \textbf{0.2} & \textbf{0.
 % source: experiments/exp-034/metrics.json; numbers printed by results_chart_data.py slide_pool_size()
 %   bars = per_size.size<N>.reparsed.{step_f1_macro, sari_macro}; bold = best in panel;
 %   accent = Holm-significant vs size2000 (none: holm_family.count_significant_holm = 0)
-%   callout = holm_family.count_significant_{uncorrected,holm}, min_holm_adjusted_p.value
+%   callout = holm_family.count_significant_{uncorrected,holm}
 \begin{frame}[t]
 \slidehead{RESULT \textperiodcentered\ POOL SIZE}{No size from 3k to 10k is distinguishable from 2k}
 \vspace{-1mm}
@@ -1370,7 +1370,7 @@ $d=A-B$ & \textbf{0.2} & \textbf{0.1} & \textbf{0.3} & \textbf{0.2} & \textbf{0.
  \hb{1}{0.5887}{cMis}{0.589}{}
 \end{groupplot}
 \end{tikzpicture}\par}
-\callout{Significant tests: 11 of 64 uncorrected, 0 of 64 after Holm (smallest adjusted $p$ 0.40).}
+\callout{11 of 64 tests significant uncorrected; 0 of 64 after Holm.}
 \srcline{exp-034 $\cdot$ Mistral-7B 4-bit $\cdot$ pinned 600 $\cdot$ seed 42 $\cdot$ Holm over 64 (8 sizes vs 2k $\times$ 8 metrics)
  \hfill bold: best in panel}
 \end{frame}
