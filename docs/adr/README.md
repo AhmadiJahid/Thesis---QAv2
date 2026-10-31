@@ -68,6 +68,7 @@ When **not** to write one:
 | [0038](./0038-sampling-variance-via-full-dev-run-and-offline-stratified-resampling.md) | Sampling Variance Is Measured by One Full-Dev Run per Arm and Offline Stratified Resampling | Accepted (lead under Jahid's delegation, 2026-10-14) |
 | [0039](./0039-anchor-set-follow-ups-additive-metrics-parser-fix-and-ordering-noise-floor.md) | Anchor-Set Follow-Ups: Two Additive Terms, a Parser Fix, and an Ordering Noise Floor | Accepted (Jahid, 2026-10-14) |
 | [0040](./0040-harness-conventions-opus-only-agents-and-id-reservation.md) | Harness Conventions: Opus-Only Agents Are Standing; Exp Ids and ADR Numbers Are Reserved on Main Before Use | Accepted (item 1 Jahid, 2026-10-26; item 2 implementer convention under #62) |
+| 0041 | Memo audit (Jev / SOTA / hop-aware plan): Tier 0 only, no new arms | Reserved (lead:session, 2026-10-31) — Jahid chose re-analysis-only follow-ups from the external memo; experiment ceiling holds |
 
 ---
 
