@@ -1,0 +1,36 @@
+{
+ "exp_id": "exp-034",
+ "issue": 51,
+ "adr": "0039 (items 2-4 + 2026-10-14 implementation choices), 0036 (Holm), 0035",
+ "code_commit": "57859f0e28ec25bacbe79b1ec7db8fdb53953eb1",
+ "worktree": "/cta/users/fyilmaz/worktrees/exp-034 (clean, detached at 57859f0; removed after the run)",
+ "code_delta_vs_exp032": "git diff 5c4e442..57859f0 -- scripts components configs src is empty (same parser and evaluator code as exp-032)",
+ "python": "/cta/users/fyilmaz/Thesis---QAv2/.venv/bin/python",
+ "seed": 42,
+ "gpu": "none",
+ "lock": "not taken (CPU only; exp-032 precedent; docs/compute.md's lock is for training/GPU runs)",
+ "configs_unedited": [
+  "configs/decomposer_musique.json",
+  "configs/musique_eval.json"
+ ],
+ "arms_results_json": {
+  "size2000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size2000/decomposer/20261014_095440/results.json",
+  "size3000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size3000/decomposer/20261014_103532/results.json",
+  "size4000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size4000/decomposer/20261014_112044/results.json",
+  "size5000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size5000/decomposer/20261014_115825/results.json",
+  "size6000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size6000/decomposer/20261014_124136/results.json",
+  "size7000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size7000/decomposer/20261014_132147/results.json",
+  "size8000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size8000/decomposer/20261014_140048/results.json",
+  "size9000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size9000/decomposer/20261014_143518/results.json",
+  "size10000": "/cta/users/fyilmaz/Thesis---QAv2/runs/exp-031/size10000/decomposer/20261014_151218/results.json"
+ },
+ "step1_reparse": "scripts/reparse_decompositions.py --results <arm results.json> --output-dir runs/exp-034/sizeN/reparse  (run config = config.json beside results.json)",
+ "step2_eval": "scripts/musique_decompositions_evaluator.py --predictions runs/exp-034/sizeN/reparse/results.json --run-dir runs/exp-034/sizeN/eval --out-prefix eval --seed 42",
+ "step3_compare": "scripts/musique_decompositions_evaluator.py --compare runs/exp-034/sizeN/eval/eval_per_item.json runs/exp-034/size2000/eval/eval_per_item.json --run-dir runs/exp-034/compare/sizeN_vs_size2000 --out-prefix compare --seed 42  (N = 3000..10000; exp-031's compare command with both sides re-parsed)",
+ "reproducibility_pair": "--compare runs/exp-034/size2000/eval/eval_per_item.json runs/exp-032/exp-020/eval/eval_per_item.json --run-dir runs/exp-034/compare/size2000_vs_exp020_reparsed (outside the Holm family; exp-020's re-parsed file per ADR 0039 cross-parser rule)",
+ "blocker_check": "size2000 re-parsed eval must equal exp-032's re-parsed exp-020 eval (generations identical 600/600 per exp-031)",
+ "holm_family": "exp-031's pre-fixed family, unchanged: experiments/exp-031/config.json pool_size_sweep_v2_snapshot.compare.holm_family (8 pairs x 8 metrics = 64, overall only, McNemar p for binary terms, paired-t p for continuous terms, Holm at alpha 0.05 beside the uncorrected verdict)",
+ "driver": "experiments/exp-034/run.sh (copy of runs/exp-034/run.sh); log runs/exp-034/run.log",
+ "assembly": "experiments/exp-034/build_metrics.py -> experiments/exp-034/metrics.json",
+ "discarded_attempt": "A first pass of the same driver (runs/exp-034/attempt1_dirty/, run_attempt1_dirty.log) is not used: the build script was written into the worktree while it ran, so the evaluator stamped git dirty=True. Re-run from the clean tree; all recorded outputs carry dirty=False."
+}
