@@ -402,6 +402,37 @@ def slide_e1():
     print(f"   * = survives Holm; total {total} of 48; at 4 hops {h4} of 12")
 
 
+# ------------------------------------------------------------ A3b pool size
+def slide_pool_size():
+    """exp-034: exp-031's 9 pool sizes re-parsed (PR #61 parser).  Bars =
+    per_size.<size>.reparsed; family = holm_family (8 pairs x 8 metrics)."""
+    d = load("exp-034")
+    print("== A3b pool size (exp-034): per_size.size<N>.reparsed.{step_f1_macro, sari_macro}")
+    best = {m: max(d["per_size"][f"size{n}"]["reparsed"][m] for n in d["sizes"])
+            for m in ("step_f1_macro", "sari_macro")}
+    for n in d["sizes"]:
+        r = d["per_size"][f"size{n}"]["reparsed"]
+        cols = []
+        for m in ("step_f1_macro", "sari_macro"):
+            cols.append(f"{m}={r[m]:.4f} label={r[m]:.3f}{' BOLD(best)' if r[m] == best[m] else ''}")
+        print(f"   {n // 1000:>2d}k  " + "  ".join(cols))
+    hf = d["holm_family"]
+    cells = [(f"{pk}:{m}", c) for pk, pv in hf["pairs"].items() for m, c in pv["cells"].items()]
+    unc = sum(bool(c["significant_uncorrected"]) for _, c in cells)
+    hol = sum(bool(c["significant_holm"]) for _, c in cells)
+    lab, mp = min(((l, c["holm_adjusted_p"]) for l, c in cells), key=lambda t: t[1])
+    assert len(cells) == hf["family_size"], (len(cells), hf["family_size"])
+    assert unc == hf["count_significant_uncorrected"] and hol == hf["count_significant_holm"]
+    assert lab == hf["min_holm_adjusted_p"]["cell"]
+    rows = holm([(l, c["p_value"]) for l, c in cells])
+    assert sum(r[3] for r in rows) == hol and abs(rows[0][2] - mp) < 1e-9
+    print(f"   holm_family: family_size={len(cells)} uncorrected={unc}/{len(cells)} holm={hol}/{len(cells)}"
+          f" (counted from cells, equal to the summary keys; Holm re-run here agrees)")
+    print(f"   min holm_adjusted_p={mp:.4f} label={mp:.2f} cell={lab}")
+    print(f"   accent cells (Holm-significant vs 2k): {hol}")
+
+
 if __name__ == "__main__":
+    slide_pool_size()
     slide_a5_a6(); slide_a7(); slide_b1(); slide_c1(); slide_c2()
     slide_d1(); slide_d2(); slide_d3(); slide_e1()

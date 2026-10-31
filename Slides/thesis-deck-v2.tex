@@ -1332,6 +1332,49 @@ $d=A-B$ & \textbf{0.2} & \textbf{0.1} & \textbf{0.3} & \textbf{0.2} & \textbf{0.
  \hfill one pool draw per strategy}
 \end{frame}
 
+% ========================================== A3b -- pool size ======
+% source: experiments/exp-034/metrics.json; numbers printed by results_chart_data.py slide_pool_size()
+%   bars = per_size.size<N>.reparsed.{step_f1_macro, sari_macro}; bold = best in panel;
+%   accent = Holm-significant vs size2000 (none: holm_family.count_significant_holm = 0)
+%   callout = holm_family.count_significant_{uncorrected,holm}, min_holm_adjusted_p.value
+\begin{frame}[t]
+\slidehead{RESULT \textperiodcentered\ POOL SIZE}{No size from 3k to 10k is distinguishable from 2k}
+\vspace{-1mm}
+{\centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={group size=2 by 1, horizontal sep=14mm},
+  resultaxis, height=33mm, ymin=0.4, ymax=9.6, ytick={1,2,3,4,5,6,7,8,9},
+  yticklabels={10k,9k,8k,7k,6k,5k,4k,3k,2k}, yticklabel style={font=\footnotesize, text=ink},
+  ymajorgrids=false]
+\nextgroupplot[width=44mm, xmin=0, xmax=0.25, xtick={0,0.1,0.2}, xticklabels={0,.1,.2},
+  title={Step F1\,{\color{muted}\scriptsize$\uparrow$}}]
+ \hb{9}{0.1828}{cMis}{0.183}{}
+ \hb{8}{0.1961}{cMis}{0.196}{}
+ \hb{7}{0.1976}{cMis}{0.198}{}
+ \hb{6}{0.1940}{cMis}{0.194}{}
+ \hb{5}{0.1929}{cMis}{0.193}{}
+ \hb{4}{0.2005}{cMis}{0.201}{}
+ \hb{3}{0.2008}{cMis}{0.201}{}
+ \hb{2}{0.2010}{cMis}{0.201}{}
+ \hb{1}{0.2050}{cMis}{\textbf{0.205}}{}
+\nextgroupplot[width=44mm, xmin=0, xmax=0.7, xtick={0,0.2,0.4,0.6}, xticklabels={0,.2,.4,.6},
+  title={SARI\,{\color{muted}\scriptsize$\uparrow$}}]
+ \hb{9}{0.5768}{cMis}{0.577}{}
+ \hb{8}{0.5875}{cMis}{0.588}{}
+ \hb{7}{0.5909}{cMis}{\textbf{0.591}}{}
+ \hb{6}{0.5879}{cMis}{0.588}{}
+ \hb{5}{0.5838}{cMis}{0.584}{}
+ \hb{4}{0.5861}{cMis}{0.586}{}
+ \hb{3}{0.5873}{cMis}{0.587}{}
+ \hb{2}{0.5861}{cMis}{0.586}{}
+ \hb{1}{0.5887}{cMis}{0.589}{}
+\end{groupplot}
+\end{tikzpicture}\par}
+\callout{Significant tests: 11 of 64 uncorrected, 0 of 64 after Holm (smallest adjusted $p$ 0.40).}
+\srcline{exp-034 $\cdot$ Mistral-7B 4-bit $\cdot$ pinned 600 $\cdot$ seed 42 $\cdot$ Holm over 64 (8 sizes vs 2k $\times$ 8 metrics)
+ \hfill bold: best in panel}
+\end{frame}
+
 % ================================================= A4 -- rerank ======
 % source: experiments/log.md row exp-018 (no experiments/exp-018/ directory);
 %   per-pair output docs/analysis/2026-08-27-pool-construction-slide-facts.json
@@ -1836,23 +1879,20 @@ Prompted $>$ none & \svn\,\svn & \svn\,\svn & \svn\,\svn & \svn\,\svn\\
 }
 
 % ============================================ F1 -- still open ======
-% source: docs/analysis/2026-09-20-issue-50-block-report.md section 6 (items 1-4);
-%   pool-size sweep: ADR 0035 item 7, issue #51 (no result yet: no numbers here)
+% source: docs/analysis/2026-09-20-issue-50-block-report.md section 6 (items 1-4)
 \begin{frame}[t]
-\slidehead{NEXT \textperiodcentered\ STILL OPEN}{Five questions the results leave open}
+\slidehead{NEXT \textperiodcentered\ STILL OPEN}{Four questions the results leave open}
 \begin{tabular}{@{}p{6mm}@{\hspace{2mm}}p{126mm}@{}}
 \chainnum{1} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
- \textbf{Pool size, measured in v2} {\color{muted}--- 2k to 10k; the sweep is being prepared.}}\\[3mm]
-\chainnum{2} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Least-complex-first ordering} {\color{muted}--- not run; ``complexity'' is not yet defined.}}\\[3mm]
-\chainnum{3} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
+\chainnum{2} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Why the pool fine-tune works} {\color{muted}--- the size-matched control was never trained.}}\\[3mm]
-\chainnum{4} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
+\chainnum{3} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{Run-to-run variance} {\color{muted}--- every arm ran once, at one seed.}}\\[3mm]
-\chainnum{5} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
+\chainnum{4} & \textcolor{ink}{\fontsize{9.5}{12}\selectfont
  \textbf{What 4-bit costs Qwen} {\color{muted}--- precision was varied for Mistral only.}}
 \end{tabular}
-\srcmono{issue \#51 (pool size) $\cdot$ \#13 (pool\_2000 control) $\cdot$ \#50 block report, section 6}
+\srcmono{issue \#13 (pool\_2000 control) $\cdot$ \#50 block report, section 6}
 \end{frame}
 
 % ============================================ 34 -- limitations ======
