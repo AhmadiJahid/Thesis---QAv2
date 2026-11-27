@@ -246,7 +246,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       </div>
     </div>
   </div>
-  <footer><span>The plan is the object of study here — not the final answer.</span></footer>
 </section>
 
 <!-- 3 ─────────────────────────────── the chain -->
@@ -258,11 +257,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       <div class="link"><span class="n">1</span><span class="t">Who directed <b>The Matrix</b>?</span></div>
       <div class="link"><span class="n">2</span><span class="t">Which other films did <span class="ref">[#1]</span> direct?</span></div>
       <div class="link"><span class="n">3</span><span class="t">What languages are spoken in <span class="ref">[#2]</span>?</span></div>
-    </div>
-    <div class="callout">
-      The <span class="ref">[#k]</span> placeholders are what make this a <b>plan</b> rather than
-      three unrelated questions. They also make it machine-checkable: a step that references a
-      nonexistent earlier step is detectably broken.
     </div>
   </div>
   <footer><span>Ordered · atomic · explicitly linked</span></footer>
@@ -380,13 +374,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
           <td>Masked at lookup time, on every incoming question, just before it is matched
               against the pool.</td></tr>
     </table>
-    <div class="callout warn" style="margin-top:2.2cqh">
-      The split is not cosmetic. <span class="mono">Stars</span> is itself a title in the
-      knowledge base, so re-masking the pool would turn
-      <span class="mono">who stars in Baby Face</span> into
-      <span class="mono">who [MOVIE] in [MOVIE]</span>. A corrupted question costs one lookup;
-      a corrupted pool item degrades every lookup after it.
-    </div>
   </div>
   <footer><span class="src">ADR 0003 · src/entity_masking.py · placeholders: [MOVIE] and [PERSON], from the MetaQA KB</span></footer>
 </section>
@@ -435,10 +422,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       <tr><td><b>Balanced</b></td><td>Fills an equal quota from each hop bucket, so no hop count dominates.</td></tr>
       <tr><td><b>Clustered</b></td><td>k-means over the pool, one example per centroid — covers the spread rather than the frequency.</td></tr>
     </table>
-    <div class="callout warn" style="margin-top:2.4cqh">
-      MuSiQue is dominated by two-hop questions. An imbalanced pool inherits that skew,
-      so the harder multi-hop examples are the scarcest thing in the prompt.
-    </div>
   </div>
   <footer><span class="src">configs/pool_sweep.json · MuSiQue-Ans v1.0 train</span></footer>
 </section>
@@ -489,10 +472,6 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="var(--rule-2)"/></marker></defs>
     </svg>
-    <div class="callout open">
-      <b>Open:</b> the order in which those five are placed has never been varied. Whether
-      highest-similarity-first is the right end to start from is an untested assumption.
-    </div>
   </div>
   <footer><span class="src">bi-encoder e5-small-v2 · cross-encoder rerank over top-20</span></footer>
 </section>
@@ -557,54 +536,49 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
         </p>
       </div>
     </div>
-    <div class="callout">
-      The main MuSiQue evaluation set is <b>600 dev questions, 200 per hop</b>, pinned by id (ADR 0007);
-      a comparison is only claimed between arms scored on the <em>same</em> questions. MetaQA uses
-      <b>100 questions per hop (300)</b>, identified by a question-set fingerprint, not an ADR-pinned id list.
-    </div>
   </div>
-  <footer><span class="src">ADR 0007 · ADR 0025 · train counts from the MuSiQue-Ans train file; dev counts from the dev-sample stats</span></footer>
 </section>
 
-<!-- 14 ────────────────────────────── metrics: the three jobs -->
+<!-- 14-16 ─────── metrics block: overview x2, normalisation, one slide per metric -->
 <section class="slide">
   <div class="eyebrow">Setup · metrics</div>
   <div class="body">
-    <h2>One number cannot catch three different failures</h2>
-    <div class="cols c3" style="margin-top:1.2cqh">
-      <div class="point">
-        <span class="tag">Is the length right</span>
-        <h3>Hop-count EM</h3>
-        <p>Predicted step count equals gold. Reported with under- and over-decomposition as a
-           pair, never summed — too few steps is worse than too many.</p>
-      </div>
-      <div class="point">
-        <span class="tag">Is the chain intact</span>
-        <h3>Chain validity</h3>
-        <p>Do the <span class="ref">[#k]</span> links resolve into one connected chain with no
-           orphans? Junk scores zero.</p>
-      </div>
-      <div class="point">
-        <span class="tag">Is the content right</span>
-        <h3>SARI · GED · Break EM</h3>
-        <p>N-gram overlap against gold, graph edit distance between step graphs, and the strict
-           whole-plan match.</p>
-      </div>
-    </div>
-    <div class="callout warn">
-      <b>Why not one blended score:</b> a content-perfect but <em>reversed</em> plan scores at
-      the top of the table on both GED and SARI. Only the strict match and the ordering terms
-      catch it. Six unblended terms are reported; a report quoting fewer is not reporting it.
-    </div>
+    <h2>The report card: six numbers, never blended</h2>
+    <table>
+      <tr><th>Metric</th><th style="text-align:left">What it checks</th><th>Better</th></tr>
+      <tr><td><b>Break EM</b></td><td style="text-align:left">The whole plan is identical to gold.</td><td>↑</td></tr>
+      <tr><td><b>SARI</b></td><td style="text-align:left">N-gram edits against gold, relative to the question.</td><td>↑</td></tr>
+      <tr><td><b>GED</b></td><td style="text-align:left">Graph distance to gold: wording, links, length.</td><td>↓</td></tr>
+      <tr><td><b>Chain validity</b></td><td style="text-align:left">Every <span class="ref">[#k]</span> points to an earlier step.</td><td>↑</td></tr>
+      <tr><td><b>Hop-count EM</b></td><td style="text-align:left">The number of steps equals gold’s.</td><td>↑</td></tr>
+      <tr><td><b>Under / over rate</b></td><td style="text-align:left">Too few or too many steps, as a pair.</td><td>↓</td></tr>
+    </table>
   </div>
-  <footer><span class="src">ADR 0029 · validated against a six-system junk battery</span></footer>
+  <footer><span class="src">ADR 0029 · a plan can score well on some and fail others, so all six are reported</span></footer>
 </section>
 
-<!-- ─────────────────────────────── normalisation -->
 <section class="slide">
   <div class="eyebrow">Setup · metrics</div>
   <div class="body">
-    <h2>“After normalisation” means exactly three operations</h2>
+    <h2>Also reported, and the end-to-end pair</h2>
+    <table>
+      <tr><th>Plan quality</th><th style="text-align:left">What it checks</th><th>Better</th></tr>
+      <tr><td><b>Exact match</b></td><td style="text-align:left">Every step identical to gold.</td><td>↑</td></tr>
+      <tr><td><b>Step F1</b></td><td style="text-align:left">The right steps are present; order ignored.</td><td>↑</td></tr>
+      <tr><td><b>Ordered step acc.</b></td><td style="text-align:left">The right step in the right place.</td><td>↑</td></tr>
+      <tr><td><b>ROUGE-L F1</b></td><td style="text-align:left">Longest common word sequence with gold.</td><td>↑</td></tr>
+      <tr><th>End to end</th><th style="text-align:left">What it checks</th><th>Better</th></tr>
+      <tr><td><b>Answer EM</b></td><td style="text-align:left">The final answer equals gold’s.</td><td>↑</td></tr>
+      <tr><td><b>Answer F1</b></td><td style="text-align:left">Word overlap with gold’s final answer.</td><td>↑</td></tr>
+    </table>
+  </div>
+  <footer><span>The old weighted composite score is legacy: it appears in older tables only and ranks nothing here.</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Normalisation: what it is, where it is used, why</h2>
     <div class="ladder">
       <div class="rung">
         <div class="lbl"><b>as generated</b><span>raw step</span></div>
@@ -623,88 +597,226 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
         <div class="txt">which wellknown films did <span class="tok g">#2</span> direct</div>
       </div>
     </div>
-    <div class="callout warn">
-      Two consequences worth knowing: punctuation is <b>deleted, not spaced</b> — so
-      <span class="mono">well-known</span> becomes <span class="mono">wellknown</span> — and
-      since <span class="mono">#</span> is exempt but brackets are not, <b><span class="mono">[#2]</span>
-      and <span class="mono">#2</span> compare equal.</b> Articles, digits and Unicode are left alone.
+    <div class="cols c2" style="margin-top:2.4cqh">
+      <div class="point"><span class="tag">Used by</span><p>Exact match, step F1, ordered step accuracy. Not ROUGE-L, Break EM, SARI or GED: each has its own rule.</p></div>
+      <div class="point"><span class="tag">Why</span><p>So a capital letter, or <span class="ref">[#2]</span> versus <span class="ref">#2</span>, never counts as a wrong step.</p></div>
     </div>
   </div>
-  <footer>
-    <span>Shared by exact match, step F1 and ordered accuracy</span>
-    <span class="src">Break EM is the exception — it lowercases only</span>
-  </footer>
+  
 </section>
 
-<!-- ─────────────────────────────── ordered step accuracy -->
 <section class="slide">
   <div class="eyebrow">Setup · metrics</div>
   <div class="body">
-    <h2>Ordered step accuracy, when the two lengths disagree</h2>
-    <div class="split">
+    <h2>The example every metric is scored on</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
       <div>
-        <p class="sub" style="margin-top:0">
-          Steps are compared <b>position against position</b> — there is no alignment step. The
-          denominator is the <b>longer</b> of the two:
-        </p>
-        <div class="callout" style="font-size:1.5cqw">
-          <span class="mono">matches at the same index</span><br>
-          <span style="color:var(--rule-2)">────────────────────</span><br>
-          <span class="mono">max(n<sub>pred</sub>, n<sub>gold</sub>)</span>
-        </div>
-      </div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Merged: steps 2 and 3 as one</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 What languages are spoken in films <span class="ref">[#1]</span> directed?</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Unlinked: no <span class="ref">[#k]</span> links</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did that director direct?<br>3 What languages are spoken in those films?</div></div>      </div>
       <div>
-        <table>
-          <tr><th>Predicted 3, gold 2</th><th></th></tr>
-          <tr><td>step 1 matches</td><td class="best">✓</td></tr>
-          <tr><td>step 2 matches</td><td class="best">✓</td></tr>
-          <tr><td>step 3 — no gold to compare</td><td class="bad">counted against</td></tr>
-          <tr class="note-row"><td><b>Score</b></td><td style="font-size:1.5cqw;color:var(--ink)">2 / 3</td></tr>
-        </table>
-      </div>
-    </div>
-    <div class="callout">
-      A surplus step is never compared, but it still enlarges the denominator — so it costs the
-      same as a wrong one. <b>The metric cannot reach 1.0 unless the lengths match</b>, which is
-      what makes it an ordering <em>and</em> length measure at once. A fully reversed 3-step plan
-      scores 1/3 while step F1 scores 1.0.
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed: steps 3, 2, 1</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Extra step added</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What are the titles of those films?<br>4 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
     </div>
   </div>
-  <footer><span>Exact string equality after normalisation — no partial credit per step</span></footer>
+  <footer><span>Each metric slide that follows scores one of these four plans against the gold plan.</span></footer>
 </section>
 
-<!-- 15 ────────────────────────────── metric retired -->
 <section class="slide">
   <div class="eyebrow">Setup · metrics</div>
   <div class="body">
-    <h2>The score that used to rank these runs has been retired</h2>
-    <div class="split">
+    <h2>Exact match: is every step identical?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
       <div>
-        <div class="callout" style="background:var(--bad-soft);border-left-color:var(--bad)">
-          <b>Composite score</b> — a hand-weighted blend:<br>
-          <span class="mono" style="font-size:1.15cqw">0.4·step F1 + 0.3·ordered + 0.2·ref validity
-          + 0.1·count error</span>
-        </div>
-        <p class="sub" style="font-size:1.32cqw">
-          Its 0.2-weight reference-validity term was decided by a bracket-format mismatch: the
-          scorer looked for <span class="mono">[#k]</span>, the evaluation data writes
-          <span class="mono">#k</span>. The term was effectively settled by 2 of 600 items.
-        </p>
-      </div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
       <div>
-        <div class="stat" style="margin-bottom:2.4cqh">
-          <span class="v bad num">±0.2</span>
-          <span class="k">how far the composite swung across nine pairs on which graph edit
-            distance moved a stable +0.01 to +0.02 in one direction</span>
-        </div>
-        <div class="callout">
-          It stays computed and stamped <b>legacy</b> so older tables remain reproducible —
-          and it ranks nothing from here on.
-        </div>
-      </div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Same step count; every step equals gold’s after normalisation.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">The strictest text check. One slip scores 0.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Step 1 ✗ &nbsp; Step 2 ✓ &nbsp; Step 3 ✗<br>Not every step matches, so <b>0.00</b>.</div></div>      </div>
     </div>
   </div>
-  <footer><span class="src">issue #40 · frozen 2026-08-23 · superseded by the report card</span></footer>
+  <footer><span class="src">exact_match_rate · uses the normalisation shown earlier</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Step F1: are the right steps there?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Precision and recall over the set of steps. Order is ignored.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Partial credit for a plan that is mostly right.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">All 3 predicted steps are in gold: precision 3/3.<br>All 3 gold steps are predicted: recall 3/3.<br>F1 = <b>1.00</b>. It cannot see order.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">step_f1_macro</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Ordered step accuracy: right step, right place?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Extra step added</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What are the titles of those films?<br>4 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Compare step <i>i</i> with step <i>i</i>. Divide by the longer plan.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Catches wrong order and wrong length.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Position 1 ✓ &nbsp; 2 ✓ &nbsp; 3 ✗ &nbsp; 4 no gold step<br>2 matches ÷ max(4, 3) = <b>0.50</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">ordered_step_accuracy_macro</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>ROUGE-L F1: how much wording overlaps?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Longest common word sequence of the whole plan, as F1.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Credit for near-miss wording inside a step.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Words: 16 in gold, 16 in the plan.<br>Longest common word sequence: 6.<br>Precision = recall = 6/16, so F1 = <b>0.38</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">rouge_l_f1_macro · no normalisation: its own tokeniser</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Hop-count EM and under/over: is the length right?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Merged plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 What languages are spoken in films <span class="ref">[#1]</span> directed?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Hop EM</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">The number of predicted steps equals gold’s.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Under / over</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Share of plans with fewer / more steps than gold.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Wrong length is wrong granularity. Never summed: too few is worse.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Plan has 2 steps; gold has 3.<br>Hop-count EM: 2 ≠ 3, so <b>0</b>.<br>Under: 2 &lt; 3, so <b>1</b>. Over: <b>0</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">hop_count_exact_match_rate · under_ / over_decomposition_rate · ADR 0017</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Chain validity: do the steps link up?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Unlinked plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did that director direct?<br>3 What languages are spoken in those films?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Each <span class="ref">[#k]</span> must point to an earlier step. Score is valid links over links emitted.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Links make it a plan. If gold chains and the plan has none: 0.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Gold links its steps: 2 links.<br>The plan emits 0 links.<br>No links where gold chains, so <b>0.00</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">chain_validity_macro · ADR 0026</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Break EM: is the whole plan identical?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Steps joined into one string equal gold’s. Case ignored.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Strictest check. Catches wrong order. Real runs score 0.05–0.10.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Join the steps into one string.<br>Same string as gold? No: the order differs.<br>So <b>0.00</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">break_exact_match_rate · ADR 0026</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>SARI: does it edit the question like gold?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Reversed plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 What languages are spoken in <span class="ref">[#2]</span>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 Who directed <b>The Matrix</b>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">N-grams kept, added and deleted from the question, against gold’s.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Rewards rewriting the question the way gold does. An empty plan scores 0.29.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Keep 1.00 &nbsp; Add 0.77 &nbsp; Delete 1.00<br>Mean = <b>0.92</b>.<br>Same words as gold, so little to penalise.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">sari_macro · each term averaged over 1–4-grams · ADR 0026</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>GED: how far is the plan’s graph from gold’s?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold plan</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Extra step added</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">1 Who directed <b>The Matrix</b>?<br>2 Which other films did <span class="ref">[#1]</span> direct?<br>3 What are the titles of those films?<br>4 What languages are spoken in <span class="ref">[#2]</span>?</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Steps are nodes, <span class="ref">[#k]</span> links are edges. Count the edits. Lower is better.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">One distance for wording, links and length.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Gold graph: 3 nodes + 2 links = 5.<br>Plan graph: 4 nodes + 2 links = 6.<br>1 edit (insert the extra node): 1 ÷ max(5, 6) = <b>0.17</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">ged_macro · ADR 0026</span></footer>
+</section>
+
+<section class="slide">
+  <div class="eyebrow">Setup · metrics</div>
+  <div class="body">
+    <h2>Answer EM and F1: is the final answer right?</h2>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Gold answer</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">English</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Predicted answer</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">the English language</div></div>      </div>
+    </div>
+    <div class="split" style="grid-template-columns:1fr 1fr">
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Normalise first. EM: identical. F1: word overlap.</div></div><div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">Why</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Tests whether better plans give better answers.</div></div>      </div>
+      <div>
+<div style="margin-bottom:2cqh"><span class="mono" style="font-size:1cqw;letter-spacing:.1em;color:var(--accent);font-weight:600;text-transform:uppercase">How it is scored</span><div style="font-size:1.34cqw;line-height:1.55;color:var(--ink-2);margin-top:.4cqh">Normalised: “english language” against “english”.<br>EM: not identical, so <b>0.00</b>.<br>F1: precision 1/2, recall 1/1, so <b>0.67</b>.</div></div>      </div>
+    </div>
+  </div>
+  <footer><span class="src">src/answer_metrics.py · MuSiQue’s official metrics · ADR 0019</span></footer>
 </section>
 
 <!-- 16 ────────────────────────────── statistics -->
@@ -851,7 +963,7 @@ svg{ display:block; width:100%; height:auto; overflow:visible; }
       <b>This was checked because it looked like a bug.</b> One cell had clustered and imbalanced
       tie at 0.5133 hop-count EM — which turned out to be 258 discordant items splitting exactly
       129 / 129, in one cell of six. The other five do not tie. <b>It is a genuine null, not a
-      duplicated run:</b> the same harness detects reranking's effect 9 times out of 9.
+      duplicated run:</b> the same harness detects reranking's effect (GED: 4 of 9 pairs survive Holm).
     </div>
   </div>
   <footer>
