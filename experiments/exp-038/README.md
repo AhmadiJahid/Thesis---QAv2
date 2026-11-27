@@ -29,12 +29,12 @@ Mistral-7B arm at 4 hops has under 0.285 and over 0.415 on the pinned subset
 | 2 | `locate` | GPU | greedy generation on all three splits, batched 16, and residual stream after every layer at every step boundary of locate and val_select | 15–25 min |
 | 3 | `directions` | CPU | per-layer stratum-matched difference-of-means (two kinds), val AUROC, cosines, proposed sweep | a few min |
 | — | **PAUSE 1** | Claude | inspect `directions_table.md` etc.; optional `candidates_override.json`; reasoning in `choices.md`; commit and push | — |
-| 4 | `sweep` | GPU | val_select under baseline, 12 orthogonalisation edits (2 kinds × 3 layers × α 0.5/1), 2 steering diagnostics, 5 EOS-row scales, norm-only | 30–60 min |
-| 5 | `choose` | CPU | ADR 0042 default rule → `proposed_choice.json` | seconds |
-| — | **PAUSE 2** | Claude | commit `choice.json` + `choices.md`: **freezes the edit** | — |
-| 6 | `make-specs`, `equivalence`, `confirm` | GPU | five spec files; hook-vs-weight logit check; one run of the five on val_confirm | ~15 min |
+| 4 | `sweep` | GPU | val_select under baseline, 12 orthogonalisation edits (2 kinds × 3 layers × α 0.5/1), 2 steering diagnostics, 6 additive EOS-logit biases (+ up to 3 refinement rounds of 3 until one matches the edit's mean step count within 0.05), the norm-only sanity check | 30–75 min |
+| 5 | `choose` | CPU | ADR 0042 default rule, length-matched EOS-bias control and its achieved gap → `proposed_choice.json` | seconds |
+| — | **PAUSE 2** | Claude | commit `choice.json` (exactly once) + `choices.md`; `freeze` then records every spec hash in `specs_frozen.json`, never rewritten | — |
+| 6 | `make-specs`, `freeze`, `equivalence`, `confirm` | GPU | five spec files; freeze; hook-vs-weight check (stops unless every argmax agrees and the largest logit difference is ≤ 0.5); one run of the five on val_confirm | ~15 min |
 | 7 | pinned 600 × 5 arms | GPU | baseline / edit / random / eos_control / norm_control through `run_decomposer.py --weight-edit`, unbatched as exp-026, then the evaluator | ~75–90 min |
-| 8 | `analysis.py` | CPU | bootstrap + McNemar + paired-t, overall and per hop, Holm per pair | ~5–10 min |
+| 8 | `analysis.py` | CPU | bootstrap + McNemar + paired-t, overall and per hop, Holm within each pair's family of 28; the headline rule (hop-4 under-decomposition Holm-significant for the edit in BOTH family P and family L); length gap and per-hop step histograms on the pinned 600; size of the random control's weight change vs the edit's | ~5–10 min |
 
 **Total GPU estimate: ~2.5–3.5 h on an A100 40 GB, ~4–6 h on an L4.** These are estimates, not
 measurements. The per-query basis is exp-026's measured 1.404 s/query unbatched on the RTX 3090
@@ -57,7 +57,9 @@ measurements. The per-query basis is exp-026's measured 1.404 s/query unbatched 
 Claude writes `choices.md`, `candidates_override.json` (optional) and `choice.json` in this folder,
 in Jahid's terminal, from the statistics the notebook saved to `MyDrive/thesis-exp038/`. Each
 choice is committed before the notebook proceeds. The pinned 600 are never shown before
-`choice.json` is committed (ADR 0042 items 5–6).
+`choice.json` is committed (ADR 0042 items 5–6). Jahid approved this role on 2026-11-27 and does not consider it a
+closed-model judge (ADR 0042, "Decided by Jahid"). `choice.json` gets exactly one commit; a
+second one makes the freeze refuse.
 
 ## What gets committed here after the run
 
@@ -70,6 +72,6 @@ metrics and a run note. Activations, generations and per-item files stay on Driv
 
 ## Before running
 
-1. Push this branch (the notebook clones it). Put `GITHUB_TOKEN` and `HF_TOKEN` in Colab secrets.
-2. Reserve exp-038 and ADR 0042 on `main` (ADR 0040 item 2), or renumber.
+1. Push this branch (the notebook clones it; the repo is public, so no GitHub token is used). Put `HF_TOKEN` in Colab secrets.
+2. The lead reserves exp-038 and ADR 0042 on `main` before merge (ADR 0040 item 2).
 3. Code review of the `--weight-edit` runner change (Gate 1), since it touches shared pipeline code.

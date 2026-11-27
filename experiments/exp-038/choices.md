@@ -7,6 +7,9 @@ pre-registered default rule (`src/weight_space.py::select_candidate`, thresholds
 `configs/exp038_weight_space.json`), say so and say why. Never edit an entry after the stage it
 governs has run; add a new one instead.
 
+Claude's role in choosing was approved by Jahid on 2026-11-27 (ADR 0042, "Decided by Jahid").
+`choice.json` is committed exactly once: a second commit makes `freeze` refuse.
+
 ## Pause 1 — after `directions` (sweep candidates)
 
 _Not yet reached._
