@@ -43,11 +43,12 @@ _NUMBER = r"(?P<n>\d+|one|two|three|four|five|six|seven|eight|nine|ten)"
 _LOOSE_RXS = (
     re.compile(rf"^\W*hops?(?:\s*count)?\s*[:=\-]?\s*{_NUMBER}\W*$", re.IGNORECASE),
     re.compile(rf"^\W*{_NUMBER}\s*-?\s*hops?\W*$", re.IGNORECASE),
-    # "Hops: <anything>" - a labelled count whose value is not a number ("Hops: many").
-    re.compile(r"^\W*hops?(?:\s*count)?\s*[:=]\s*(?P<n>[^\n]*?)\W*$", re.IGNORECASE),
-    # "[<anything> hops]" - the bracket shape with no number, e.g. the instruction's own
+    # "Hops: <one short word>" - a labelled count whose value is not a number ("Hops: many").
+    # One word of at most 10 letters, so a step like "Hop: Who founded X?" stays a step.
+    re.compile(r"^\W*hops?(?:\s*count)?\s*[:=]\s*(?P<n>[A-Za-z]{1,10})\W*$", re.IGNORECASE),
+    # "[<short word> hops]" - the bracket shape with no number, e.g. the instruction's own
     # placeholder copied verbatim ("[N hops]").
-    re.compile(r"^\s*\[\s*(?P<n>[^\]\d]*?)\s*hops?\s*\]\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\[\s*(?P<n>[A-Za-z]{0,10})\s*hops?\s*\]\s*$", re.IGNORECASE),
 )
 _WORD_NUMBERS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -129,7 +130,8 @@ def parse_count_first(text: str) -> CountFirstParse:
       (the first line is not a count statement; nothing is removed from it), ``empty``.
     - Any LATER line that is only a count statement is removed too (it is not a step) and
       listed in ``extra_count_lines``; it never supplies the prediction.
-    - Step lines are returned as written (enumerators kept); scoring normalises them.
+    - Non-count lines are returned verbatim (enumerators, blank lines and indentation
+      kept); only the outer whitespace is stripped. Scoring normalises them.
     """
     lines = [ln for ln in (text or "").splitlines()]
     first = next((i for i, ln in enumerate(lines) if ln.strip()), None)
@@ -162,7 +164,10 @@ def parse_count_first(text: str) -> CountFirstParse:
             extra.append(ln.strip())
             continue
         kept.append(ln)
-    steps_text = "\n".join(ln.strip() for ln in kept if ln.strip())
+    # Every non-count line is kept exactly as written (blank lines and indentation
+    # included); only the outer whitespace goes, as post_process_generation does for every
+    # arm. The evaluator's splitter normalises the rest at scoring time.
+    steps_text = "\n".join(kept).strip()
     return CountFirstParse(status, predicted, count_line, steps_text, extra)
 
 

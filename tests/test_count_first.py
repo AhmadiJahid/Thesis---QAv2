@@ -5,15 +5,18 @@ Covers:
 
 1. ``src/count_first.py::parse_count_first`` - count line present, inline, absent,
    malformed (with and without a readable number), empty output, a count that does not
-   match the steps emitted, stray count lines after the first, CRLF and enumerated steps.
+   match the steps emitted, stray count lines after the first, CRLF and enumerated steps,
+   a labelled question ("Hop: Who ...?") kept as a step, non-count lines kept verbatim; and
+   ``scripts/reparse_decompositions.py`` on a count-first row.
 2. ``summarize_count_first`` - hand-computed accuracy / agreement / status counts.
 3. ``insert_instruction_line`` - inserted after the anchor; missing or duplicated anchors
    refused; CRLF kept.
 4. ``run_decomposer.format_few_shot_examples`` - the default (``count_first`` off) is the
    pre-change block; on, each exemplar carries its OWN gold step count.
 5. ``run_decomposer.resolve_count_first`` refusals (guided, step-line cap, bad block).
-6. **Default unchanged, end to end:** the unguided (Mistral, Qwen3.5) and oracle_guided
-   (Mistral) arms are re-run with ``--dry-run`` on the fixtures and their rendered prompts
+6. **Default unchanged, end to end:** seven arms - unguided (Mistral, Qwen3.5-9B,
+   Qwen2.5-7B, Qwen2.5-14B) and oracle_guided / unguided_capped / router_guided (Mistral) -
+   are re-run with ``--dry-run`` on the fixtures and their rendered prompts
    must hash to the golden values produced by main at 118d777, before count-first existed
    (``tests/fixtures/golden/decomposer_prompts_pre_count_first.json``); results.json rows
    keep the same keys.
@@ -57,6 +60,7 @@ import run_decomposer as rd  # noqa: E402
 
 GOLDEN = REPO_ROOT / "tests" / "fixtures" / "golden" / "decomposer_prompts_pre_count_first.json"
 RETRIEVAL = REPO_ROOT / "tests" / "fixtures" / "retrieval" / "top5_musique_conditions.jsonl"
+HOP_PREDICTIONS = REPO_ROOT / "tests" / "fixtures" / "router" / "hop_predictions_musique.jsonl"
 ROWS = 9
 
 
@@ -172,10 +176,51 @@ class TestParser(unittest.TestCase):
         self.assertEqual(p.status, "absent")
         self.assertEqual(len(split_step_lines(p.steps_text)), 2)
 
+    def test_labelled_question_is_a_step_not_a_count(self) -> None:
+        p = parse_count_first("[2 hops]\nHop: Who founded X?\nWhere is [#1]?")
+        self.assertEqual((p.status, p.predicted_hops), ("ok", 2))
+        self.assertEqual(p.extra_count_lines, [])
+        self.assertEqual(p.steps_text, "Hop: Who founded X?\nWhere is [#1]?")
+        q = parse_count_first("Hops: Which river crosses the town?\nB?")
+        self.assertEqual(q.status, "absent")
+
+    def test_non_count_lines_kept_verbatim(self) -> None:
+        p = parse_count_first("[2 hops]\n  1. A?\n\n   2. B [#1]?  \n")
+        self.assertEqual(p.steps_text, "1. A?\n\n   2. B [#1]?")
+        q = parse_count_first("  A?\n\n B?")
+        self.assertEqual(q.steps_text, "A?\n\n B?")
+
     def test_format_count_line(self) -> None:
         self.assertEqual(format_count_line(3), "[3 hops]")
         with self.assertRaises(ValueError):
             format_count_line(0)
+
+
+class TestReparseCountFirst(unittest.TestCase):
+    def test_reparse_strips_count_line_and_scaffold(self) -> None:
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import reparse_decompositions as rp
+
+        recorded = {"strip_think": False, "truncate_at": ["Question:"]}
+        fixed = {"strip_think": False, "truncate_at": ["Question:", "Task:", "Answer:"]}
+        raw = "\n[2 hops]\nA?\nB [#1]?\nTask:\n"
+        stored = rp.parse_raw(raw, recorded, None, count_first=True)
+        self.assertEqual(stored, "A?\nB [#1]?\nTask:")
+        row = {"query_id": "2hop__x", "decomposition_raw": raw, "decomposition": stored,
+               "step_lines": 3, "count_first_status": "ok", "count_first_predicted_hops": 2,
+               "count_first_line": "[2 hops]", "count_first_extra_count_lines": []}
+        new, changed, not_repro, _ = rp.reparse_rows(
+            [row], recorded, fixed, None, count_first=True
+        )
+        self.assertEqual(not_repro, [])
+        self.assertEqual(new[0]["decomposition"], "A?\nB [#1]?")
+        self.assertEqual(new[0]["step_lines"], 2)
+        self.assertEqual(new[0]["count_first_predicted_hops"], 2)
+        self.assertEqual(len(changed), 1)
+        # Without count_first the stored (count-stripped) decomposition does not reproduce, so
+        # the re-parse refuses rather than silently re-adding the count line.
+        _, _, not_repro, _ = rp.reparse_rows([row], recorded, fixed, None)
+        self.assertEqual(not_repro, ["2hop__x"])
 
 
 class TestSummary(unittest.TestCase):
@@ -323,8 +368,11 @@ class TestEndToEnd(unittest.TestCase):
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))["arms"]
         for arm_key, want in golden.items():
             condition, model = arm_key.split("__", 1)
+            extra = (
+                ("--hop-predictions", str(HOP_PREDICTIONS)) if condition == "router_guided" else ()
+            )
             with self.subTest(arm=arm_key):
-                got = self._arm(model, condition)
+                got = self._arm(model, condition, *extra)
                 hashes = {
                     name: hashlib.sha256(body.encode("utf-8")).hexdigest()
                     for name, body in got["prompts"].items()
