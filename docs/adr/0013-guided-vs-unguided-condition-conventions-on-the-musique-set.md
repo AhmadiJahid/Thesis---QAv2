@@ -37,6 +37,10 @@ with `--condition`. The gold hop count injected by `oracle_guided` is the depth 
 evaluation file the question was read from, or the depth parsed from its id on the retrieval
 path — never a prediction.
 
+> **Note (2026-11-27):** the whitelist now also admits `count_first` (exp-037), and that arm adds
+> one instruction only it sees, by design - see ADR [0043](./0043-count-first-condition-exp-037.md)
+> items 2-3. ADR 0024 item 8 had already added `hop_source`.
+
 **2. `_CONDITION_KEYS` whitelist plus `--guided`-contradiction refusal — the anti-drift
 mechanism.** A condition block may set only `guided`, `stop_after_step_lines` and `_note`. Any
 other key (a seed, a decoding parameter, a model) is refused at load: the arms are only
@@ -236,3 +240,6 @@ Jahid on 2026-08-19 and is now Decision item 8.)*
   this config: in the guided arm that mislabels the oracle.
 - **Add replacement wording to the unguided prompt** (e.g. "use the minimal number of steps").
   Rejected: it is an instruction only one arm sees, i.e. a second difference between the arms.
+  *(2026-11-27: the count-first arm deliberately adds one such instruction, because asking for
+  the count is its treatment; ADR [0043](./0043-count-first-condition-exp-037.md) item 3. The
+  rejection stands for every other condition.)*

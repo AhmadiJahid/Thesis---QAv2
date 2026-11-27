@@ -1,0 +1,153 @@
+{
+  "_note": "exp-041 run plan, committed BEFORE the run. exp-041 retrains exp-026's pool-only QLoRA fine-tune (Mistral-7B-Instruct-v0.3, arm pool_2000_imbalanced, 250 steps) under training seeds 42, 43 and 44 on one Colab GPU and evaluates each exactly as exp-026 was evaluated (fp16 base + adapter, --no-few-shot, unguided, pinned 600, decoding seed 42). Nothing else moves: every hyperparameter comes from the UNEDITED configs/finetune_decomposer.json; the only CLI difference from exp-026's training command is --seed and the output root. No pipeline code changes: train_lora.py already takes --seed, which sets the global seed before the LoRA weights are initialised (set_global_seed, then get_peft_model) and is passed to trl as seed and data_seed (data order, dropout); the arm has max_examples null, so the training SET is the whole pinned pool under every seed (the gate checks it). experiments/exp-041/run.sh, gates.py, compare.py and the notebook read this file. Nothing here is a measured exp-041 result; numbers marked 'estimate' are estimates, all others are settings or hashes exp-026 / exp-015 / exp-014 recorded.",
+  "exp_id": "exp-041",
+  "replicates": "exp-026",
+  "training_seeds": [42, 43, 44],
+  "training_seeds_note": "43 and 44 are the two additional seeds (the next integers after the repo seed 42, chosen before any run). 42 is re-trained on the same Colab GPU so the three-seed spread has no hardware term; the stored exp-026 (seed 42, RTX 3090) is the hardware reference.",
+  "decode_seed": 42,
+  "model": {"folder": "mistral_7b_instruct", "model_id": "mistralai/Mistral-7B-Instruct-v0.3"},
+  "inputs": {
+    "pool": {
+      "path_under_runs": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "rows": 2000,
+      "hop_counts": {"2": 1461, "3": 413, "4": 126}
+    },
+    "retrieval": {
+      "path_under_runs": "exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+      "rows": 600
+    }
+  },
+  "train": {
+    "argv_template": ["components/decomposer/train_lora.py", "--arm", "pool_2000_imbalanced", "--quantization", "4bit", "--seed", "{seed}", "--output-root", "runs/exp-041/seed{seed}/train"],
+    "exp026_argv": ["components/decomposer/train_lora.py", "--arm", "pool_2000_imbalanced", "--quantization", "4bit", "--seed", "42", "--output-root", "runs/exp-026"],
+    "gate": {
+      "training_source_sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "num_examples": 2000,
+      "hop_counts": {"2": 1461, "3": 413, "4": 126},
+      "eval_overlap_count": 0,
+      "quantization": "4bit",
+      "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+      "global_step": 250,
+      "seed_equals_argv": true,
+      "same_commit_as_launch": true,
+      "clean_tree": true
+    },
+    "interrupted": "restarts from step 0 with the same seed (ADR 0044 item 5); the incomplete directory is moved to runs/exp-041/seed{seed}/train_incomplete/ and kept"
+  },
+  "eval": {
+    "argv_template": ["components/decomposer/run_decomposer.py", "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json", "--condition", "unguided", "--seed", "42", "--quantization", "none", "--adapter", "{adapter}", "--no-few-shot", "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl"],
+    "output_root_template": "runs/exp-041/seed{seed}/decomposer",
+    "evaluator_run_dir_template": "runs/exp-041/seed{seed}/eval",
+    "role": "exp-026's evaluation protocol exactly (experiments/exp-026/config.json decomposer_run_config: condition unguided, seed 42, quantization none, no_few_shot true, the exp-014 artifact for the query set)"
+  },
+  "prompted": {
+    "argv": ["components/decomposer/run_decomposer.py", "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json", "--condition", "unguided", "--seed", "42", "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl"],
+    "exp015_argv": ["components/decomposer/run_decomposer.py", "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json", "--condition", "unguided", "--seed", "42", "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl", "--output-root", "runs/exp-015/decomposer"],
+    "output_root": "runs/exp-041/prompted_exp015_rerun/decomposer",
+    "evaluator_run_dir": "runs/exp-041/prompted_exp015_rerun/eval",
+    "role": "exp-015's exact command (Mistral prompting, fp16 = the folder default, 5 retrieved exemplars) re-run on the same Colab GPU: the precision-matched prompting comparator exp-026 used, on the same machine as the three fine-tunes"
+  },
+  "evaluator_argv": ["scripts/musique_decompositions_evaluator.py", "--predictions", "{results}", "--run-dir", "{run_dir}", "--out-prefix", "eval", "--seed", "42"],
+  "canary": {
+    "_note": "20-row decodes (--sample-size 20 --allow-unpinned-eval-set, own output roots under runs/exp-041/canary/) that must pass the output-health gate before the GPU time they precede: 'prompted' before anything else (environment, model download, generation), 'eval_seed{seed}' before each adapter's full evaluation. Never compared.",
+    "rows": 20
+  },
+  "eval_gate": {
+    "rows": 600,
+    "rows_per_hop": {"2": 200, "3": 200, "4": 200},
+    "retrieval_input_sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+    "adapter_prompt_parity_mismatches": 0,
+    "anchor_prompts_expected": 45,
+    "same_commit_as_launch": true,
+    "output_health": {
+      "_note": "Pre-declared, ARBITRARY beyond what is stated: exp-026 recorded rows_with_empty_decomposition 0 (experiments/exp-026/metrics.json); the ceilings catch a broken run (fp16 overflow, wrong template) without failing a run that leaves a row or two empty. Applied to canaries (n=20) and full runs (n=600).",
+      "max_empty_fraction": 0.01,
+      "max_at_max_new_tokens_fraction": 0.05
+    }
+  },
+  "compare": {
+    "_note": "experiments/exp-041/compare.py (CPU), exp-029's run_pair + Holm (ADR 0009, 0036). Fixed here before any exp-041 p-value exists (ADR 0036 item 5). Comparator per-item files are exp-032's re-parsed re-evaluations (ADR 0039 cross-parser rule).",
+    "report_card_metrics": ["break_exact_match", "sari", "ged", "chain_validity", "hop_count_exact_match", "under_decomposition", "over_decomposition"],
+    "strata": ["overall", "2", "3", "4"],
+    "systems": {
+      "ft_seed42": "runs/exp-041/seed42/eval/eval_per_item.json",
+      "ft_seed43": "runs/exp-041/seed43/eval/eval_per_item.json",
+      "ft_seed44": "runs/exp-041/seed44/eval/eval_per_item.json",
+      "prompted_rerun": "runs/exp-041/prompted_exp015_rerun/eval/eval_per_item.json",
+      "exp026_stored": "runs/exp-032/exp-026/eval/eval_per_item.json",
+      "exp015_stored": "runs/exp-032/exp-015/eval/eval_per_item.json"
+    },
+    "stored_results": {
+      "exp026_stored": "runs/exp-032/exp-026/reparse/results.json",
+      "exp015_stored": "runs/exp-032/exp-015/reparse/results.json"
+    },
+    "primary_pairs": {
+      "ft_seed42_vs_prompted_rerun": {"system_a": "ft_seed42", "system_b": "prompted_rerun", "family": "F_seed42"},
+      "ft_seed43_vs_prompted_rerun": {"system_a": "ft_seed43", "system_b": "prompted_rerun", "family": "F_seed43"},
+      "ft_seed44_vs_prompted_rerun": {"system_a": "ft_seed44", "system_b": "prompted_rerun", "family": "F_seed44"}
+    },
+    "reference_pair": {
+      "exp026_vs_exp015_stored": {"system_a": "exp026_stored", "system_b": "exp015_stored", "family": "F_reference",
+        "note": "the headline comparison as stored (3090), recomputed by the same code and Holm'd in its own family of the same shape, so each seed's verdicts are read against it cell by cell"}
+    },
+    "secondary_pairs": {
+      "ft_seed42_vs_exp015_stored": {"system_a": "ft_seed42", "system_b": "exp015_stored", "family": "F2_seed42_vs_stored"},
+      "ft_seed43_vs_exp015_stored": {"system_a": "ft_seed43", "system_b": "exp015_stored", "family": "F2_seed43_vs_stored"},
+      "ft_seed44_vs_exp015_stored": {"system_a": "ft_seed44", "system_b": "exp015_stored", "family": "F2_seed44_vs_stored"}
+    },
+    "context_pairs": {
+      "ft_seed43_vs_ft_seed42": {"system_a": "ft_seed43", "system_b": "ft_seed42"},
+      "ft_seed44_vs_ft_seed42": {"system_a": "ft_seed44", "system_b": "ft_seed42"},
+      "ft_seed44_vs_ft_seed43": {"system_a": "ft_seed44", "system_b": "ft_seed43"},
+      "ft_seed42_vs_exp026_stored": {"system_a": "ft_seed42", "system_b": "exp026_stored", "note": "hardware control of the fine-tune"},
+      "prompted_rerun_vs_exp015_stored": {"system_a": "prompted_rerun", "system_b": "exp015_stored", "note": "hardware control of the prompting arm"}
+    },
+    "family_size_each": 28,
+    "family_size_note": "every family = one pair x 7 report-card terms x 4 strata (overall + hops 2/3/4) = 28 tests, the shape of exp-038's families (ADR 0042). One family per seed because each seed stands in for 'exp-026 had been run with this seed': the question is whether a single-run study at that seed would have reached exp-026's verdicts.",
+    "holm_p_basis": "ADR 0036 item 3: exact McNemar p (binary terms), paired-t p (sari, ged, chain_validity).",
+    "spread": {
+      "primary_set": ["ft_seed42", "ft_seed43", "ft_seed44"],
+      "secondary_set": ["exp026_stored", "ft_seed43", "ft_seed44"],
+      "statistics": "per term x stratum: each seed's mean, then mean, sample SD (ddof 1), min, max, range across seeds; the same for the per-seed gain (fine-tune minus the prompting comparator: prompted_rerun for the primary set, exp015_stored for the secondary set). Descriptive: n = 3 seeds supports no test of the spread itself."
+    },
+    "agreement": "per term x stratum, for each primary pair against the reference pair: same sign of the difference, same uncorrected verdict, same Holm verdict (each in its own family). Reported cell by cell plus counts; 'the headline holds across seeds' is claimed only for cells where all three seeds match the reference sign and are Holm-significant.",
+    "hardware_control": "ft_seed42's and prompted_rerun's recorded decompositions vs exp-032's re-parsed results.json of exp-026 / exp-015: identical strings out of 600 (reported; 'reproduced' = 600/600)."
+  },
+  "gpu": {
+    "min_total_vram_gib": 16,
+    "min_compute_capability": [8, 0],
+    "measured_reference": "exp-026 on the RTX 3090: training peak 5.035 GiB (max_memory_allocated), fp16 eval + adapter 14,438 MiB (nvidia-smi)",
+    "requirement_text": ">= 16 GiB total and bf16 (training is bf16 QLoRA): L4 (24 GB), A100, H100 or G4 pass; T4/V100 are refused. The runtime may be shared with other queued jobs, hence the free-VRAM gate.",
+    "free_vram_gate_gib": {
+      "_note": "run.sh refuses a step (exit 4, nothing started) when nvidia-smi total - used is below this: the measured exp-026 peak on the 3090 plus a margin. A job that starts beside this one AFTER the check can still take memory; the gate only stops this notebook from starting into a GPU that is already too full.",
+      "train": 6,
+      "train_basis": "exp-026 training peak 5,648 MiB (nvidia-smi, own pid) / 5.035 GiB max_memory_allocated, + ~0.5 GiB",
+      "eval_fp16": 15.5,
+      "eval_fp16_basis": "exp-026 fp16 + adapter eval peak 14,438 MiB (nvidia-smi), + ~1.4 GiB; used for the prompting run too (same fp16 base, longer few-shot prompts)"
+    }
+  },
+  "wall_clock_estimate": {
+    "_note": "ESTIMATES, not measurements, for a GPU used by this notebook alone (A100 and L4 below). Bases (RTX 3090, measured): exp-026 training 1,568.8 s for 250 steps; exp-026 fp16 eval 842.3 s of generation over 600; exp-015 prompting 1.810 s/query (~1,086 s per 600). Factors vs the 3090 (as exp-036's run_config): training A100 x0.5-0.7, fp16 decoding A100 x0.5-0.6. Plus model load ~1-2 min per process and the CPU evaluator ~2-5 min per run.",
+    "A100": {
+      "setup_min": [15, 25],
+      "canary_prompted_min": [3, 6],
+      "per_seed_train_min": [13, 18],
+      "per_seed_canary_plus_eval_min": [10, 16],
+      "prompted_rerun_min": [12, 17],
+      "compare_cpu_min": [5, 15],
+      "total_h": [1.7, 2.8]
+    },
+    "L4": {
+      "_note": "UNMEASURED. Factors from exp-036's run_config (L4 vs 3090): training x1.3-2.5, fp16 decoding (bandwidth-bound, ~300 vs ~936 GB/s) x2.5-3.1. The code reviewer's independent guess was ~4-6 h total.",
+      "setup_min": [15, 25],
+      "canary_prompted_min": [5, 10],
+      "per_seed_train_min": [34, 65],
+      "per_seed_canary_plus_eval_min": [40, 55],
+      "prompted_rerun_min": [50, 62],
+      "compare_cpu_min": [5, 15],
+      "total_h": [5.0, 7.9]
+    }
+  }
+}

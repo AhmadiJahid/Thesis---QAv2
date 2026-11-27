@@ -42,6 +42,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from count_first import parse_count_first  # noqa: E402
 from run_artifacts import now_iso, write_run_artifacts  # noqa: E402
 from run_config import load_config, require  # noqa: E402
 from step_lines import (  # noqa: E402
@@ -60,11 +61,19 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def parse_raw(raw: str, post_cfg: dict[str, Any], max_step_lines: int | None) -> str:
+def parse_raw(
+    raw: str,
+    post_cfg: dict[str, Any],
+    max_step_lines: int | None,
+    *,
+    count_first: bool = False,
+) -> str:
     """The decomposition the decomposer records for ``raw`` under ``post_cfg``.
 
     Mirrors ``components/decomposer/run_decomposer.py::generate``: post-process, then the
-    step-line trim when the run had a cap, then strip.
+    step-line trim when the run had a cap, then strip. A count-first run (exp-037; its
+    snapshot carries a ``count_first`` block) then has its ``[N hops]`` line removed exactly
+    as the runner does (``src/count_first.py::parse_count_first``).
     """
     processed = post_process_generation(
         raw,
@@ -72,7 +81,8 @@ def parse_raw(raw: str, post_cfg: dict[str, Any], max_step_lines: int | None) ->
         truncate_at=post_cfg.get("truncate_at") or [],
     )
     out = trim_to_step_lines(processed, max_step_lines) if max_step_lines else processed
-    return out.strip()
+    out = out.strip()
+    return parse_count_first(out).steps_text if count_first else out
 
 
 def reparse_rows(
@@ -80,6 +90,8 @@ def reparse_rows(
     recorded_post_cfg: dict[str, Any],
     fixed_post_cfg: dict[str, Any],
     max_step_lines: int | None,
+    *,
+    count_first: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], int]:
     """Re-parse every row. Returns (new_rows, changed, not_reproduced_ids, skipped_empty).
 
@@ -103,16 +115,28 @@ def reparse_rows(
             skipped_empty += 1
             new_rows.append(dict(row))
             continue
-        if parse_raw(raw, recorded_post_cfg, max_step_lines) != stored:
+        if parse_raw(raw, recorded_post_cfg, max_step_lines, count_first=count_first) != stored:
             not_reproduced.append(row_id)
             new_rows.append(dict(row))
             continue
-        fixed = parse_raw(raw, fixed_post_cfg, max_step_lines)
+        fixed = parse_raw(raw, fixed_post_cfg, max_step_lines, count_first=count_first)
         new_row = dict(row)
         if fixed != stored:
             new_row["decomposition"] = fixed
             if "step_lines" in row:
                 new_row["step_lines"] = step_line_count(fixed)
+            if count_first:
+                cf = parse_count_first(
+                    post_process_generation(
+                        raw,
+                        strip_think=bool(fixed_post_cfg.get("strip_think")),
+                        truncate_at=fixed_post_cfg.get("truncate_at") or [],
+                    )
+                )
+                new_row["count_first_status"] = cf.status
+                new_row["count_first_predicted_hops"] = cf.predicted_hops
+                new_row["count_first_line"] = cf.count_line
+                new_row["count_first_extra_count_lines"] = cf.extra_count_lines
             changed.append(
                 {
                     "query_id": row_id,
@@ -189,8 +213,14 @@ def main() -> None:
     rows = json.loads(results_path.read_text(encoding="utf-8"))
     if not isinstance(rows, list):
         raise SystemExit(f"{results_path}: expected a JSON list of rows")
+    # A count-first run's snapshot carries a 'count_first' block (exp-037): its recorded
+    # decomposition has the '[N hops]' line removed, so the re-parse removes it too.
+    count_first = bool(run_cfg.get("count_first"))
+    if count_first and max_step_lines:
+        raise SystemExit(f"{run_config_path}: count_first with a step-line cap is not a run "
+                         "run_decomposer.py can produce")
     new_rows, changed, not_reproduced, skipped_empty = reparse_rows(
-        rows, recorded_post_cfg, fixed_post_cfg, max_step_lines
+        rows, recorded_post_cfg, fixed_post_cfg, max_step_lines, count_first=count_first
     )
     if not_reproduced:
         raise SystemExit(
@@ -222,6 +252,7 @@ def main() -> None:
         "rows_changed": len(changed),
         "pred_steps_removed_total": steps_removed,
         "recorded_post_process": recorded_post_cfg,
+        "count_first_run": count_first,
         "fixed_post_process": fixed_post_cfg,
         "stop_after_step_lines": max_step_lines,
         "changed_rows": changed,

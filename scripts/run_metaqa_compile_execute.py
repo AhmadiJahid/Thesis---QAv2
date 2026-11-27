@@ -96,7 +96,7 @@ sys.path.insert(0, str(_REPO_ROOT / "components" / "decomposer"))
 # The two halves, imported rather than reimplemented: one home for the compiler, one home
 # for the Jaccard scorer.
 from compare_answer_accuracy import jaccard, load_gold_by_hop, run_analysis  # noqa: E402
-from evaluate_decompositions import evaluate_decomposition_rate  # noqa: E402
+from evaluate_decompositions import compile_strict, evaluate_decomposition_rate  # noqa: E402
 from kg import build_metaqa_kg  # noqa: E402
 from run_artifacts import now_iso, write_run_artifacts  # noqa: E402
 from run_config import load_config, load_paths, require, resolve_path, runs_path  # noqa: E402
@@ -422,6 +422,8 @@ def main() -> None:
         # Always written: the gold comparison below reads success.json. They hold question
         # and answer text and land under the gitignored runs root, never in git.
         output_dir=analysis_dir,
+        exclude_topic=bool(require(kg_cfg, "exclude_topic_after_first_step")),
+        strict=compile_strict(kg_cfg),
     )
     coverage = rate.as_dict()
 
@@ -647,6 +649,8 @@ def main() -> None:
         "created_utc": now_iso(),
         "config_path": cfg.get("_config_path"),
         "kg_eval_config_path": kg_cfg.get("_config_path"),
+        "exclude_topic_after_first_step": require(kg_cfg, "exclude_topic_after_first_step"),
+        "compile_mode": require(kg_cfg, "compile_mode"),
         "answer_accuracy_config_path": acc_cfg.get("_config_path"),
         "backend_label": backend_label,
         "grag_wired": GRAG_WIRED,

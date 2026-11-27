@@ -153,7 +153,8 @@ later write the same predictions file and drop into the same two consumers uncha
    file names stay on the gold depth too, so the arms' logs line up file by file; the predicted
    number is stated in the log header.
 
-8. **The condition block is where the hop source lives.** `hop_source` joins `guided` and
+8. *(2026-11-27: `count_first` joins this whitelist - ADR [0043](./0043-count-first-condition-exp-037.md) item 2.)*
+   **The condition block is where the hop source lives.** `hop_source` joins `guided` and
    `stop_after_step_lines` as the only keys a condition may set, because it says *which* hop count
    the prompt carries — the single difference between `oracle_guided` and `router_guided`. Model,
    seed, retrieval and decoding stay shared and un-overridable, so the two arms cannot differ in a

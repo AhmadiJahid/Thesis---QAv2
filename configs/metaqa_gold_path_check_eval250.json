@@ -1,0 +1,21 @@
+{
+  "_note": "Config for scripts/metaqa_gold_path_check.py on the exp-039 eval set (250/hop from the vanilla test split, ADR 0045). The bracketed topic entity of each question is known (topics_{hop}hop.txt), so only that entity is tried.",
+  "seed": 42,
+  "hops": [
+    1,
+    2,
+    3
+  ],
+  "questions_template_key": "metaqa_eval250_questions_template",
+  "answers_template_key": "metaqa_eval250_answers_template",
+  "topics_template_key": "metaqa_eval250_topics_template",
+  "answer_separator": "|",
+  "min_entity_len": 2,
+  "phrasings": [
+    "compiler",
+    "natural",
+    "question_wording"
+  ],
+  "run_subdir": "metaqa_gold_path_check_eval250",
+  "paths_config": "paths.json"
+}
