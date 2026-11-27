@@ -1,0 +1,76 @@
+{
+  "_note": "exp-038 weight-space repair (ADR 0042). Read by components/decomposer/weight_space_repair.py. Every number that shapes a run is here; the script hard-codes none. A separate track OUTSIDE the few-shot pool study: nothing here changes any pool-study arm.",
+
+  "seed": 42,
+  "model_folder": "mistral_7b_instruct",
+  "decomposer_config": "decomposer_musique.json",
+  "adapter_path": "exp-026/20260920_024535/adapter",
+  "_adapter_path_note": "Relative to runs_root (configs/paths.json). The exp-026 pool-only fine-tune (pool_2000_imbalanced), chosen as the target in ADR 0042: on the pinned 600 it under-decomposes at 4 hops (0.465) while barely over-decomposing (0.035), so the defect is one-sided; every prompting arm mixes it with heavy over-decomposition.",
+  "adapter_training_pool_path": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+  "adapter_training_pool_sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+  "quantization": "none",
+  "_quantization_note": "fp16 base + adapter, merged in fp16, as exp-026 evaluated (ADR 0034 decision 3). Edits are computed in float32 and cast back.",
+
+  "data": {
+    "_note": "Locating and validation data come ONLY from the MuSiQue TRAIN split (datasets.musique_train). Excluded before drawing: the adapter's 2,000 training rows (its behaviour on memorised rows is not the defect), and - asserted, not assumed - every id and every normalised question text of the whole MuSiQue dev file, which contains the ADR 0007 pinned 600. Direction finding never sees the pinned 600: that is the leakage guard of ADR 0042.",
+    "train_key": "musique_train",
+    "dev_key": "musique_dev",
+    "pinned_eval_template_key": "musique_eval_questions_template",
+    "hops": [2, 3, 4],
+    "splits": {
+      "locate": {"2": 400, "3": 400, "4": 400},
+      "val_select": {"2": 100, "3": 100, "4": 100},
+      "val_confirm": {"2": 100, "3": 100, "4": 100}
+    },
+    "_splits_note": "locate: activations and directions. val_select: layer scoring (AUROC) and the candidate sweep. val_confirm: one confirmation run of the chosen edit and its controls, never used for choosing (the discovery-vs-confirmation gap reported by arXiv 2611.09382)."
+  },
+
+  "generation": {
+    "max_new_tokens": 1024,
+    "do_sample": false,
+    "batch_size": 16,
+    "_note": "Greedy, max_new_tokens as configs/decomposer_musique.json generation_overrides. Batched with left padding for the TRAIN-side locate/sweep only; the pinned-600 evaluation runs through run_decomposer.py, unbatched, exactly as exp-026."
+  },
+
+  "locate": {
+    "activation_dtype": "float16",
+    "min_per_cell": 5,
+    "directions": {
+      "stop_vs_continue": {"pos": "premature_stop", "neg": "continue_needed"},
+      "premature_vs_correct_stop": {"pos": "premature_stop", "neg": "correct_stop"}
+    },
+    "_directions_note": "Both matched on boundary index j (src/weight_space.py matched_diff_of_means). stop_vs_continue is the Arditi-style 'what makes it stop' direction; premature_vs_correct_stop compares a too-early stop with a correct stop at the SAME j (a 2-hop item stopping after step 2 vs a 3/4-hop item stopping after step 2), i.e. what differs when stopping is wrong. Which one, if either, repairs the defect is decided on val_select.",
+    "candidate_layer_range": [2, 28],
+    "top_layers_per_direction": 3
+  },
+
+  "sweep": {
+    "alphas": [0.5, 1.0],
+    "matrices": ["o_proj", "down_proj", "embed_tokens"],
+    "ablation_layers": "all",
+    "length_match": {
+      "eos_logit_biases": [-0.5, -1.0, -2.0, -3.0, -4.0, -6.0],
+      "tolerance_mean_steps": 0.05,
+      "refine_points": 3,
+      "max_refine_rounds": 3,
+      "_note": "The length-bias control: an ADDITIVE bias on the EOS logit (an lm_head bias that is zero elsewhere), not a row scale - scaling the EOS row multiplies a logit whose sign varies, so it can raise or lower stopping (code review of 0a47207). choose picks the bias whose val_select mean predicted step count is closest to the chosen edit's; if the gap exceeds tolerance_mean_steps it writes refine_candidates.json (biases inside the bracketing pair, src/weight_space.py refine_biases) and the notebook sweeps those, up to max_refine_rounds rounds. The achieved gap is recorded on val_select (proposed_choice.json, spec_eos_control.json) and on the pinned 600 (analysis_metrics.json). 0.05 mean steps is a judgment call: a twentieth of a step, well under the hop-4 baseline's distance from gold."
+    },
+    "final_norm_scale": 0.6,
+    "_final_norm_scale_note": "A SANITY CHECK, not a control that can explain a gain here: 0.6 is the norm-only factor arXiv 2611.20953 reports, where it acted as a temperature change under sampling. Under greedy decoding a uniform logit scale cannot change the argmax, so this arm should reproduce the baseline up to fp16 rounding; it is run to show that.",
+    "random_direction_seed": 1042,
+    "selection_rule": {
+      "max_over_increase": 0.05,
+      "max_hop2_em_drop": 0.05,
+      "_note": "Pre-registered default rule (src/weight_space.py select_candidate); controls compared against are the EOS-bias candidates and the norm-only sanity check. Claude, inspecting the saved statistics, may choose differently only with a written reason in experiments/exp-038/choices.md BEFORE any pinned-600 generation."
+    }
+  },
+
+  "equivalence": {
+    "n_prompts": 8,
+    "max_abs_logit_diff": 0.5,
+    "_note": "Hook ablation vs weight edit on the last-position logits of n_prompts locate prompts. Passes only if every argmax agrees AND the largest absolute logit difference is <= max_abs_logit_diff. 0.5 is an unmeasured allowance for fp16 rounding of the edited weights (logits of this model are O(10)); if it fails, inspect equivalence.json, and any relaxation is a choices.md entry before anything downstream runs."
+  },
+
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}
