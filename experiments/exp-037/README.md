@@ -60,7 +60,7 @@ Primary endpoints are declared in advance: under-decomposition and hop-count EM.
 ## How to run
 
 **On Colab** (Jahid): open `notebooks/exp-037_count_first_colab.ipynb` on an L4 runtime and
-run all cells. The first cell lists what to set up (HF token, branch pushed, archive on
+run all cells. The first cell lists what to set up (HF token, archive on
 Drive).
 
 `runs/exp-037` is a symlink into `MyDrive/thesis-exp-037/`, so every finished row reaches

@@ -252,7 +252,7 @@ class TestNotebook(unittest.TestCase):
     def test_notebook_is_valid_json_and_reads_the_plan(self) -> None:
         src = "\n".join(_notebook_cells())
         self.assertIn("experiments/exp-036/run_config.json", src)
-        self.assertIn("feature/50-qwen-pool-finetune", src)
+        self.assertIn('BRANCH = "main"', src)
         self.assertIn("hf_revision", src)
         self.assertIn('"huggingface_hub": "1.11.0"', src)
 
