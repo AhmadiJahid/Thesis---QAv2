@@ -1,0 +1,144 @@
+{
+  "_note": "exp-036 run plan, committed BEFORE the run (issue #50 follow-up / issue #49: every fine-tune claim so far is Mistral-only). exp-036 replicates exp-026 (pool-only QLoRA fine-tune, 250 steps, fp16 evaluation on the ADR 0007 pinned 600) with ONE change: the base model, mistral_7b_instruct -> qwen3_5_9b. Every hyperparameter comes from the UNEDITED shared configs (configs/finetune_decomposer.json, configs/decomposer_musique.json, configs/musique_eval.json); the only CLI difference from exp-026 is --model qwen3_5_9b on the training command and --model qwen3_5_9b on the evaluation command. notebooks/exp-036_qwen_pool_ft_colab.ipynb and experiments/exp-036/compare.py read this file, so the commands, the input hashes and the comparison families live in one place. Nothing in this file is a measured result of exp-036: numbers marked 'estimate' are estimates, every other number is a setting or a hash already recorded by exp-026 / exp-027 / exp-032.",
+
+  "exp_id": "exp-036",
+  "replicates": "exp-026",
+  "seed": 42,
+  "seed_source": "exp-026 trained and evaluated with seed 42 (experiments/exp-026/config.json training_run_config.seed and decomposer_run_config.seed); configs/finetune_decomposer.json seed is 42.",
+
+  "one_change": {
+    "factor": "base model",
+    "exp-026": {"model_folder": "mistral_7b_instruct", "model_id": "mistralai/Mistral-7B-Instruct-v0.3"},
+    "exp-036": {"model_folder": "qwen3_5_9b", "model_id": "Qwen/Qwen3.5-9B"},
+    "consequences_of_the_change_not_separable_from_it": [
+      "prompt: the model folder's own prompt_unguided.md (Qwen chat template, system/user split on <<<USER>>>, enable_thinking=false) instead of Mistral's plain prompt - the same rule exp-026 followed (train on the prompting arm's own prompt file with the few-shot block empty), so the prompt shape moves with the model folder, as it did between exp-020 and exp-027.",
+      "LoRA coverage: configs/finetune_decomposer.json lora.target_modules is kept byte-identical (q/k/v/o/gate/up/down_proj). Qwen3.5-9B has 32 decoder layers of which 8 are full attention (q/k/v/o_proj) and 24 are Gated DeltaNet linear attention (in_proj_qkv / in_proj_z / in_proj_b / in_proj_a / out_proj - read from transformers 5.5.4 models/qwen3_5/modeling_qwen3_5.py); every layer has gate/up/down_proj. So the identical list adapts attention in 8 of 32 layers and the MLP in all 32. Expected trainable count from the HF config (r=16; derived, NOT measured): 8 x (q 196,608 + k 81,920 + v 81,920 + o 131,072) + 32 x 3 x 262,144 = 29,097,984, vs exp-026's measured 41,943,040. The run measures it (trainable_parameters in metrics.json). Adding the linear-attention projections would be a second change; it is not made here.",
+      "stop token: the Qwen tokenizer's eos_token is <|im_end|> (id 248046); trl 1.10 appends tokenizer.eos_token to every completion and run_decomposer.generate stops on tokenizer.eos_token_id, so training and inference agree on the stop token (checked on CPU with the real tokenizer at the pinned revision: 2,000 rows, max 222 tokens incl. eos, 0 over max_length 1024)."
+    ]
+  },
+
+  "model": {
+    "folder": "qwen3_5_9b",
+    "model_id": "Qwen/Qwen3.5-9B",
+    "hf_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "hf_revision_note": "The hub's main on 2026-11-27 (HF API: latest commit 2026-03-02 'Update README.md'; no commit since). exp-027 (2026-09-20) and exp-005 (2026-08-19) ran after that date, so they loaded these weights unless their cache predates 2026-03-01 - unverifiable from here. The pipeline loads by model_id without a revision, so the notebook downloads main and REFUSES to continue if main no longer resolves to this sha.",
+    "runtime_parameter_count_exp027": 8953803264,
+    "runtime_parameter_count_source": "exp-027 log row, [model_size] line (AutoModelForCausalLM loads the text model only; the 9,653,104,368 safetensors total includes the vision tower).",
+    "fla_fast_path": "NOT installed, on purpose: exp-027 ran Qwen3.5's Gated DeltaNet on the torch fallback ('The fast path is not available ... Falling back to torch implementation', runs/exp-027/run.log). Installing flash-linear-attention / causal-conv1d would change the kernel the comparator ran on."
+  },
+
+  "inputs": {
+    "_note": "Both are loaded from the existing artifacts, never rebuilt (ADR 0035 amendment: pool construction depends on CPython random.sample, so a rebuild under another Python could differ). Paths are relative to the repo's runs/ root. sha256 values are the ones exp-026 recorded; verified again on the laptop copy on 2026-11-27 (sha256sum, both match).",
+    "pool": {
+      "path_under_runs": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "rows": 2000,
+      "hop_counts": {"2": 1461, "3": 413, "4": 126}
+    },
+    "retrieval": {
+      "path_under_runs": "exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+      "rows": 600
+    },
+    "musique_official_reference": {
+      "_note": "reference/musique_official under the data root. Not in git; not read by the decomposition evaluator (only src/answer_metrics.py cites it). Fetched from the pinned upstream commit; sha256s equal the archived copies (verified 2026-11-27).",
+      "repo": "https://github.com/StonyBrookNLP/musique",
+      "commit": "922ac98f19a201998dbdae6d7f2887a5258dbdeb",
+      "files": {
+        "musique_answer.py": {"upstream_path": "metrics/answer.py", "sha256": "10368f619b4d5ef5d83748c05a96c0afd332a14ab5c010740c98d58dfaefe974"},
+        "musique_evaluate.py": {"upstream_path": "evaluate_v1.0.py", "sha256": "f5fe66ae61dbea5172cba9d428d9924a5811f3457edc945fc1d81369c30e74b7"}
+      }
+    }
+  },
+
+  "train": {
+    "argv": ["components/decomposer/train_lora.py", "--arm", "pool_2000_imbalanced", "--model", "qwen3_5_9b", "--quantization", "4bit", "--seed", "42", "--output-root", "runs/exp-036/train"],
+    "exp026_argv": ["components/decomposer/train_lora.py", "--arm", "pool_2000_imbalanced", "--quantization", "4bit", "--seed", "42", "--output-root", "runs/exp-026"],
+    "gate": {
+      "training_source_sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "num_examples": 2000,
+      "hop_counts": {"2": 1461, "3": 413, "4": 126},
+      "eval_overlap_count": 0,
+      "quantization": "4bit",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "global_step": 250
+    }
+  },
+
+  "eval": {
+    "_note": "fp16 is THE replication of exp-026's evaluation (quantization none = the model folder's cuda_dtype float16, --no-few-shot, same retrieval artifact for the query set). 4bit is an added, secondary evaluation of the same adapter: exp-027 (the Qwen3.5-9B prompting comparator on this pool) ran at 4-bit and no fp16 Qwen3.5-9B prompting arm exists on this pool, so the 4bit eval is the precision-matched side of pair (b), exactly as exp-015 (fp16) was for exp-026 while exp-020 (4-bit) was context only. {adapter} is filled by the notebook from the training run directory.",
+    "fp16": {
+      "argv": ["components/decomposer/run_decomposer.py", "--model", "qwen3_5_9b", "--config", "decomposer_musique.json", "--condition", "unguided", "--seed", "42", "--quantization", "none", "--adapter", "{adapter}", "--no-few-shot", "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl", "--output-root", "runs/exp-036/decomposer_fp16"],
+      "evaluator_run_dir": "runs/exp-036/eval_fp16",
+      "role": "primary - replicates exp-026's evaluation"
+    },
+    "4bit": {
+      "argv": ["components/decomposer/run_decomposer.py", "--model", "qwen3_5_9b", "--config", "decomposer_musique.json", "--condition", "unguided", "--seed", "42", "--quantization", "4bit", "--adapter", "{adapter}", "--no-few-shot", "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl", "--output-root", "runs/exp-036/decomposer_4bit"],
+      "evaluator_run_dir": "runs/exp-036/eval_4bit",
+      "role": "secondary - precision-matched to exp-027 (4-bit prompting)"
+    },
+    "evaluator_argv": ["scripts/musique_decompositions_evaluator.py", "--predictions", "{results}", "--run-dir", "{run_dir}", "--out-prefix", "eval", "--seed", "42"],
+    "gate": {
+      "rows": 600,
+      "rows_per_hop": {"2": 200, "3": 200, "4": 200},
+      "retrieval_input_sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+      "adapter_prompt_parity_mismatches": 0,
+      "anchor_prompts_expected": 45
+    }
+  },
+
+  "compare": {
+    "_note": "CPU side, run on the laptop after the per-item files are copied back: experiments/exp-036/compare.py. Comparator per-item files are exp-032's re-parsed re-evaluations (scaffold-label parser of PR #61, evaluator at 5c4e442; exp-026 and exp-027 changed 0/600 rows under the re-parse, and git diff 5c4e442..HEAD is empty for scripts/ and src/), so all sides are scored by the same evaluator code. Families are fixed here, before any exp-036 p-value exists (ADR 0036 item 5).",
+    "exp036_per_item": {
+      "fp16": "runs/exp-036/eval_fp16/eval_per_item.json",
+      "4bit": "runs/exp-036/eval_4bit/eval_per_item.json"
+    },
+    "comparators": {
+      "exp026_mistral_pool_ft_fp16": "runs/exp-032/exp-026/eval/eval_per_item.json",
+      "exp027_qwen35_9b_prompting_4bit": "runs/exp-032/exp-027/eval/eval_per_item.json"
+    },
+    "pairs": {
+      "a_family_contrast": {"system_a": "exp036_fp16", "system_b": "exp026_mistral_pool_ft_fp16", "in_families": true, "framing": "same recipe, same data, same eval protocol and precision; the base model moves (family, generation AND size: Qwen3.5-9B vs Mistral-7B, 8.95B vs 7.25B runtime params) - not a one-factor family contrast, it places the second model's fine-tune beside the first."},
+      "b_finetune_gain_qwen": {"system_a": "exp036_4bit", "system_b": "exp027_qwen35_9b_prompting_4bit", "in_families": true, "framing": "the fine-tuning gain on Qwen3.5-9B: same base model, same precision (4-bit), same 600; what moves is adapter + zero-shot prompt vs no adapter + 5 retrieved exemplars - the same contrast exp-026 vs exp-015 made for Mistral."},
+      "c_context_fp16_vs_exp027": {"system_a": "exp036_fp16", "system_b": "exp027_qwen35_9b_prompting_4bit", "in_families": false, "framing": "CONTEXT ONLY, PRECISION DIFFERS (fp16 vs 4-bit) - the shape of exp-026 vs exp-020."},
+      "d_context_precision_on_adapter": {"system_a": "exp036_fp16", "system_b": "exp036_4bit", "in_families": false, "framing": "CONTEXT ONLY: the same adapter at fp16 vs 4-bit; says how much the precision of pair (b) matters."}
+    },
+    "report_card_metrics": ["break_exact_match", "sari", "ged", "chain_validity", "hop_count_exact_match", "under_decomposition", "over_decomposition"],
+    "families": {
+      "F1_overall": {"pairs": ["a_family_contrast", "b_finetune_gain_qwen"], "strata": ["overall"], "metrics": "report_card_metrics", "size": 14},
+      "F2_per_hop": {"pairs": ["a_family_contrast", "b_finetune_gain_qwen"], "strata": ["2", "3", "4"], "metrics": "report_card_metrics", "size": 42}
+    },
+    "holm_p_basis": "ADR 0036 item 3: exact McNemar p for binary metrics (break_exact_match, hop_count_exact_match, under/over_decomposition), paired-t p for continuous (sari, ged, chain_validity); the bootstrap CI is reported beside it and any disagreement is disclosed."
+  },
+
+  "gpu": {
+    "_note": "Requirement the notebook enforces before anything loads. Peak numbers below for exp-036 are ESTIMATES (not measured) scaled from measured exp-026 / exp-027 / exp-030 peaks; the run measures them.",
+    "measured_reference_peaks": {
+      "exp026_train_mistral7b_4bit_max_memory_allocated_gib": 5.035,
+      "exp026_train_mistral7b_4bit_nvidia_smi_mib": 5648,
+      "exp026_eval_mistral7b_fp16_plus_adapter_nvidia_smi_mib": 14438,
+      "exp027_eval_qwen35_9b_4bit_nvidia_smi_mib": 8026,
+      "exp030_qwen35_9b_4bit_fulldev_memory_used_mib": 8137
+    },
+    "estimate_train_peak_gib": "12-14 (estimate): 4-bit linears ~3.5-3.7 GB + embed_tokens and lm_head (each 248,320 x 4,096, untied) upcast to fp32 by peft prepare_model_for_kbit_training ~8.1 GB + LoRA/optimizer/activations ~0.5-1 GB. Mistral's 32,768-row vocab is why exp-026 peaked at 5 GiB.",
+    "estimate_eval_fp16_peak_gib": "18-19.5 (estimate): 8,953,803,264 params x 2 bytes = 16.7 GiB + adapter + ~0.6 GiB overhead (exp-026: 14,438 MiB for 7.25B).",
+    "estimate_eval_4bit_peak_gib": "~8 (estimate; exp-027 measured 8,026 MiB for the same base at 4-bit without an adapter).",
+    "min_total_vram_gib": 22.0,
+    "min_compute_capability": [8, 0],
+    "requirement_text": "A GPU with >= 22 GiB visible memory AND bf16 support (compute capability >= 8.0): training is bf16 QLoRA (configs/finetune_decomposer.json training.bf16=true) and the binding step is the fp16 evaluation at ~18-19.5 GiB (estimate). Colab L4 (24 GB, sm_89) and A100 (40/80 GB, sm_80) pass; T4 (16 GB, sm_75, no bf16) and V100 (16 GB, sm_70) fail.",
+    "default_colab_gpu": "L4",
+    "fallback_colab_gpu": "A100"
+  },
+
+  "wall_clock_estimate": {
+    "_note": "ESTIMATES, not measurements. Base: exp-026 on an RTX 3090 - training 1,568.8 s (250 steps), fp16 generation 842.3 s over 600 queries; exp-027 4-bit Qwen3.5-9B generation 1,655.1 s (few-shot prompts ~375 tokens, so an upper bound for the zero-shot adapter eval). Factors: x1.23 for parameters (8.95B / 7.25B); x1-2 for Qwen3.5's Gated DeltaNet running on the torch fallback (unmeasured for training); GPU vs 3090: training A100 x0.5-0.7, L4 x1.3-2.5; fp16 decoding (bandwidth-bound) A100 x0.5-0.6, L4 x2.5-3.1 (L4 ~300 GB/s vs the 3090's ~936 GB/s); 4-bit eval taken as 20-28 min on a 3090 (exp-027's 27.6 min with longer few-shot prompts is the upper end; the torch-fallback cost is already inside that measurement), then A100 x0.6, L4 x1.3-2. Setup (venv, data extraction, ~19 GB model download) not included: add ~15-30 min.",
+    "L4": {"train_min": [42, 160], "eval_fp16_min": [43, 107], "eval_4bit_min": [26, 55], "total_h_incl_setup": [2.1, 5.9]},
+    "A100": {"train_min": [16, 45], "eval_fp16_min": [9, 21], "eval_4bit_min": [12, 17], "total_h_incl_setup": [0.9, 1.9]},
+    "T4": {"note": "not supported: fails the VRAM and bf16 gate"}
+  },
+
+  "colab_compute_units": {
+    "_note": "UNVERIFIED approximate burn rates (public reports; Colab changes them). The notebook prints hours x rate as an estimate; read the real rate in Colab's Resources panel and overwrite these if they differ.",
+    "per_hour_approx": {"L4": 4.8, "A100": 11.8}
+  }
+}
