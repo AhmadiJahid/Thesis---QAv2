@@ -75,8 +75,8 @@ The following are reported uncorrected and in no family:
 
 ## How to run
 
-**On Colab** (the runner session or Jahid): open `notebooks/exp-040_masking_v2_colab.ipynb` on an
-A100 and run all cells. It needs the Colab secret `HF_TOKEN` (or `HF_TOKEN` set in the environment)
+**On Colab** (the runner session or Jahid): open `notebooks/exp-040_masking_v2_colab.ipynb` on a
+GPU runtime with at least 12 GiB (L4, A100, H100 or G4) and run all cells. It needs the Colab secret `HF_TOKEN` (or `HF_TOKEN` set in the environment)
 and `MyDrive/thesis-backup.tar.gz`.
 
 - It clones the public repo, and the first launch pins the commit in
@@ -89,6 +89,10 @@ and `MyDrive/thesis-backup.tar.gz`.
   gate is checked again on the full 600 before evaluation, with these thresholds: rows = expected,
   at most 1% empty, not all empty, at most 5% at `max_new_tokens`. A failed gate stops the arm and
   writes `HEALTH_FAILED.json`.
+- Before every canary or decode, `run.sh` checks **free** VRAM (total minus used). The run needs
+  ≥ 6 GiB free: exp-020's 4.8 GiB peak plus a margin (`config.json` `gpu.free_vram_gate_gib`).
+  The runtime may be shared with queued jobs, so if another job holds the memory the step exits
+  4 with nothing started. Re-run it when the GPU is free.
 - Decodes resume via `run_decomposer.py --resume` from `results.partial.jsonl`. If the runtime
   dies, run all cells again.
 
@@ -102,7 +106,7 @@ bash experiments/exp-040/run.sh canary typed_rebuilt; bash experiments/exp-040/r
 bash experiments/exp-040/run.sh compare      # -> experiments/exp-040/compare_metrics.json
 ```
 
-## GPU time: ESTIMATE for an A100, not measured
+## GPU time: ESTIMATES, not measured
 
 The bases are measured on the 3090:
 
@@ -111,15 +115,18 @@ The bases are measured on the 3090:
 
 The rebuild covers 3 modes on Colab's ~12 vCPUs.
 
-| step | A100 (estimate) |
-|---|---|
-| setup (venv, archive, model download) | 15–25 min |
-| retrieval rebuild (CPU) | 10–25 min |
-| 3 canaries | 6–12 min |
-| each full decode | 30–45 min |
-| each evaluation (CPU) | 2–6 min |
-| **total, three arms** | **~2.3–3.4 h** |
-| + typed_rebuilt, only if needed | +0.55–0.85 h |
+| step | A100 (estimate) | L4 (estimate) |
+|---|---|---|
+| setup (venv, archive, model download) | 15–25 min | 15–25 min |
+| retrieval rebuild (CPU) | 10–25 min | 10–25 min |
+| 3 canaries | 6–12 min | 8–15 min |
+| each full decode | 30–45 min | 90–150 min |
+| each evaluation (CPU) | 2–6 min | 2–6 min |
+| **total, three arms** | **~2.3–3.4 h** | **~5.1–8.6 h** |
+| + typed_rebuilt, only if needed | +0.55–0.85 h | +1.5–2.6 h |
+
+The L4 decode figure is exp-037's L4 estimate for the same Mistral 4-bit decode. The code
+reviewer's independent guess for the L4 was ~5–7 h.
 
 A GPU shared with another notebook is slower. Measured times are written to
 `runs/exp-040/colab_steps.jsonl`.

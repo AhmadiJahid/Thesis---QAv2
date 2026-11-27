@@ -121,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
 
     check_p = run / "retrieval" / "check.json"
     check = json.loads(check_p.read_text(encoding="utf-8")) if check_p.exists() else None
+    if check is not None:
+        pin_p = run / "retrieval" / "PINNED_SHA256"
+        if not pin_p.exists():
+            raise SystemExit(f"{pin_p} missing - the retrieval step did not pin the artifact")
+        pinned = pin_p.read_text(encoding="utf-8").strip()
+        if check["artifact_sha256"] != pinned:
+            raise SystemExit(f"check.json describes artifact {check['artifact_sha256']}, but the pinned artifact is "
+                             f"{pinned} - the check does not belong to the file the arms read; refusing")
     tc = typed_comparator(check, per_item("typed_rebuilt").exists())
 
     files = {arm: per_item(arm) for arm in ("typed_rerun", "raw", "uniform", "typed_rebuilt")}

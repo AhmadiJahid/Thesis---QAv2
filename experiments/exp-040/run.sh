@@ -47,6 +47,22 @@ preflight() {
   [ "$(sha "$EXP014")" = "$EXP014_SHA" ] || { echo "exp-014 artifact sha256 mismatch" >&2; exit 2; }
 }
 
+# Free-VRAM gate (config.json gpu.free_vram_gate_gib): the GPU may be shared with a queued job, so
+# refuse BEFORE loading a model when total - used < the measured peak + margin. Exit 4 = "GPU busy,
+# nothing started": re-run the step when the other job has finished.
+VRAM_DECODE=6
+vram_gate() {  # $1 GiB needed, $2 label
+  local q total used
+  q=$(nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader,nounits | head -n 1) \
+    || { echo "nvidia-smi failed - no GPU?" >&2; exit 4; }
+  total=${q%%,*}; used=${q##*,}
+  if ! awk -v t="$total" -v u="$used" -v n="$1" 'BEGIN { exit !((t - u) / 1024 >= n) }'; then
+    awk -v t="$total" -v u="$used" -v n="$1" -v l="$2" 'BEGIN { printf "refusing %s: %.1f GiB free on the GPU (%.1f total, %.1f in use by other processes), need >= %s GiB. Nothing was started; re-run this step when the GPU is free.\n", l, (t-u)/1024, t/1024, u/1024, n }' >&2
+    exit 4
+  fi
+  log "free VRAM OK for $2 ($(( (total - used) / 1024 )) GiB free, need $1)"
+}
+
 # arm -> retrieval input and extra flags (the ONLY things that differ between arms)
 arm_input() { case $1 in typed_rerun) echo "$EXP014" ;; raw|uniform|typed_rebuilt) echo "$ALLMODES" ;; *) echo "unknown arm $1" >&2; exit 2 ;; esac; }
 arm_mode()  { case $1 in typed_rerun) echo "" ;; raw) echo "--retrieval-mode raw" ;; uniform) echo "--retrieval-mode uniform" ;; typed_rebuilt) echo "--retrieval-mode typed" ;; esac; }
@@ -94,6 +110,7 @@ canary() {  # $1 arm
   if [ -f "$R/canary/$arm/health.json" ] && grep -q '"ok": true' "$R/canary/$arm/health.json"; then
     log "canary $arm already passed"; return
   fi
+  vram_gate "$VRAM_DECODE" "canary $arm"
   rm -rf "$R/canary/$arm"; mkdir -p "$R/canary/$arm"
   log "canary $arm (20 rows; not an experiment arm)"
   decomposer "$arm" --sample-size 20 --allow-unpinned-eval-set --output-root "$R/canary/$arm/decomposer"
@@ -113,11 +130,13 @@ decompose_eval() {  # $1 arm
   if [ "$n" -eq 1 ] && [ -f "$dirs/results.json" ]; then
     log "decode already complete: $dirs"
   elif [ "$n" -eq 1 ] && [ -f "$dirs/resume_key.json" ]; then
+    vram_gate "$VRAM_DECODE" "decode $arm"
     log "resuming interrupted decode $dirs"
     decomposer "$arm" --resume "$dirs"
   elif [ "$n" -eq 1 ]; then
     echo "$dirs is neither complete nor resumable (no results.json, no resume_key.json)" >&2; exit 2
   else
+    vram_gate "$VRAM_DECODE" "decode $arm"
     log "decompose $arm"
     decomposer "$arm" --output-root "$R/$arm/decomposer"
   fi

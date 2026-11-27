@@ -17,6 +17,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import random
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -107,6 +109,50 @@ class TestOneFactor(unittest.TestCase):
                 code = "".join(c["source"])
                 code = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith(("!", "%")))
                 compile(code, "<cell>", "exec")
+
+
+def _working_bash():
+    """A bash that runs (on Windows, `bash` on PATH can be a WSL stub without a distribution)."""
+    for cand in (shutil.which("bash"), "C:/Program Files/Git/bin/bash.exe"):
+        if cand and Path(cand).exists():
+            try:
+                r = subprocess.run([cand, "-c", "echo ok"], capture_output=True, text=True, timeout=30)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if r.returncode == 0 and r.stdout.strip() == "ok":
+                return cand
+    return None
+
+
+BASH = _working_bash()
+
+
+@unittest.skipUnless(BASH, "no working bash")
+class TestVramGate(unittest.TestCase):
+    """run.sh's free-VRAM gate, with a stub nvidia-smi."""
+
+    def _run(self, need: str, smi_out: str) -> subprocess.CompletedProcess:
+        start = RUN_SH.index("vram_gate() {")
+        fn = RUN_SH[start: RUN_SH.index("\n}\n", start) + 3]
+        stub = Path(tempfile.mkdtemp())
+        (stub / "nvidia-smi").write_text(f"#!/usr/bin/env bash\necho '{smi_out}'\n", encoding="utf-8", newline="\n")
+        (stub / "nvidia-smi").chmod(0o755)
+        script = (f'export PATH="$(cd "{stub.as_posix()}" && pwd):$PATH"\n'
+                  'log() { echo "$*"; }\n' + fn + f"\nvram_gate {need} decode")
+        return subprocess.run([BASH, "-c", script], cwd=REPO, capture_output=True, text=True)
+
+    def test_threshold_matches_config_and_guards_every_launch(self):
+        self.assertIn(f"VRAM_DECODE={CFG['gpu']['free_vram_gate_gib']['decode']}", RUN_SH)
+        lines = RUN_SH.splitlines()
+        for launch in ('decomposer "$arm" --sample-size', 'decomposer "$arm" --resume', 'decomposer "$arm" --output-root'):
+            i = next(k for k, l in enumerate(lines) if launch in l)
+            self.assertIn("vram_gate", "\n".join(lines[max(0, i - 4): i]), launch)
+
+    def test_refuses_a_busy_gpu(self):
+        self.assertEqual(self._run("6", "23034, 1024").returncode, 0)            # L4, ~21.5 GiB free
+        busy = self._run("6", "23034, 18432")                                     # ~4.5 GiB free
+        self.assertEqual(busy.returncode, 4, busy.stderr)
+        self.assertIn("Nothing was started", busy.stderr)
 
 
 def _row(qid, k=5, ids=None):
@@ -204,7 +250,8 @@ class TestCompare(unittest.TestCase):
         _per_item(root / "exp-032" / "exp-020" / "eval" / "eval_per_item.json", 9)
         (run / "retrieval").mkdir(parents=True)
         (run / "retrieval" / "check.json").write_text(json.dumps(
-            {"typed_identity": {"compared": 600, "identical": identical}}), encoding="utf-8")
+            {"artifact_sha256": "a" * 64, "typed_identity": {"compared": 600, "identical": identical}}), encoding="utf-8")
+        (run / "retrieval" / "PINNED_SHA256").write_text("a" * 64, encoding="utf-8")
         res = [{"query_id": q, "decomposition": "a"} for q in _ids600()]
         d = run / "typed_rerun" / "decomposer" / "20260101_000000"
         d.mkdir(parents=True)
@@ -227,6 +274,15 @@ class TestCompare(unittest.TestCase):
         self.assertFalse(m["hardware_control"]["reproduced"])
         self.assertNotIn("typed_rebuilt_vs_typed_rerun", m["pairs"])
         self.assertEqual(m["pairs"]["typed_vs_raw"]["system_a"], "typed_rerun")
+
+    def test_check_must_describe_the_pinned_artifact(self):
+        root = self._tree(600, with_rebuilt=False)
+        (root / "exp-040" / "retrieval" / "PINNED_SHA256").write_text("b" * 64, encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            self.C.main(["--runs-root", str(root), "--out", str(root / "cm.json")])
+        (root / "exp-040" / "retrieval" / "PINNED_SHA256").unlink()
+        with self.assertRaises(SystemExit):
+            self.C.main(["--runs-root", str(root), "--out", str(root / "cm.json")])
 
     def test_differing_typed_requires_rebuilt(self):
         root = self._tree(598, with_rebuilt=False)
