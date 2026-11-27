@@ -112,6 +112,14 @@ def hop_from_id(qid: str) -> int:
     return int(m.group("h"))
 
 
+def step_histogram(counts: Iterable[int]) -> dict[str, int]:
+    """``{"<steps>": n_items}``, keys sorted numerically (JSON needs string keys)."""
+    hist: dict[int, int] = {}
+    for c in counts:
+        hist[int(c)] = hist.get(int(c), 0) + 1
+    return {str(k): hist[k] for k in sorted(hist)}
+
+
 def step_count_summary(
     pred_counts: Sequence[int], gold_counts: Sequence[int]
 ) -> dict[str, Any]:
@@ -139,6 +147,7 @@ def step_count_summary(
             "mean_pred_steps": sum(p for p, _ in pairs) / n,
             "mean_signed_error": sum(p - g for p, g in pairs) / n,
             "counts": {"exact": em, "under": under, "over": over},
+            "pred_step_hist": step_histogram(p for p, _ in pairs),
         }
 
     pairs = list(zip((int(x) for x in pred_counts), (int(x) for x in gold_counts)))
@@ -308,7 +317,7 @@ def ids_sha256(ids: Iterable[str]) -> str:
 
 # ------------------------------------------------------------------ edit specs
 
-EDIT_KINDS = ("none", "orthogonalize", "final_norm_scale", "token_row_scale")
+EDIT_KINDS = ("none", "orthogonalize", "final_norm_scale", "token_logit_bias")
 WRITER_MATRICES = ("o_proj", "down_proj", "embed_tokens")
 
 
@@ -320,8 +329,14 @@ def validate_edit_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
       orthogonalize     - ``direction_file`` (.npy, d_model), ``alpha`` in (0, 1],
                           ``layers`` (list of decoder-layer indices or "all"),
                           ``matrices`` subset of o_proj/down_proj/embed_tokens
-      final_norm_scale  - ``scale`` > 0 on the final RMSNorm gain (the norm-only control)
-      token_row_scale   - ``scale`` > 0 on the lm_head rows of ``token_ids``
+      final_norm_scale  - ``scale`` > 0 on the final RMSNorm gain (the norm-only sanity
+                          check: under greedy decoding it cannot change an argmax)
+      token_logit_bias  - an ADDITIVE ``bias`` (finite, non-zero; negative lowers the token)
+                          on the logits of ``token_ids`` ('eos' or ints), written as an
+                          lm_head bias vector that is zero everywhere else - the length-bias
+                          control. Additive rather than a row scale: scaling a row multiplies
+                          a logit whose sign varies with the context, so it can raise it or
+                          lower it.
     """
     if not isinstance(spec, Mapping):
         raise SystemExit("[weight_space] edit spec must be a JSON object")
@@ -355,27 +370,27 @@ def validate_edit_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         )
         if "direction_sha256" in spec:
             out["direction_sha256"] = str(spec["direction_sha256"])
-    elif kind in ("final_norm_scale", "token_row_scale"):
+    elif kind == "final_norm_scale":
         scale = float(spec.get("scale", 0))
         if scale <= 0:
             raise SystemExit(f"[weight_space] {kind} needs scale > 0")
         out["scale"] = scale
-        if kind == "token_row_scale":
-            ids = spec.get("token_ids")
-            if ids == "eos":
-                out["token_ids"] = "eos"
-            elif isinstance(ids, list) and ids and all(isinstance(x, int) for x in ids):
-                out["token_ids"] = sorted(set(ids))
-            else:
-                raise SystemExit("[weight_space] token_row_scale needs token_ids: 'eos' or a list of ints")
+    elif kind == "token_logit_bias":
+        bias = float(spec.get("bias", 0.0))
+        if bias == 0.0 or not np.isfinite(bias):
+            raise SystemExit("[weight_space] token_logit_bias needs a finite, non-zero bias")
+        out["bias"] = bias
+        ids = spec.get("token_ids")
+        if ids == "eos":
+            out["token_ids"] = "eos"
+        elif isinstance(ids, list) and ids and all(isinstance(x, int) for x in ids):
+            out["token_ids"] = sorted(set(ids))
+        else:
+            raise SystemExit("[weight_space] token_logit_bias needs token_ids: 'eos' or a list of ints")
     for key in ("chosen_by", "choice_note", "source_candidate"):
         if key in spec:
             out[key] = spec[key]
     return out
-
-
-def spec_sha256(spec: Mapping[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(spec, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 # ------------------------------------------------------------------ multiple comparisons
@@ -453,11 +468,99 @@ def select_candidate(
 
 def closest_by_mean_steps(
     summaries: Mapping[str, Mapping[str, Any]], target: str, candidates: Sequence[str]
-) -> str:
-    """The candidate whose overall mean predicted step count is closest to ``target``'s.
+) -> tuple[str, float]:
+    """The candidate whose overall mean predicted step count is closest to ``target``'s, and
+    the signed gap (candidate minus target) in mean steps.
 
-    Picks the length-matched EOS-row-scale control: a control that lengthens plans as much
-    as the edit does, so "the edit just makes plans longer" is tested at equal length.
+    Picks the length-matched EOS-bias control: a control that lengthens plans as much as the
+    edit does, so "the edit just makes plans longer" is tested at equal length.
     """
+    if not candidates:
+        raise ValueError("no length-control candidates")
     t = summaries[target]["overall"]["mean_pred_steps"]
-    return sorted(candidates, key=lambda c: (abs(summaries[c]["overall"]["mean_pred_steps"] - t), c))[0]
+    best = sorted(candidates, key=lambda c: (abs(summaries[c]["overall"]["mean_pred_steps"] - t), c))[0]
+    return best, summaries[best]["overall"]["mean_pred_steps"] - t
+
+
+def refine_biases(points: Sequence[tuple[float, float]], target: float, n_new: int) -> list[float]:
+    """New EOS-bias values to try when no swept bias matched the edit's length within tolerance.
+
+    ``points`` are (bias, mean predicted steps) already swept. A lower EOS bias is expected to
+    lengthen plans, but that is not assumed: the bracket comes from the measured points
+    sorted by bias. If ``target`` lies between two neighbouring points, return ``n_new``
+    evenly spaced biases strictly inside that bracket. If it lies outside every point, step
+    past the end whose mean is nearer the target, by the swept range (or 1.0 with a single
+    point). Never returns an already-swept value or 0.
+    """
+    if not points:
+        raise ValueError("refine_biases needs at least one swept point")
+    pts = sorted((float(b), float(m)) for b, m in points)
+    swept = {round(b, 4) for b, _ in pts}
+    for (b0, m0), (b1, m1) in zip(pts, pts[1:]):
+        if min(m0, m1) <= target <= max(m0, m1):
+            new = [round(b0 + (b1 - b0) * k / (n_new + 1), 4) for k in range(1, n_new + 1)]
+            return [b for b in new if b not in swept and b != 0.0]
+    lo, hi = pts[0], pts[-1]
+    step = (hi[0] - lo[0]) if len(pts) > 1 else 1.0
+    if abs(lo[1] - target) <= abs(hi[1] - target):
+        new = [round(lo[0] - step * k, 4) for k in range(1, n_new + 1)]
+    else:
+        new = [round(hi[0] + step * k, 4) for k in range(1, n_new + 1)]
+    return [b for b in new if b not in swept and b != 0.0]
+
+
+# ------------------------------------------------------------------ freezing and done-files
+
+
+def check_freeze(
+    spec_hashes: Mapping[str, str],
+    choice_commits: Sequence[str],
+    existing: Mapping[str, Any] | None,
+) -> str:
+    """May the specs be frozen? Returns 'write' or 'unchanged'; refuses (SystemExit) otherwise.
+
+    - ``choice.json`` must have exactly ONE commit: a second commit means the choice was
+      revised, and the run must not carry on under a choice that changed.
+    - An existing freeze record is never rewritten. The same hashes and the same choice
+      commit mean a resumed session ('unchanged'); anything else is refused.
+    """
+    if len(choice_commits) != 1:
+        raise SystemExit(
+            f"[weight_space] FREEZE REFUSED: experiments/exp-038/choice.json has "
+            f"{len(choice_commits)} commit(s); exactly one is allowed (ADR 0042 item 5)"
+        )
+    if existing is None:
+        return "write"
+    if dict(existing.get("files", {})) == dict(spec_hashes) and existing.get("choice_commit") == choice_commits[0]:
+        return "unchanged"
+    raise SystemExit("[weight_space] FREEZE REFUSED: specs_frozen.json exists with different specs or choice commit")
+
+
+def keyed_name(name: str, sha: str) -> str:
+    """A done-file stem tied to the exact spec or candidate content, so a revised spec cannot
+    reuse an earlier output that has the same name."""
+    return f"{name}.{sha[:12]}"
+
+
+def candidate_sha256(cand: Mapping[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(cand, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+# ------------------------------------------------------------------ archive extraction
+
+
+def safe_member_path(root: str, rel: str) -> str:
+    """``root/rel`` resolved; refuses absolute names, drive letters, '..' parts and anything
+    that resolves outside ``root`` (archive member names are untrusted input)."""
+    from pathlib import Path as _Path, PurePosixPath, PureWindowsPath
+
+    if not rel or rel.startswith(("/", "\\")) or PureWindowsPath(rel).drive:
+        raise ValueError(f"unsafe archive path {rel!r}")
+    parts = PurePosixPath(rel.replace("\\", "/")).parts
+    if ".." in parts:
+        raise ValueError(f"unsafe archive path {rel!r}")
+    base = _Path(root).resolve()
+    dest = base.joinpath(*parts).resolve()
+    if not dest.is_relative_to(base):
+        raise ValueError(f"archive path {rel!r} resolves outside {root}")
+    return str(dest)

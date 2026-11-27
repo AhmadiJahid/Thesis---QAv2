@@ -13,7 +13,16 @@ Usage (repo root)::
         --out experiments/exp-038
 
 ``arms.json`` maps arm name -> per-item file, plus optional ``exp026_stored`` (the committed
-exp-026 per-item file) for the reproduction check of the in-notebook baseline.
+exp-026 per-item file, for the reproduction check of the in-notebook baseline) and optional
+``decomposer_metrics`` (arm -> that arm's run_decomposer metrics.json, for the size of each
+weight change).
+
+Headline rule (ADR 0042 item 8, fixed before any pinned-600 generation): "the edit repairs
+4-hop under-decomposition beyond a length bias" is claimed ONLY if hop-4
+``under_decomposition`` is Holm-significant in the edit's favour in BOTH family P (edit vs
+baseline) AND family L (edit vs the length-matched EOS-bias control). Holm runs within each
+family separately (28 tests each); the two families are not pooled, and the claim is the
+conjunction. Anything else is reported as what it is, without that claim.
 """
 from __future__ import annotations
 
@@ -117,13 +126,41 @@ def reproduction_check(baseline: dict, stored: dict) -> dict:
                     "the paired baseline of every test is the in-notebook one, never exp-026's stored file"}
 
 
+def step_distributions(arm: dict) -> dict:
+    """Per gold hop: histogram of predicted step counts and the mean, from the per-item file."""
+    out = {}
+    for st in STRATA:
+        rows = [r for r in arm.values() if st == "overall" or int(r["gold_hop_count"]) == int(st)]
+        hist: dict[int, int] = {}
+        for r in rows:
+            hist[int(r["pred_step_count"])] = hist.get(int(r["pred_step_count"]), 0) + 1
+        out[st] = {"n": len(rows), "mean_pred_steps": sum(int(r["pred_step_count"]) for r in rows) / len(rows),
+                   "hist": {str(k): hist[k] for k in sorted(hist)}}
+    return out
+
+
+def headline(families: dict, pairs: dict) -> dict:
+    """The pre-registered conjunction: hop-4 under_decomposition, edit lower, Holm-significant
+    in family P AND in family L."""
+    verdict = {}
+    for fam in ("P_edit_vs_baseline", "L_edit_vs_eos_control"):
+        m = next(x for x in families[fam]["members"] if x["stratum"] == "4" and x["metric"] == "under_decomposition")
+        diff = pairs[fam]["strata"]["4"]["mcnemar"]["under_decomposition"]["difference"]
+        verdict[fam] = {"difference_edit_minus_other": diff, "holm_adjusted_p": m["holm_adjusted_p"],
+                        "holm_significant": m["holm_significant"], "favours_edit": bool(m["holm_significant"] and diff < 0)}
+    verdict["claim_supported"] = all(v["favours_edit"] for v in verdict.values() if isinstance(v, dict))
+    verdict["rule"] = ("hop-4 under_decomposition lower for the edit and Holm-significant in BOTH family P and family L; "
+                       "Holm within each family of 28, families not pooled")
+    return verdict
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arms", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
     arms_cfg = json.loads(args.arms.read_text(encoding="utf-8"))
-    arms = {k: load(Path(v)) for k, v in arms_cfg.items() if k != "exp026_stored"}
+    arms = {k: load(Path(v)) for k, v in arms_cfg.items() if k not in ("exp026_stored", "decomposer_metrics")}
     pairs = {fam: {"system_a": a, "system_b": b, **run_pair(arms[a], arms[b], fam)} for fam, a, b in PAIRS}
 
     families = {}
@@ -151,6 +188,19 @@ def main() -> None:
         families[fam] = {"size": len(members), "holm_significant": sum(x["holm_significant"] for x in members),
                          "members": members}
 
+    dists = {a: step_distributions(rows) for a, rows in arms.items()}
+    length_gap = {st: dists["eos_control"][st]["mean_pred_steps"] - dists["edit"][st]["mean_pred_steps"] for st in STRATA}
+    weight_change = None
+    if "decomposer_metrics" in arms_cfg:
+        weight_change = {}
+        for a, path in arms_cfg["decomposer_metrics"].items():
+            we = json.loads(Path(path).read_text(encoding="utf-8")).get("weight_edit") or {}
+            weight_change[a] = {k: we.get(k) for k in ("kind", "label", "parameters_changed", "delta_fro_total",
+                                                        "weight_fro_total", "delta_fro_ratio", "spec_file_sha256")}
+        e, r = weight_change.get("edit", {}), weight_change.get("random", {})
+        if e.get("delta_fro_total") and r.get("delta_fro_total"):
+            weight_change["random_over_edit_delta_fro"] = r["delta_fro_total"] / e["delta_fro_total"]
+
     repro = None
     if "exp026_stored" in arms_cfg:
         repro = reproduction_check(arms["baseline"], load(Path(arms_cfg["exp026_stored"])))
@@ -163,11 +213,15 @@ def main() -> None:
     (args.out / "analysis_config.json").write_text(json.dumps({
         "exp_id": "exp-038", "git_head_at_compute": git, "settings": settings,
         "evaluator_sha256": sha256(REPO / "scripts/musique_decompositions_evaluator.py"),
-        "inputs": {k: {"path": v, "sha256": sha256(Path(v))} for k, v in arms_cfg.items()}}, indent=2) + "\n")
+        "inputs": {k: {"path": v, "sha256": sha256(Path(v))} for k, v in arms_cfg.items() if isinstance(v, str)}}, indent=2) + "\n")
     (args.out / "analysis_metrics.json").write_text(json.dumps({
-        "exp_id": "exp-038", "settings": settings, "reproduction_check": repro,
+        "exp_id": "exp-038", "settings": settings, "headline": headline(families, pairs),
+        "length_gap_pinned600_eos_control_minus_edit_mean_steps": length_gap,
+        "step_distributions": dists, "weight_change": weight_change, "reproduction_check": repro,
         "holm_families": families, "pairs": pairs}, indent=1) + "\n")
     print(json.dumps({k: {"size": v["size"], "holm_significant": v["holm_significant"]} for k, v in families.items()}, indent=1))
+    print("headline:", json.dumps(headline(families, pairs)))
+    print("length gap (eos_control - edit, mean steps):", json.dumps(length_gap))
 
 
 if __name__ == "__main__":

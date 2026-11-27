@@ -217,7 +217,7 @@ class TestEditSpec(unittest.TestCase):
         self.assertEqual(s["layers"], [1, 3])
         self.assertEqual(s["matrices"], ["down_proj", "o_proj"])
         self.assertEqual(ws.validate_edit_spec({"kind": "none"})["kind"], "none")
-        self.assertEqual(ws.validate_edit_spec({"kind": "token_row_scale", "token_ids": "eos", "scale": 0.8})["token_ids"], "eos")
+        self.assertEqual(ws.validate_edit_spec({"kind": "token_logit_bias", "token_ids": "eos", "bias": -2.0})["bias"], -2.0)
         self.assertEqual(ws.validate_edit_spec({"kind": "final_norm_scale", "scale": 0.6})["scale"], 0.6)
 
     def test_refusals(self) -> None:
@@ -227,7 +227,10 @@ class TestEditSpec(unittest.TestCase):
             {"kind": "orthogonalize", "direction_file": "d.npy", "alpha": 1, "layers": [], "matrices": ["o_proj"]},
             {"kind": "orthogonalize", "direction_file": "d.npy", "alpha": 1, "layers": "all", "matrices": ["q_proj"]},
             {"kind": "orthogonalize", "alpha": 1, "layers": "all", "matrices": ["o_proj"]},
-            {"kind": "token_row_scale", "token_ids": "pad", "scale": 0.8},
+            {"kind": "token_logit_bias", "token_ids": "pad", "bias": -1.0},
+            {"kind": "token_logit_bias", "token_ids": "eos", "bias": 0.0},
+            {"kind": "token_logit_bias", "token_ids": "eos", "bias": float("inf")},
+            {"kind": "token_row_scale", "token_ids": "eos", "scale": 0.8},
             {"kind": "final_norm_scale", "scale": 0},
         ]
         for spec in bad:
@@ -260,7 +263,7 @@ class TestHolmAndSelection(unittest.TestCase):
         self.assertEqual(res["chosen"], "e_good")
         self.assertIn("e_long", res["rejected"])
         self.assertTrue(res["beats_all_controls"])
-        self.assertEqual(ws.closest_by_mean_steps(sums, "e_good", ["eos_a", "eos_b"]), "eos_a")
+        self.assertEqual(ws.closest_by_mean_steps(sums, "e_good", ["eos_a", "eos_b"])[0], "eos_a")
 
     def test_no_admissible_edit(self) -> None:
         sums = {"baseline": self._s(0.6, 0.0, 0.95), "e": self._s(0.9, 0.5, 0.95)}
@@ -270,12 +273,28 @@ class TestHolmAndSelection(unittest.TestCase):
 
 
 class TestCpuStagesOnSyntheticActivations(unittest.TestCase):
-    """directions -> (fake sweep) -> choose -> make-specs, end to end on synthetic files.
+    """directions -> (fake sweep) -> choose (+ length refinement) -> make-specs -> freeze,
+    end to end on synthetic files.
 
     The GPU stages (locate, sweep, confirm) cannot run here; their output files are
-    fabricated in the shapes those stages write, with a planted direction at one layer, and
-    the CPU stages must find it and turn a choice into valid, hashed specs.
+    fabricated in the shapes those stages write (keyed done-files + manifest), with a planted
+    direction at one layer, and the CPU stages must find it, match the length control, and
+    turn a choice into valid, hashed, frozen specs.
     """
+
+    @staticmethod
+    def _write_summary(out: Path, cand: dict, em: float, mean_steps: float) -> None:
+        sdir = out / "sweep_val_select"
+        sdir.mkdir(exist_ok=True)
+        s = {"n": 300, "hop_count_exact_match_rate": em, "under_decomposition_rate": 0.3,
+             "over_decomposition_rate": 0.04, "mean_pred_steps": mean_steps}
+        summ = {"overall": s, "hop2": {**s, "hop_count_exact_match_rate": 0.95}}
+        sha = ws.candidate_sha256(cand)
+        (sdir / f"{ws.keyed_name(cand['name'], sha)}.summary.json").write_text(json.dumps({"candidate": cand, "summary": summ}))
+        man = sdir / "manifest.json"
+        m = json.loads(man.read_text()) if man.exists() else {}
+        m[cand["name"]] = sha
+        man.write_text(json.dumps(m))
 
     def test_pipeline(self) -> None:
         sys.path.insert(0, str(REPO_ROOT / "components" / "decomposer"))
@@ -312,23 +331,37 @@ class TestCpuStagesOnSyntheticActivations(unittest.TestCase):
             self.assertGreater(abs(ws.cosine(found, planted)), 0.9)
             cands = json.loads((out / "candidates.json").read_text())["candidates"]
             self.assertEqual(cands[0]["name"], "baseline")
+            self.assertTrue(all(c["kind"] != "token_row_scale" for c in cands))
+            biases = [c for c in cands if c["kind"] == "token_logit_bias"]
+            self.assertEqual([c["bias"] for c in biases], cfg["sweep"]["length_match"]["eos_logit_biases"])
 
-            # Fabricate the sweep summaries the GPU stage would write.
-            sdir = out / "sweep_val_select"
-            sdir.mkdir()
+            winner = f"orth_stop_vs_continue_L{planted_layer}_a1.0"
             for c in cands:
                 if c["kind"] == "actadd":
                     continue
-                em = {"none": 0.60, "orthogonalize": 0.62, "token_row_scale": 0.61, "final_norm_scale": 0.60}[c["kind"]]
-                if c["name"] == f"orth_stop_vs_continue_L{planted_layer}_a1.0":
-                    em = 0.70
-                s = {"n": 300, "hop_count_exact_match_rate": em, "under_decomposition_rate": 0.3,
-                     "over_decomposition_rate": 0.04, "mean_pred_steps": 2.5 + (em - 0.6)}
-                summ = {"overall": s, "hop2": {**s, "hop_count_exact_match_rate": 0.95}}
-                (sdir / f"{c['name']}.summary.json").write_text(json.dumps({"candidate": c, "summary": summ}))
+                if c["kind"] == "token_logit_bias":
+                    # mean steps rise as the EOS bias falls; none lands within 0.05 of 2.8
+                    self._write_summary(out, c, 0.61, 2.5 - 0.2 * c["bias"])
+                    continue
+                em = 0.70 if c["name"] == winner else {"none": 0.60, "orthogonalize": 0.62, "final_norm_scale": 0.60}[c["kind"]]
+                self._write_summary(out, c, em, 2.8 if c["name"] == winner else 2.5)
             res = wsr.cmd_choose(cfg, out)
-            self.assertEqual(res["chosen"], f"orth_stop_vs_continue_L{planted_layer}_a1.0")
+            self.assertEqual(res["chosen"], winner)
             self.assertTrue(res["beats_all_controls"])
+            lm = res["length_match"]
+            self.assertFalse(lm["within_tolerance"])
+            refine = json.loads((out / "refine_candidates.json").read_text())["candidates"]
+            new_biases = [c["bias"] for c in refine]
+            self.assertEqual(sorted(new_biases), [-1.75, -1.5, -1.25])  # 2.8 lies between -1 (2.7) and -2 (2.9)
+
+            # Sweep the refinement round: one of them hits the target.
+            for c in refine:
+                self._write_summary(out, c, 0.61, 2.8 if c is refine[0] else 2.5 - 0.2 * c["bias"] + 0.2)
+            res = wsr.cmd_choose(cfg, out)
+            self.assertTrue(res["length_match"]["within_tolerance"])
+            self.assertEqual(res["length_matched_eos_control"], refine[0]["name"])
+            self.assertFalse((out / "refine_candidates.json").exists())
+
             choice = out / "choice.json"
             choice.write_text(json.dumps({"edit_candidate": res["chosen"],
                                           "eos_control_candidate": res["length_matched_eos_control"],
@@ -336,55 +369,143 @@ class TestCpuStagesOnSyntheticActivations(unittest.TestCase):
             wsr.cmd_make_specs(cfg, out, choice)
             for name in ("baseline", "edit", "random", "eos_control", "norm_control"):
                 spec, direction, prov = wsr.load_spec(out / "specs" / f"spec_{name}.json")
+                self.assertEqual(len(prov["spec_file_sha256"]), 64)
                 if name in ("edit", "random"):
                     self.assertAlmostEqual(float(np.linalg.norm(direction)), 1.0, places=5)
                     self.assertEqual(prov["direction_sha256"], spec["direction_sha256"])
+            eos_spec = json.loads((out / "specs" / "spec_eos_control.json").read_text())
+            self.assertEqual(eos_spec["kind"], "token_logit_bias")
+            self.assertAlmostEqual(eos_spec["length_match_val_select"]["gap_mean_steps"], 0.0)
             e = np.load(out / "specs" / "direction_edit.npy")
             r = np.load(out / "specs" / "direction_random.npy")
             self.assertAlmostEqual(float(np.dot(e, r)), 0.0, places=5)
             bad = out / "bad_choice.json"
-            bad.write_text(json.dumps({"edit_candidate": "not_swept", "eos_control_candidate": "eos_row_x0.9",
+            bad.write_text(json.dumps({"edit_candidate": "not_swept", "eos_control_candidate": refine[0]["name"],
                                        "chosen_by": "t", "choice_note": "t"}))
             with self.assertRaises(SystemExit):
                 wsr.cmd_make_specs(cfg, out, bad)
 
+            # Freeze: two commits refused; one commit writes; a resume is 'unchanged';
+            # afterwards make-specs refuses and a changed spec file is caught.
+            with self.assertRaises(SystemExit):
+                wsr.cmd_freeze(out, ["a" * 40, "b" * 40])
+            self.assertFalse((out / "specs_frozen.json").exists())
+            frozen = wsr.cmd_freeze(out, ["a" * 40])
+            self.assertEqual(frozen["choice_commit"], "a" * 40)
+            self.assertEqual(wsr.cmd_freeze(out, ["a" * 40])["frozen_utc"], frozen["frozen_utc"])
+            with self.assertRaises(SystemExit):
+                wsr.cmd_make_specs(cfg, out, choice)
+            self.assertEqual(wsr._assert_frozen(out, out / "specs" / "spec_edit.json"), frozen["files"]["spec_edit.json"])
+            (out / "specs" / "spec_edit.json").write_text("{}")
+            with self.assertRaises(SystemExit):
+                wsr._assert_frozen(out, out / "specs" / "spec_edit.json")
+            with self.assertRaises(SystemExit):
+                wsr.cmd_freeze(out, ["a" * 40])  # specs changed: the record is never rewritten
+
 
 class TestRunnerWeightEditFlag(unittest.TestCase):
-    """run_decomposer.py --weight-edit on a --dry-run: validated before weights, recorded."""
+    """run_decomposer.py --weight-edit on a --dry-run: validated before weights, recorded only
+    when given, refused with a quantized model."""
 
     RETRIEVAL = REPO_ROOT / "tests" / "fixtures" / "retrieval" / "top5_musique_conditions.jsonl"
 
-    def _run(self, out: Path, spec: Path) -> subprocess.CompletedProcess:
+    def _run(self, out: Path, *extra: str) -> subprocess.CompletedProcess:
         env = dict(os.environ, QAV2_PATHS_CONFIG="configs/smoke_paths.json")
         return subprocess.run(
             [sys.executable, str(REPO_ROOT / "components" / "decomposer" / "run_decomposer.py"),
              "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
              "--condition", "unguided", "--dry-run", "--dry-run-limit", "2",
              "--retrieval-input", str(self.RETRIEVAL), "--allow-unpinned-eval-set",
-             "--output-root", str(out), "--weight-edit", str(spec)],
+             "--output-root", str(out), *extra],
             env=env, capture_output=True, text=True,
         )
 
-    def test_valid_spec_is_recorded_and_invalid_refused(self) -> None:
+    def test_flag_recorded_refused_and_absent_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             np.save(tmp / "d.npy", np.ones(4, dtype=np.float32))
             good = tmp / "spec.json"
             good.write_text(json.dumps({"kind": "orthogonalize", "direction_file": "d.npy", "alpha": 1.0,
                                         "layers": "all", "matrices": ["o_proj", "down_proj"]}))
-            proc = self._run(tmp / "ok", good)
+            proc = self._run(tmp / "ok", "--weight-edit", str(good))
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             (run_dir,) = sorted((tmp / "ok").iterdir())
             snap = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
             metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
             self.assertEqual(snap["weight_edit_spec"], str(good))
             self.assertIsNone(metrics["weight_edit"])  # dry run: validated, not applied
+
+            # Default-off: without the flag, no weight_edit key anywhere, and the snapshot and
+            # metrics have exactly the keys of the flagged run minus the weight_edit ones.
+            proc = self._run(tmp / "plain")
+            self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
+            (plain_dir,) = sorted((tmp / "plain").iterdir())
+            psnap = json.loads((plain_dir / "config.json").read_text(encoding="utf-8"))
+            pmetrics = json.loads((plain_dir / "metrics.json").read_text(encoding="utf-8"))
+            self.assertNotIn("weight_edit_spec", psnap)
+            self.assertNotIn("weight_edit", pmetrics)
+            self.assertEqual(set(snap) - set(psnap), {"weight_edit_spec"})
+            self.assertEqual(set(metrics) - set(pmetrics), {"weight_edit"})
+
             bad = tmp / "bad.json"
             bad.write_text(json.dumps({"kind": "orthogonalize", "direction_file": "d.npy", "alpha": 2.0,
                                        "layers": "all", "matrices": ["o_proj"]}))
-            proc = self._run(tmp / "bad", bad)
+            proc = self._run(tmp / "bad", "--weight-edit", str(bad))
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("alpha", proc.stderr + proc.stdout)
+
+            proc = self._run(tmp / "q", "--weight-edit", str(good), "--quantization", "4bit")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("needs unquantized weights", proc.stderr + proc.stdout)
+
+
+class TestReviewHelpers(unittest.TestCase):
+    def test_step_histogram_in_summary(self) -> None:
+        s = ws.step_count_summary([2, 2, 3, 1], [2, 3, 3, 4])
+        self.assertEqual(s["overall"]["pred_step_hist"], {"1": 1, "2": 2, "3": 1})
+        self.assertEqual(s["hop4"]["pred_step_hist"], {"1": 1})
+
+    def test_refine_inside_bracket(self) -> None:
+        pts = [(-1.0, 2.5), (-2.0, 2.7), (-4.0, 3.1)]
+        new = ws.refine_biases(pts, 2.9, 3)
+        self.assertEqual(new, [-3.5, -3.0, -2.5])
+
+    def test_refine_extends_past_the_nearer_end(self) -> None:
+        pts = [(-1.0, 2.5), (-2.0, 2.6)]
+        self.assertEqual(ws.refine_biases(pts, 3.0, 2), [-3.0, -4.0])
+        self.assertEqual(ws.refine_biases(pts, 2.0, 2), [1.0])  # 0.0 is never proposed
+        with self.assertRaises(ValueError):
+            ws.refine_biases([], 2.0, 2)
+
+    def test_closest_returns_gap(self) -> None:
+        sums = {"e": {"overall": {"mean_pred_steps": 2.8}}, "a": {"overall": {"mean_pred_steps": 2.7}},
+                "b": {"overall": {"mean_pred_steps": 2.95}}}
+        name, gap = ws.closest_by_mean_steps(sums, "e", ["a", "b"])
+        self.assertEqual(name, "a")
+        self.assertAlmostEqual(gap, -0.1)
+
+    def test_check_freeze(self) -> None:
+        h = {"spec_edit.json": "x" * 64}
+        self.assertEqual(ws.check_freeze(h, ["c1"], None), "write")
+        self.assertEqual(ws.check_freeze(h, ["c1"], {"files": h, "choice_commit": "c1"}), "unchanged")
+        for commits, existing in ([[], None], [["c1", "c2"], None], [["c1"], {"files": {}, "choice_commit": "c1"}],
+                                  [["c2"], {"files": h, "choice_commit": "c1"}]):
+            with self.subTest(commits=commits), self.assertRaises(SystemExit):
+                ws.check_freeze(h, commits, existing)
+
+    def test_keyed_names_differ_with_content(self) -> None:
+        a = {"name": "eos_bias_-1", "bias": -1.0}
+        b = {"name": "eos_bias_-1", "bias": -1.5}
+        self.assertNotEqual(ws.keyed_name(a["name"], ws.candidate_sha256(a)), ws.keyed_name(b["name"], ws.candidate_sha256(b)))
+        self.assertEqual(ws.candidate_sha256(a), ws.candidate_sha256(dict(reversed(list(a.items())))))
+
+    def test_safe_member_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            ok = ws.safe_member_path(tmp, "musique/dev_data/x.jsonl")
+            self.assertTrue(Path(ok).resolve().is_relative_to(Path(tmp).resolve()))
+            for bad in ("../x", "a/../../x", "/etc/passwd", "\\\\server\\x", "C:/x", "C:x", ""):
+                with self.subTest(bad=bad), self.assertRaises(ValueError):
+                    ws.safe_member_path(tmp, bad)
 
 
 if __name__ == "__main__":

@@ -2116,10 +2116,12 @@ def _parse_args() -> argparse.Namespace:
         "--weight-edit",
         default=None,
         help="Edit spec JSON (exp-038 / ADR 0042, components/decomposer/weight_space_repair.py). "
-        "After the model and any --adapter are loaded, the adapter is merged and the spec's "
-        "weight edit is applied in place before generation; the spec, its sha256 and its "
-        "direction file's sha256 are recorded in the config snapshot and the metrics. "
-        "Omitted (the default): nothing changes.",
+        "Needs --quantization none. After the model and any --adapter are loaded, the adapter "
+        "is merged and the spec's edit is applied in place before generation. The config "
+        "snapshot records the spec path; the metrics record the validated spec, the spec "
+        "FILE's sha256, the direction file's sha256 (direction edits) and the per-tensor "
+        "change. Omitted (the default): no weight_edit key is written anywhere and nothing "
+        "else changes.",
     )
     p.add_argument("--output-root", default=None)
     p.add_argument(
@@ -2500,6 +2502,12 @@ def main() -> None:
     if retrieval_mode not in retrieval_modes:
         raise SystemExit(f"retrieval mode {retrieval_mode!r} not in {retrieval_modes}")
     quantization = args.quantization or require(model_cfg, "loader.quantization")
+    if args.weight_edit and quantization != "none":
+        raise SystemExit(
+            f"[decomposer] REFUSING: --weight-edit needs unquantized weights (quantization "
+            f"'none'), got {quantization!r}. An edit written into 4-/8-bit weights is not the "
+            "edit the spec describes (ADR 0042)."
+        )
     # Required in both shared configs rather than defaulted here, for the same reason
     # few_shot_exemplar_hop_count is: the order exemplars are shown in is a design decision
     # (supervisor assignment A5), and a run must not be able to get one by omission.
@@ -2776,7 +2784,6 @@ def main() -> None:
         "quantization": quantization,
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
-        "weight_edit_spec": args.weight_edit,
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
@@ -2821,6 +2828,10 @@ def main() -> None:
         "output_root": str(output_root),
         "dry_run": args.dry_run,
     }
+    if args.weight_edit:
+        # Only present when the flag is given, so a run without it writes exactly the
+        # snapshot it wrote before the flag existed.
+        snapshot["weight_edit_spec"] = args.weight_edit
     print(
         f"Starting decomposer run {current_run_id} (condition={condition_name}, "
         f"guided={guided}, stop_after_step_lines={stop_after_step_lines}, "
@@ -3620,7 +3631,6 @@ def main() -> None:
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
         "adapter_base_model": adapter_base_model_record,
-        "weight_edit": weight_edit_record,
         "no_few_shot_ineffective": no_few_shot_ineffective,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
@@ -3630,6 +3640,10 @@ def main() -> None:
         "cost": cost_summary(results),
         "results_path": str(output_dir / "results.json"),
     }
+    if args.weight_edit:
+        # Absent without the flag (see the snapshot above). On a --dry-run the spec was
+        # validated but nothing was loaded, so the record is null.
+        metrics["weight_edit"] = weight_edit_record
     if args.dry_run:
         metrics["generation_truncation_note"] = (
             "unmeasured: --dry-run generates nothing, so rows_at_max_new_tokens, "

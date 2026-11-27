@@ -48,15 +48,27 @@
     "alphas": [0.5, 1.0],
     "matrices": ["o_proj", "down_proj", "embed_tokens"],
     "ablation_layers": "all",
-    "eos_row_scales": [0.9, 0.8, 0.7, 0.5, 0.3],
+    "length_match": {
+      "eos_logit_biases": [-0.5, -1.0, -2.0, -3.0, -4.0, -6.0],
+      "tolerance_mean_steps": 0.05,
+      "refine_points": 3,
+      "max_refine_rounds": 3,
+      "_note": "The length-bias control: an ADDITIVE bias on the EOS logit (an lm_head bias that is zero elsewhere), not a row scale - scaling the EOS row multiplies a logit whose sign varies, so it can raise or lower stopping (code review of 0a47207). choose picks the bias whose val_select mean predicted step count is closest to the chosen edit's; if the gap exceeds tolerance_mean_steps it writes refine_candidates.json (biases inside the bracketing pair, src/weight_space.py refine_biases) and the notebook sweeps those, up to max_refine_rounds rounds. The achieved gap is recorded on val_select (proposed_choice.json, spec_eos_control.json) and on the pinned 600 (analysis_metrics.json). 0.05 mean steps is a judgment call: a twentieth of a step, well under the hop-4 baseline's distance from gold."
+    },
     "final_norm_scale": 0.6,
-    "_final_norm_scale_note": "0.6 is the norm-only factor arXiv 2611.20953 reports for its 10- and 25-pass runs. Under greedy decoding a uniform logit scale cannot change the argmax, so this control is expected to leave every output unchanged up to fp16 rounding; it is run to show that, not assumed.",
+    "_final_norm_scale_note": "A SANITY CHECK, not a control that can explain a gain here: 0.6 is the norm-only factor arXiv 2611.20953 reports, where it acted as a temperature change under sampling. Under greedy decoding a uniform logit scale cannot change the argmax, so this arm should reproduce the baseline up to fp16 rounding; it is run to show that.",
     "random_direction_seed": 1042,
     "selection_rule": {
       "max_over_increase": 0.05,
       "max_hop2_em_drop": 0.05,
-      "_note": "Pre-registered default rule (src/weight_space.py select_candidate). Claude, inspecting the saved statistics, may choose differently only with a written reason in experiments/exp-038/choices.md BEFORE any pinned-600 generation."
+      "_note": "Pre-registered default rule (src/weight_space.py select_candidate); controls compared against are the EOS-bias candidates and the norm-only sanity check. Claude, inspecting the saved statistics, may choose differently only with a written reason in experiments/exp-038/choices.md BEFORE any pinned-600 generation."
     }
+  },
+
+  "equivalence": {
+    "n_prompts": 8,
+    "max_abs_logit_diff": 0.5,
+    "_note": "Hook ablation vs weight edit on the last-position logits of n_prompts locate prompts. Passes only if every argmax agrees AND the largest absolute logit difference is <= max_abs_logit_diff. 0.5 is an unmeasured allowance for fp16 rounding of the edited weights (logits of this model are O(10)); if it fails, inspect equivalence.json, and any relaxation is a choices.md entry before anything downstream runs."
   },
 
   "model_limits_config": "model_limits.json",
