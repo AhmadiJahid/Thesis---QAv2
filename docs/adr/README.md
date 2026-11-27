@@ -74,7 +74,7 @@ When **not** to write one:
 | [0044](./0044-exp-036-qwen-fine-tune-same-recipe-primary-pair-and-colab-venue.md) | exp-036: "Same Recipe" on Qwen3.5-9B, the 4-bit Primary Pair, and Colab as a Run Venue | Accepted (lead, 2026-11-27; Jahid's to reverse) |
 | [0045](./0045-metaqa-direct-kg-evaluation-eval-set-and-metric-mapping.md) | MetaQA End-to-End by Direct-KG Execution (Not GRAG): the Executor's Gold Convention, the Eval Set, and the Metric Mapping | Accepted (lead, 2026-11-27; Jahid's to reverse) — exp-039 |
 | [0046](./0046-exp-040-masking-on-the-v2-pipeline.md) | exp-040: Query Masking Re-Run on the v2 Pipeline, the Rebuilt Artifact, and the Typed Comparator | Accepted (lead, 2026-11-27, under Jahid's grant of technical authority; his to reverse). 0045 is exp-039's (its branch); the lead reserves 0046 on main (ADR 0040 item 2) |
-| 0047 | exp-041: training-seed variance of the pool-only fine-tune | Reserved (lead:session, 2026-11-27) — seed variance of the headline fine-tune |
+| [0047](./0047-exp-041-training-seed-variance.md) | exp-041: Training-Seed Variance of the Pool-Only Fine-Tune (Seeds, Comparators, Families) | Accepted (lead, 2026-11-27, under Jahid's grant of technical authority; his to reverse). 0045 = exp-039, 0046 = exp-040 (their branches); the lead reserves 0047 on main (ADR 0040 item 2) |
 
 ---
 
