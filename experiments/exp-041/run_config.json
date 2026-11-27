@@ -119,10 +119,17 @@
     "min_total_vram_gib": 16,
     "min_compute_capability": [8, 0],
     "measured_reference": "exp-026 on the RTX 3090: training peak 5.035 GiB (max_memory_allocated), fp16 eval + adapter 14,438 MiB (nvidia-smi)",
-    "requirement_text": ">= 16 GiB and bf16 (training is bf16 QLoRA); A100 or L4. The runner uses an A100 40 GB, possibly shared with another experiment."
+    "requirement_text": ">= 16 GiB total and bf16 (training is bf16 QLoRA): L4 (24 GB), A100, H100 or G4 pass; T4/V100 are refused. The runtime may be shared with other queued jobs, hence the free-VRAM gate.",
+    "free_vram_gate_gib": {
+      "_note": "run.sh refuses a step (exit 4, nothing started) when nvidia-smi total - used is below this: the measured exp-026 peak on the 3090 plus a margin. A job that starts beside this one AFTER the check can still take memory; the gate only stops this notebook from starting into a GPU that is already too full.",
+      "train": 6,
+      "train_basis": "exp-026 training peak 5,648 MiB (nvidia-smi, own pid) / 5.035 GiB max_memory_allocated, + ~0.5 GiB",
+      "eval_fp16": 15.5,
+      "eval_fp16_basis": "exp-026 fp16 + adapter eval peak 14,438 MiB (nvidia-smi), + ~1.4 GiB; used for the prompting run too (same fp16 base, longer few-shot prompts)"
+    }
   },
   "wall_clock_estimate": {
-    "_note": "ESTIMATES, not measurements, for an A100 used by this notebook alone. Bases (RTX 3090, measured): exp-026 training 1,568.8 s for 250 steps; exp-026 fp16 eval 842.3 s of generation over 600; exp-015 prompting 1.810 s/query (~1,086 s per 600). Factors vs the 3090 (as exp-036's run_config): training A100 x0.5-0.7, fp16 decoding A100 x0.5-0.6. Plus model load ~1-2 min per process and the CPU evaluator ~2-5 min per run.",
+    "_note": "ESTIMATES, not measurements, for a GPU used by this notebook alone (A100 and L4 below). Bases (RTX 3090, measured): exp-026 training 1,568.8 s for 250 steps; exp-026 fp16 eval 842.3 s of generation over 600; exp-015 prompting 1.810 s/query (~1,086 s per 600). Factors vs the 3090 (as exp-036's run_config): training A100 x0.5-0.7, fp16 decoding A100 x0.5-0.6. Plus model load ~1-2 min per process and the CPU evaluator ~2-5 min per run.",
     "A100": {
       "setup_min": [15, 25],
       "canary_prompted_min": [3, 6],
@@ -131,6 +138,16 @@
       "prompted_rerun_min": [12, 17],
       "compare_cpu_min": [5, 15],
       "total_h": [1.7, 2.8]
+    },
+    "L4": {
+      "_note": "UNMEASURED. Factors from exp-036's run_config (L4 vs 3090): training x1.3-2.5, fp16 decoding (bandwidth-bound, ~300 vs ~936 GB/s) x2.5-3.1. The code reviewer's independent guess was ~4-6 h total.",
+      "setup_min": [15, 25],
+      "canary_prompted_min": [5, 10],
+      "per_seed_train_min": [34, 65],
+      "per_seed_canary_plus_eval_min": [40, 55],
+      "prompted_rerun_min": [50, 62],
+      "compare_cpu_min": [5, 15],
+      "total_h": [5.0, 7.9]
     }
   }
 }

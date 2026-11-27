@@ -67,7 +67,7 @@ exp-026, and the prompting re-run vs stored exp-015. A control counts as "reprod
 ## How to run
 
 **On Colab** (the runner session or Jahid): open `notebooks/exp-041_ft_seed_variance_colab.ipynb`
-on an A100 and run all cells. It needs `HF_TOKEN` (Colab secret or environment) and
+on a GPU runtime with ≥ 16 GiB and bf16 (L4, A100, H100 or G4) and run all cells. It needs `HF_TOKEN` (Colab secret or environment) and
 `MyDrive/thesis-backup.tar.gz`. It follows the exp-036/037 conventions:
 
 - clones the public repo, and pins the commit on Drive at first launch (`launch_sha.txt`);
@@ -86,6 +86,16 @@ Order of the run:
 4. The prompting re-run.
 5. `compare`.
 
+Before any GPU job launches, `run.sh` runs two more checks:
+
+- **Clean tree, untracked files included.** It uses the full `git status --porcelain`, the same
+  definition the training gate uses through `src/run_artifacts.py`. A stray file fails here, not
+  after training.
+- **Free VRAM.** It checks total minus used memory (`run_config.json` `gpu.free_vram_gate_gib`):
+  training needs ≥ 6 GiB free and evaluation ≥ 15.5 GiB, the exp-026 peak plus a margin. The GPU
+  may be shared with queued jobs, and a step that does not fit exits 4 with nothing started.
+  Re-run it when the GPU is free.
+
 If the runtime dies, run all cells again. An interrupted decode resumes. An interrupted training
 restarts at step 0 with the same seed, and the partial directory is kept under `train_incomplete/`.
 
@@ -98,7 +108,7 @@ bash experiments/exp-041/run.sh prompted
 bash experiments/exp-041/run.sh compare     # -> experiments/exp-041/compare_metrics.json
 ```
 
-## GPU time: ESTIMATE for an A100, not measured
+## GPU time: ESTIMATES, not measured
 
 These estimates scale exp-026's 3090 measurements:
 
@@ -108,15 +118,18 @@ These estimates scale exp-026's 3090 measurements:
 
 The scaling factors are A100 ×0.5–0.7 for training and ×0.5–0.6 for decoding.
 
-| step | A100 (estimate) |
-|---|---|
-| setup | 15–25 min |
-| prompting canary | 3–6 min |
-| each seed: training | 13–18 min |
-| each seed: canary + full eval + evaluator | 10–16 min |
-| prompting re-run + evaluator | 12–17 min |
-| compare (CPU) | 5–15 min |
-| **total** | **~1.7–2.8 h** |
+| step | A100 (estimate) | L4 (estimate) |
+|---|---|---|
+| setup | 15–25 min | 15–25 min |
+| prompting canary | 3–6 min | 5–10 min |
+| each seed: training | 13–18 min | 34–65 min |
+| each seed: canary + full eval + evaluator | 10–16 min | 40–55 min |
+| prompting re-run + evaluator | 12–17 min | 50–62 min |
+| compare (CPU) | 5–15 min | 5–15 min |
+| **total** | **~1.7–2.8 h** | **~5.0–7.9 h** |
+
+The L4 factors (exp-036's) are training ×1.3–2.5 and fp16 decoding ×2.5–3.1 relative to the 3090.
+The code reviewer's independent guess for the L4 was ~4–6 h.
 
 Memory peaks measured on the 3090 were 5.0 GiB for training and 14.1 GiB for the fp16 eval. The
 notebook requires ≥ 16 GiB and bf16. A GPU shared with another job is slower. Measured times are

@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import random
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -127,6 +130,74 @@ class TestOnlyTheSeedMoves(unittest.TestCase):
         for c in nb["cells"]:
             if c["cell_type"] == "code":
                 compile("".join(c["source"]), "<cell>", "exec")
+
+
+def _bash_fn(name: str) -> str:
+    start = RUN_SH.index(f"{name}() {{")
+    return RUN_SH[start: RUN_SH.index("\n}\n", start) + 3]
+
+
+def _working_bash():
+    """A bash that runs (on Windows, `bash` on PATH can be a WSL stub without a distribution)."""
+    for cand in (shutil.which("bash"), "C:/Program Files/Git/bin/bash.exe"):
+        if cand and Path(cand).exists():
+            try:
+                r = subprocess.run([cand, "-c", "echo ok"], capture_output=True, text=True, timeout=30)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            if r.returncode == 0 and r.stdout.strip() == "ok":
+                return cand
+    return None
+
+
+BASH = _working_bash()
+
+
+@unittest.skipUnless(BASH, "no working bash")
+class TestLaunchGates(unittest.TestCase):
+    """Behaviour of run.sh's vram_gate / launch_clean, with a stub nvidia-smi and a temp git repo."""
+
+    def _run(self, script: str, cwd: Path, smi_out: str | None = None) -> subprocess.CompletedProcess:
+        if smi_out is not None:
+            stub = Path(tempfile.mkdtemp())
+            (stub / "nvidia-smi").write_text(f"#!/usr/bin/env bash\necho '{smi_out}'\n", encoding="utf-8", newline="\n")
+            (stub / "nvidia-smi").chmod(0o755)
+            script = f'export PATH="$(cd "{stub.as_posix()}" && pwd):$PATH"\n' + script
+        return subprocess.run([BASH, "-c", script], cwd=cwd, capture_output=True, text=True)
+
+    def test_thresholds_match_run_config(self):
+        g = CFG["gpu"]["free_vram_gate_gib"]
+        self.assertIn(f"VRAM_TRAIN={g['train']}", RUN_SH)
+        self.assertIn(f"VRAM_EVAL={g['eval_fp16']}", RUN_SH)
+        lines = RUN_SH.splitlines()
+        # every GPU launch in run.sh is preceded by both gates
+        for launch in ("train_lora.py --arm", '"${DEC[@]}" "$@" --resume', '"${DEC[@]}" "$@" --output-root',
+                       '"${DEC[@]}" "$@" --sample-size'):
+            i = next(k for k, l in enumerate(lines) if launch in l)
+            ctx = "\n".join(lines[max(0, i - 3): i + 1])
+            self.assertIn("launch_clean", ctx, launch)
+            self.assertIn("vram_gate", ctx, launch)
+
+    def test_vram_gate(self):
+        fns = 'log() { echo "$*"; }\n' + _bash_fn("vram_gate")
+        free = self._run(fns + "\nvram_gate 15.5 eval", REPO, "24576, 4096")     # 20 GiB free
+        self.assertEqual(free.returncode, 0, free.stderr)
+        busy = self._run(fns + "\nvram_gate 15.5 eval", REPO, "24576, 10240")    # 14 GiB free
+        self.assertEqual(busy.returncode, 4, busy.stderr)
+        self.assertIn("Nothing was started", busy.stderr)
+        self.assertEqual(self._run(fns + "\nvram_gate 6 train", REPO, "24576, 10240").returncode, 0)
+
+    def test_launch_clean_counts_untracked_files(self):
+        repo = Path(tempfile.mkdtemp())
+        for cmd in (["git", "init", "-q"], ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+                                             "--allow-empty", "-m", "x"]):
+            subprocess.run(cmd, cwd=repo, check=True)
+        fn = _bash_fn("launch_clean")
+        self.assertEqual(self._run(fn + "\nlaunch_clean", repo).returncode, 0)
+        (repo / "stray.json").write_text("{}", encoding="utf-8")
+        r = self._run(fn + "\nlaunch_clean", repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("stray.json", r.stderr)
 
 
 def _train_metrics(seed=43, commit="c" * 40):

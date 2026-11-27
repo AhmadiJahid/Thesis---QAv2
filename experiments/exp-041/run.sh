@@ -42,6 +42,36 @@ preflight() {
   [ "$(sha "$POOL")" = "$POOL_SHA" ] || { echo "pool sha256 mismatch / missing" >&2; exit 2; }
 }
 
+# Before any GPU job LAUNCHES: the full `git status --porcelain` (untracked files count), the
+# definition src/run_artifacts.py uses for git.dirty, which the training gate requires false and
+# the decode resume key records - so a stray file fails here, not after 15 minutes of training.
+launch_clean() {
+  local dirty
+  dirty=$(git status --porcelain)
+  if [ -n "$dirty" ]; then
+    echo "refusing to launch: the working tree is not clean, untracked files included (the run snapshot" >&2
+    echo "would record git.dirty=true and the training gate would fail afterwards):" >&2
+    echo "$dirty" >&2; exit 2
+  fi
+}
+
+# Free-VRAM gate (run_config.json free_vram_gate_gib): the GPU may be shared with a queued job, so
+# refuse BEFORE loading a model when total - used < this step's measured peak + margin. Exit 4 =
+# "GPU busy, nothing started": re-run the step when the other job has finished.
+vram_gate() {  # $1 GiB needed, $2 label
+  local q total used
+  q=$(nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader,nounits | head -n 1)     || { echo "nvidia-smi failed - no GPU?" >&2; exit 4; }
+  total=${q%%,*}; used=${q##*,}
+  if ! awk -v t="$total" -v u="$used" -v n="$1" 'BEGIN { exit !((t - u) / 1024 >= n) }'; then
+    awk -v t="$total" -v u="$used" -v n="$1" -v l="$2" 'BEGIN { printf "refusing %s: %.1f GiB free on the GPU (%.1f total, %.1f in use by other processes), need >= %s GiB. Nothing was started; re-run this step when the GPU is free.
+", l, (t-u)/1024, t/1024, u/1024, n }' >&2
+    exit 4
+  fi
+  log "free VRAM OK for $2 ($(( (total - used) / 1024 )) GiB free, need $1)"
+}
+VRAM_TRAIN=6
+VRAM_EVAL=15.5
+
 check_seed() { case "${1:-}" in 42|43|44) ;; *) echo "seed must be one of 42 43 44 (run_config.json training_seeds)" >&2; exit 2 ;; esac; }
 
 completed_train() {  # $1 seed -> prints the one completed training dir (metrics.json + adapter), if any
@@ -58,6 +88,7 @@ train() {
   if [ -z "$done_dirs" ]; then
     mkdir -p "$R/seed$s/train" "$R/seed$s/train_incomplete"
     for d in "$R/seed$s/train"/*/; do [ -d "$d" ] && mv "$d" "$R/seed$s/train_incomplete/"; done
+    launch_clean; vram_gate "$VRAM_TRAIN" "training seed $s"
     log "train seed $s (exp-026's command, --seed $s)"
     $PY components/decomposer/train_lora.py --arm pool_2000_imbalanced --quantization 4bit --seed "$s" \
       --output-root "$R/seed$s/train"
@@ -77,9 +108,10 @@ decode_full() {  # $1 out dir root (…/decomposer), $2 role, rest: extra args
   n=$(printf '%s' "$dirs" | grep -c . || true)
   if [ "$n" -gt 1 ]; then echo "$root holds $n run dirs; keep exactly one" >&2; exit 2; fi
   if [ "$n" -eq 1 ] && [ -f "$dirs/results.json" ]; then log "decode already complete: $dirs"
-  elif [ "$n" -eq 1 ] && [ -f "$dirs/resume_key.json" ]; then log "resuming $dirs"; $PY "${DEC[@]}" "$@" --resume "$dirs"
+  elif [ "$n" -eq 1 ] && [ -f "$dirs/resume_key.json" ]; then
+    launch_clean; vram_gate "$VRAM_EVAL" "decode $root"; log "resuming $dirs"; $PY "${DEC[@]}" "$@" --resume "$dirs"
   elif [ "$n" -eq 1 ]; then echo "$dirs is neither complete nor resumable" >&2; exit 2
-  else $PY "${DEC[@]}" "$@" --output-root "$root"; fi
+  else launch_clean; vram_gate "$VRAM_EVAL" "decode $root"; $PY "${DEC[@]}" "$@" --output-root "$root"; fi
   dirs=$(find "$root" -mindepth 1 -maxdepth 1 -type d | head -n 1)
   $PY experiments/exp-041/gates.py decode --run-dir "$dirs" --kind full --role "$role" --commit "$COMMIT" \
     --out "$(dirname "$root")/decode_gate.json" || { echo "DECODE GATE FAILED ($root) - not evaluated" >&2; exit 3; }
@@ -92,6 +124,7 @@ canary() {  # $1 name, $2 role, rest: extra args
   local name=$1 role=$2; shift 2
   local c="$R/canary/$name" d
   if [ -f "$c/gate.json" ] && grep -q '"ok": true' "$c/gate.json"; then log "canary $name already passed"; return; fi
+  launch_clean; vram_gate "$VRAM_EVAL" "canary $name"
   rm -rf "$c"; mkdir -p "$c"
   log "canary $name (20 rows; not an experiment arm)"
   $PY "${DEC[@]}" "$@" --sample-size 20 --allow-unpinned-eval-set --output-root "$c/decomposer"
