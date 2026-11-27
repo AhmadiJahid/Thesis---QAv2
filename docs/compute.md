@@ -43,3 +43,11 @@ One training run at a time.
 ## Getting metrics back
 
 The run writes a **metrics JSON** at `runs/<exp-id>/metrics.json` (same convention as v1's `runs/<name>/metrics.json` + `notes.md`). The committed copy lands in `experiments/<exp-id>/` (config snapshot + metrics JSON + run note, per CLAUDE.md). The `experiment-runner` reads that and writes the `experiments/log.md` entry per that file's schema.
+
+## Colab (added 2026-11-27, ADR 0044)
+
+- **When:** GPU runs since the move off LittleGazor (first: exp-036). Jahid drives the runtime himself (paid plan; **L4 24 GB** by default, **A100 40/80 GB** when memory needs it; T4/V100 lack the memory or bf16 for a 7-9B QLoRA).
+- **Environment:** the notebook builds the exp-026 environment exactly — Python 3.13.9 via `uv`, torch 2.10.0+cu128, the `requirements.txt` pins — and refuses on version drift. Colab's own Python is not used for the run.
+- **Data:** `../thesis-qav2-data` is rebuilt on the VM from `MyDrive/thesis-backup.tar.gz` (layout as in "Dataset location" above; `reference/musique_official` fetched from StonyBrookNLP/musique at a pinned commit and hash-checked); pinned `runs/` artifacts are taken from the backup and verified by sha256, never rebuilt.
+- **No run lock:** a Colab runtime is single-user, so the lock convention above does not apply. Integrity comes from one pinned commit per experiment (recorded on Drive, asserted at training and evaluation), the environment check, and input hashes.
+- **Outputs:** written straight to Google Drive as produced (`runs/<exp-id>` in the clone is a symlink to Drive); each step skips itself when its output exists, so a disconnect costs at most the step in flight. Results come back to the laptop as a zip; the committed snapshot/metrics go to `experiments/<exp-id>/`, heavy output to the gitignored `runs/`.

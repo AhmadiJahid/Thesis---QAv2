@@ -71,7 +71,7 @@ When **not** to write one:
 | 0041 | Memo audit (Jev / SOTA / hop-aware plan): Tier 0 only, no new arms | Reserved (lead:session, 2026-10-31) — Jahid chose re-analysis-only follow-ups from the external memo; experiment ceiling holds |
 | 0042 | Weight-space repair track (exp-038) | Reserved (lead:session, 2026-11-27) — method, leakage guard and controls for exp-038 |
 | 0043 | Count-first condition (exp-037) | Reserved (lead:session, 2026-11-27) — self-stated hop count arm, stripped before scoring |
-| 0044 | exp-036 Qwen fine-tune: same recipe, primary pair, Colab venue | Reserved (lead:session, 2026-11-27) — second-family replication of exp-026 |
+| [0044](./0044-exp-036-qwen-fine-tune-same-recipe-primary-pair-and-colab-venue.md) | exp-036: "Same Recipe" on Qwen3.5-9B, the 4-bit Primary Pair, and Colab as a Run Venue | Accepted (lead, 2026-11-27; Jahid's to reverse) |
 
 ---
 
