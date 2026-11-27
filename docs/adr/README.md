@@ -72,6 +72,7 @@ When **not** to write one:
 | [0042](./0042-weight-space-repair-track-exp-038.md) | Weight-Space Repair of Under-Decomposition at Depth (exp-038): Method, Leakage Guard and Controls | Accepted (track and Claude's choosing role: Jahid, 2026-11-27; method: implementer's design, amended after review) — separate track outside the pool study; the lead reserves the number on main before merge (ADR 0040 item 2) |
 | [0043](./0043-count-first-condition-exp-037.md) | The Count-First Condition (exp-037): A Self-Stated Hop Count, Stripped Before Scoring | Accepted (running the arm: Jahid, 2026-11-27; conventions: implementer under the lead's brief, Jahid's to reverse). Number assigned by the lead across parallel branches (0042 = exp-038) |
 | [0044](./0044-exp-036-qwen-fine-tune-same-recipe-primary-pair-and-colab-venue.md) | exp-036: "Same Recipe" on Qwen3.5-9B, the 4-bit Primary Pair, and Colab as a Run Venue | Accepted (lead, 2026-11-27; Jahid's to reverse) |
+| [0045](./0045-metaqa-direct-kg-evaluation-eval-set-and-metric-mapping.md) | MetaQA End-to-End by Direct-KG Execution (Not GRAG): the Executor's Gold Convention, the Eval Set, and the Metric Mapping | Accepted (lead, 2026-11-27; Jahid's to reverse) — exp-039 |
 
 ---
 
