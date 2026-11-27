@@ -1,0 +1,167 @@
+{
+  "_note": "Pre-run plan for exp-040 (query masking re-run on the v2 pipeline). Written before any run; nothing in this file is a measured exp-040 result. The per-run snapshots the runner writes (runs/exp-040/<arm>/decomposer/<ts>/config.json) are the record of what actually ran and are copied here after the run. ONE factor moves between arms: which masked form of the question the few-shot retrieval matches on (--retrieval-mode raw | uniform | typed). The prompt always shows the RAW query and the RAW exemplar questions (run_decomposer.examples_from_reranked_row reads pool_question), so masking changes only WHICH 5 exemplars are retrieved. Model, 4-bit precision, condition, pool, retriever (e5-small-v2 top-20 -> ms-marco-MiniLM-L-12-v2 top-5), few-shot ordering, decoding, seed, step parser and evaluation set are exp-020's. experiments/exp-040/run.sh and notebooks/exp-040_masking_v2_colab.ipynb read the commands from this file's description; tests/test_exp040_plan.py holds them against exp-020's and exp-014's recorded commands.",
+  "exp_id": "exp-040",
+  "why": "The thesis's masking result (typed > uniform > raw) is v1 prior work, never re-run in v2, and none of its 15 tests survives Holm (docs/analysis/2026-08-20-v1-masking-and-retrieval-significance.json task_a_masking.holm_bonferroni; writing-audit (d) rank 1). exp-040 measures the three masking modes on the current fixed method.",
+  "seed": 42,
+  "model": {
+    "folder": "mistral_7b_instruct",
+    "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+    "quantization": "4bit"
+  },
+  "inputs": {
+    "pool": {
+      "path_under_runs": "pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "sha256": "cc3646625d759a1b58179b18c25f83d255db24f05acc08b666985af2e58d6646",
+      "rows": 2000,
+      "fields_present": "question, question_masked_typed, question_masked_uniform, few_shot_decomposition_musique on 2000/2000 rows (checked on the laptop copy 2026-11-27). The pool's masked fields are pre-computed (ADR 0003: queries masked at lookup, the pool never re-masked)."
+    },
+    "exp014_typed_artifact": {
+      "path_under_runs": "exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "sha256": "3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0",
+      "rows": 600,
+      "note": "exp-020's retrieval input. Built with --mode typed, so it carries typed_top_k only: the raw and uniform arms cannot read it, hence the rebuild below."
+    }
+  },
+  "retrieval_build": {
+    "_note": "Notebook stage 'retrieval' (run.sh retrieval). exp-014's two commands (experiments/exp-014/config.json deliverable_2_commands) with exactly three changes: --mode all instead of --mode typed (raw, typed and uniform top-20 lists in one file), --no-cache (pool embeddings are computed from the pinned pool, never read from a cache whose key carries another machine's path), and exp-040 output paths. CPU, as exp-014 ran. The artifact's sha256 is PINNED at first build: run.sh writes it to runs/exp-040/retrieval/PINNED_SHA256 (on Drive) and every later step refuses a different file; run_decomposer --resume refuses a different retrieval sha256 as well.",
+    "similarity_argv": [
+      "MusiQue/scripts/check_question_similarity.py",
+      "--pool-file", "runs/pool_sweep/pools/size2000_imbalanced_trial0_poolseed42/pool.jsonl",
+      "--query-glob", "musique/dev_data/musique_ans_v1.0_dev_sample_*_hop_200.jsonl",
+      "--n", "200",
+      "--mode", "all",
+      "--top-k", "20",
+      "--device", "cpu",
+      "--seed", "42",
+      "--no-hop-match",
+      "--no-cache",
+      "--out", "runs/exp-040/retrieval/pinned600_allmodes_top20.jsonl",
+      "--run-dir", "runs/exp-040/retrieval/similarity"
+    ],
+    "rerank_argv": [
+      "MusiQue/scripts/rerank_similarity_results.py",
+      "--input", "runs/exp-040/retrieval/pinned600_allmodes_top20.jsonl",
+      "--out", "runs/exp-040/retrieval/pinned600_allmodes_rerank_top5.jsonl",
+      "--rerank-k", "5",
+      "--device", "cpu",
+      "--seed", "42",
+      "--run-dir", "runs/exp-040/retrieval/rerank"
+    ],
+    "artifact": "runs/exp-040/retrieval/pinned600_allmodes_rerank_top5.jsonl",
+    "pin_file": "runs/exp-040/retrieval/PINNED_SHA256",
+    "check": "experiments/exp-040/check_retrieval.py -> runs/exp-040/retrieval/check.json: 600 rows, 600 distinct ids equal to the exp-014 artifact's ids, 200/200/200 by hop prefix, >= 5 candidates per mode per row; typed exemplar identity vs exp-014 (ordered top-5 pool_id lists, per query); top-5 overlap between modes (descriptive)."
+  },
+  "arms": {
+    "typed_rerun": {
+      "role": "the typed arm: exp-020's exact command re-run on the same Colab GPU (exp-037's same-machine convention, ADR 0043 item 7). Also the hardware control against stored exp-020.",
+      "retrieval_input": "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "retrieval_mode": null,
+      "retrieval_mode_note": "not passed: configs/decomposer_musique.json retrieval.mode is typed, as in exp-020's command",
+      "required": true
+    },
+    "raw": {
+      "role": "raw questions on both sides of the bi-encoder and the cross-encoder",
+      "retrieval_input": "runs/exp-040/retrieval/pinned600_allmodes_rerank_top5.jsonl",
+      "retrieval_mode": "raw",
+      "required": true
+    },
+    "uniform": {
+      "role": "every NER entity replaced by one [MASK] placeholder on both sides",
+      "retrieval_input": "runs/exp-040/retrieval/pinned600_allmodes_rerank_top5.jsonl",
+      "retrieval_mode": "uniform",
+      "required": true
+    },
+    "typed_rebuilt": {
+      "role": "CONDITIONAL. Typed mode read from the rebuilt artifact. Runs only if check.json typed_identity.identical < 600, i.e. if the rebuild did not reproduce exp-014's typed exemplars for every query; then the typed arm the primary pairs use is this one (same artifact build as raw/uniform), and typed_rerun stays as the hardware control.",
+      "retrieval_input": "runs/exp-040/retrieval/pinned600_allmodes_rerank_top5.jsonl",
+      "retrieval_mode": "typed",
+      "required": "only if typed_identity.identical < 600"
+    },
+    "shared_argv": [
+      "components/decomposer/run_decomposer.py",
+      "--model", "mistral_7b_instruct",
+      "--config", "decomposer_musique.json",
+      "--condition", "unguided",
+      "--seed", "42",
+      "--quantization", "4bit"
+    ],
+    "exp020_argv": [
+      "components/decomposer/run_decomposer.py",
+      "--model", "mistral_7b_instruct",
+      "--config", "decomposer_musique.json",
+      "--condition", "unguided",
+      "--seed", "42",
+      "--quantization", "4bit",
+      "--retrieval-input", "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl",
+      "--output-root", "runs/exp-020/decomposer"
+    ],
+    "evaluator_argv": ["scripts/musique_decompositions_evaluator.py", "--predictions", "{results}", "--run-dir", "runs/exp-040/{arm}/eval", "--out-prefix", "eval", "--seed", "42"]
+  },
+  "typed_comparator_rule": {
+    "_note": "Declared before any run. Which run is 'typed' in the primary pairs.",
+    "if_typed_identity_600_of_600": "typed_rerun. Its prompts are byte-identical to what typed mode on the rebuilt artifact would give (same exemplars, same order), so the arms differ only in --retrieval-mode.",
+    "otherwise": "typed_rebuilt (same artifact build as raw and uniform); typed_rerun is then reported as context and as the hardware control.",
+    "recorded_in": "compare_metrics.json typed_comparator"
+  },
+  "canary": {
+    "_note": "Before each arm's full decode: the same command on the first 20 rows of its retrieval file (--sample-size 20 --allow-unpinned-eval-set, own output root runs/exp-040/canary/<arm>), then the output-health check on those 20 rows. A canary is not an experiment arm and is never compared.",
+    "rows": 20
+  },
+  "output_health_gate": {
+    "_note": "Applied to every canary and every full decode by experiments/exp-040/check_health.py; a failure stops that arm and is recorded in runs/exp-040/<arm>/HEALTH_FAILED.json. Thresholds are pre-declared here and ARBITRARY beyond what is stated: exp-020 recorded rows_with_empty_decomposition 0 (experiments/exp-020/metrics.json); the 1%-of-rows ceiling exists to stop a broken run (NaN logits, a wrong template) without failing an arm that legitimately leaves one or two rows empty.",
+    "rows_expected": {"canary": 20, "full": 600},
+    "max_empty_fraction": 0.01,
+    "not_all_empty": true,
+    "max_rows_at_max_new_tokens_fraction": 0.05,
+    "max_rows_at_max_new_tokens_note": "arbitrary; exp-020 used max_new_tokens 1024 and a step decomposition is ~30-80 tokens, so many rows at the cap means runaway generation"
+  },
+  "comparisons": {
+    "_note": "experiments/exp-040/compare.py (CPU). Statistics are exp-029's run_pair (the evaluator's own paired bootstrap, exact McNemar, paired t; experiments/exp-029/reanalysis.py) and Holm beside the uncorrected verdict (ADR 0009, 0036). Fixed here before any exp-040 p-value exists (ADR 0036 item 5).",
+    "report_card_metrics": ["break_exact_match", "sari", "ged", "chain_validity", "hop_count_exact_match", "under_decomposition", "over_decomposition"],
+    "primary_pairs": {
+      "typed_vs_uniform": {"system_a": "typed", "system_b": "uniform"},
+      "typed_vs_raw": {"system_a": "typed", "system_b": "raw"}
+    },
+    "secondary_pairs": {
+      "uniform_vs_raw": {"system_a": "uniform", "system_b": "raw", "note": "completes v1's ordering; uncorrected, in no family"},
+      "typed_rerun_vs_exp020_stored": {"system_a": "typed_rerun", "system_b": "exp020_stored", "note": "hardware control; uncorrected, in no family"},
+      "typed_rebuilt_vs_typed_rerun": {"system_a": "typed_rebuilt", "system_b": "typed_rerun", "note": "only if typed_rebuilt ran: the effect of the rebuild's differing typed exemplars; context"}
+    },
+    "stored_comparators": {
+      "exp020_stored": {
+        "per_item": "runs/exp-032/exp-020/eval/eval_per_item.json",
+        "results": "runs/exp-032/exp-020/reparse/results.json",
+        "note": "exp-020 read through exp-032's re-parse (ADR 0039 cross-parser rule; 24/600 rows changed by the re-parse), because exp-040 runs on the ADR 0039 parser"
+      }
+    },
+    "holm_families": {
+      "F1_primary_overall": {"pairs": ["typed_vs_uniform", "typed_vs_raw"], "strata": ["overall"], "size": 14},
+      "F2_primary_per_hop": {"pairs": ["typed_vs_uniform", "typed_vs_raw"], "strata": ["2", "3", "4"], "size": 42}
+    },
+    "holm_p_basis": "ADR 0036 item 3: exact McNemar p for break_exact_match, hop_count_exact_match, under/over_decomposition; paired-t p for sari, ged, chain_validity; bootstrap CI beside it, disagreements disclosed.",
+    "pre_declared_direction": "none. v1 reported typed > uniform > raw before correction; exp-040 tests both primary pairs two-sided and reports every term.",
+    "hardware_control": {
+      "reproduced_if": "typed_rerun's recorded decomposition equals runs/exp-032/exp-020/reparse/results.json's decomposition as exact strings for 600/600 query ids",
+      "consequence": "Primary pairs are unaffected either way (all arms on one machine). If not reproduced, any statement setting exp-040 numbers beside stored v2 numbers carries the hardware caveat."
+    },
+    "wording": "ADR 0036 item 4: non-significance is 'not distinguishable', never 'equal'. A claim that masking helps is made only for cells that survive Holm in F1/F2."
+  },
+  "gpu": {
+    "min_total_vram_gib": 12,
+    "measured_reference": "exp-020 peak 4,818 MiB (nvidia-smi, own pid) on the RTX 3090",
+    "requirement_text": "any CUDA GPU with >= 12 GiB; the Colab runner uses an A100 (40 GB), possibly shared with another experiment"
+  },
+  "wall_clock_estimate": {
+    "_note": "ESTIMATES, not measurements, for an A100 used by this notebook alone; a GPU shared with another job is slower. Bases: exp-020 decode 2,526 s on the RTX 3090 (4-bit, 600 queries, few-shot prompts); exp-014 built its typed artifact on a 64-thread CPU in 62.5 s (similarity) + 51.5 s (rerank). 4-bit decoding at batch 1 is bandwidth-bound; an A100 should be at or below the 3090 time (exp-037 README). The rebuild does three modes instead of one on Colab's ~12 vCPUs.",
+    "A100": {
+      "setup_min": [15, 25],
+      "retrieval_build_min": [10, 25],
+      "canaries_min": [6, 12],
+      "per_decode_arm_min": [30, 45],
+      "evaluator_per_arm_min": [2, 6],
+      "total_h_three_arms": [2.3, 3.4],
+      "extra_if_typed_rebuilt_runs_h": [0.55, 0.85]
+    }
+  },
+  "approval": "The lead's brief of 2026-11-27 under Jahid's grant of full authority over technical choices (writing-audit (d) rank 1). Recorded in ADR 0046."
+}
