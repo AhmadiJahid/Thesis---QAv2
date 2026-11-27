@@ -73,6 +73,8 @@ When **not** to write one:
 | [0043](./0043-count-first-condition-exp-037.md) | The Count-First Condition (exp-037): A Self-Stated Hop Count, Stripped Before Scoring | Accepted (running the arm: Jahid, 2026-11-27; conventions: implementer under the lead's brief, Jahid's to reverse). Number assigned by the lead across parallel branches (0042 = exp-038) |
 | [0044](./0044-exp-036-qwen-fine-tune-same-recipe-primary-pair-and-colab-venue.md) | exp-036: "Same Recipe" on Qwen3.5-9B, the 4-bit Primary Pair, and Colab as a Run Venue | Accepted (lead, 2026-11-27; Jahid's to reverse) |
 | [0045](./0045-metaqa-direct-kg-evaluation-eval-set-and-metric-mapping.md) | MetaQA End-to-End by Direct-KG Execution (Not GRAG): the Executor's Gold Convention, the Eval Set, and the Metric Mapping | Accepted (lead, 2026-11-27; Jahid's to reverse) — exp-039 |
+| 0046 | exp-040: query masking re-run on the v2 pipeline | Reserved (lead:session, 2026-11-27) — masking ordering re-checked on the v2 pipeline |
+| 0047 | exp-041: training-seed variance of the pool-only fine-tune | Reserved (lead:session, 2026-11-27) — seed variance of the headline fine-tune |
 
 ---
 
