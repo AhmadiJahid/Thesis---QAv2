@@ -66,10 +66,10 @@ panel shows the real rate.
 
 ## How to run (Jahid)
 
-1. Push the branch so Colab can clone it: `git push -u origin feature/50-qwen-pool-finetune`.
+1. The notebook clones `main` (exp-036 merged in PR #66); nothing to push.
 2. Make sure `MyDrive/thesis-backup.tar.gz` is on Google Drive.
 3. Open `notebooks/exp-036_qwen_pool_ft_colab.ipynb` in Colab (File → Open notebook → GitHub,
-   branch `feature/50-qwen-pool-finetune`), set the runtime to **L4** (or A100), **Run all**.
+   branch `main`), set the runtime to **L4** (or A100), **Run all**.
 4. If the runtime disconnects or the L4 runs out of memory in the fp16 eval: reconnect (switch to
    A100 if it was memory), **Run all** again. Finished steps are on Drive
    (`MyDrive/thesis-exp-036/`) and are skipped; an interrupted *training* restarts from step 0.
