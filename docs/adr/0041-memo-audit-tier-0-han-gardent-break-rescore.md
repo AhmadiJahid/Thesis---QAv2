@@ -1,7 +1,7 @@
 # 0041 — Memo audit: Tier 0 only, and how the Han & Gardent re-score is scored
 
 - **Status:** accepted. Item 1 is Jahid's (2026-10-31, reserved by the lead that day; run
-  decided by Jahid on 2026-11-27). Items 2–6 are implementer conventions written with exp-035
+  decided by Jahid on 2026-11-27). Items 2–7 are implementer conventions written with exp-035
   (Claude subagent under the lead's brief), Jahid's to reverse.
 - **Date:** 2026-11-27.
 
@@ -40,7 +40,13 @@ Reading Han & Gardent's own code (github.com/hankelvin/complex_question_decompos
    never as the headline: every sub-question and the question lowercased and `?`-stripped first.
 4. **spaCy 3.x replaces the fork's pinned 2.1.9** (which needs Python ≤ 3.8), with the versions
    recorded in the metrics. GED is therefore "official algorithm, spaCy-3 lemmas"; a reader is
-   told so wherever the number appears.
+   told so wherever the number appears. spaCy 3 keeps capitals in lemmas (checked: "Who is the
+   Spouse of Caroline LeRoy" → `who be the Spouse of Caroline LeRoy`), so the node cost is
+   case-sensitive; whether 2.1.9 lowercased lemmas is believed but not verified here.
+   **The GED budget is checked only between the optimizer's successive values**: an item whose
+   last value arrives before 180 s but whose search runs on past 180 s is still scored, and a
+   single long step cannot be cut off; the official `@exit_after(180)` would drop it. Kept as is
+   so the code at HEAD reproduces exp-035; the effect is bounded by the drop count (1 item).
 5. **The re-score sits beside the repo's evaluator, never in place of it.**
    `musique_decompositions_evaluator.py`, its config and every recorded value are unchanged;
    the report card (ADR 0035/0037) keeps the repo port. The Han & Gardent-style numbers are for
@@ -57,8 +63,9 @@ Reading Han & Gardent's own code (github.com/hankelvin/complex_question_decompos
 - The thesis can quote EM / SARI / GED computed by Han & Gardent's scorer path on the same
   2,417 rows exp-030 used, and state exactly what still differs (spaCy version, gold rewrite).
 - `requirements.txt` is not changed: spaCy and `en_core_web_sm` are needed only by this
-  re-score script, which imports `spacy` lazily, and are installed in the CPU-only venv recorded
-  in experiments/exp-035/config.json.
+  re-score script, which imports `spacy` lazily, and are installed in a CPU-only venv; the versions
+  that ran exp-035 are recorded under `environment` in experiments/exp-035/metrics.json (no pip
+  freeze is committed).
 - Mistral-7B's exp-030 predictions carry un-re-parsed scaffold lines (95/2,417); the re-score
   inherits them. Re-parsing them would be a new experiment (ADR 0039 item 4).
 - `experiments/exp-035/parity_check.py` runs the fork's own functions against the re-score.

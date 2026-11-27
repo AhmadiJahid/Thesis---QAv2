@@ -165,7 +165,8 @@ environment: {"python": "3.12.3", "spacy": "3.8.7", "spacy_model": "en_core_web_
 - **Gold is not Han & Gardent's gold.** They rewrote MuSiQue's `entity >> relation` sub-questions
   into natural language with their own templates; this run uses MuSiQue's stored gold. The scorer
   path matches theirs; the gold does not (ADR 0041 item 6).
-- **spaCy 3.8.7 replaces their pinned 2.1.9,** so lemmas differ (for example `-PRON-`).
+- **spaCy 3.8.7 replaces their pinned 2.1.9,** so lemmas differ (for example `-PRON-`). spaCy 3 also keeps capitals in lemmas (checked: `Spouse`, `Caroline`, `LeRoy` stay capitalised), so GED's node cost is case-sensitive. That 2.1.9 lowercased lemmas is believed but not verified; if it did, this would explain part of the GED drop under the lowercasing `hg_paper_literal` variant (a hypothesis).
+- **The GED budget is weaker than the official one.** It is checked only between the optimizer's successive values. An item whose last value arrives before 180 s, but whose search runs on past it, is still scored; the official `@exit_after(180)` would drop it. The config's deviation text ("tested between approximations") understates this. The effect is bounded by the 1 drop this run made, but the number of items it kept that the official code would have dropped is unknown.
 - **Issue #57:** gold is joined to predictions by question text. 6 dev question texts appear
   twice, 5 of them with different gold. Carried unchanged from exp-030.
 - **Mistral-7B's exp-030 predictions were never re-parsed** with the PR #61 scaffold parser
