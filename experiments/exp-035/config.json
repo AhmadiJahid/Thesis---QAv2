@@ -1,0 +1,58 @@
+{
+  "config_path": "configs/break_hg_rescore_exp035.json",
+  "config": {
+    "_note": "Config for scripts/break_hg_rescore.py, exp-035 / ADR 0041 (Tier 0 of the memo plan: official-scorer re-score with Han & Gardent's normalisation, per hop, Holm). Arms are exp-030's five full-dev evaluations (2,417 answerable dev rows each); paths resolve against the runs root (paths.json runs_root, or --runs-root). The paired family is fixed here and in the exp-035 log row BEFORE any number is computed (ADR 0036 item 5): pool-only FT vs each of the four prompting arms, on the primary variant's EM (exact McNemar), SARI and GED (paired t), overall and at each gold hop 2/3/4 = 4 x 3 x 4 = 48 tests, Holm over all 48. ged_budget_seconds = 180 is the official @exit_after(180). workers only parallelises (arm, variant) jobs; it cannot change a number.",
+    "exp_id": "exp-035",
+    "seed": 42,
+    "spacy_model": "en_core_web_sm",
+    "ged_budget_seconds": 180.0,
+    "workers": 6,
+    "arms": {
+      "pool_ft": "exp-030/pool_ft/eval/eval_per_item.json",
+      "qwen2_5_7b": "exp-030/qwen2_5_7b/eval/eval_per_item.json",
+      "qwen2_5_14b": "exp-030/qwen2_5_14b/eval/eval_per_item.json",
+      "qwen3_5_9b": "exp-030/qwen3_5_9b/eval/eval_per_item.json",
+      "mistral_7b": "exp-030/mistral_7b/eval/eval_per_item.json"
+    },
+    "paired_family": {
+      "pairs": [
+        [
+          "pool_ft",
+          "qwen2_5_7b"
+        ],
+        [
+          "pool_ft",
+          "qwen2_5_14b"
+        ],
+        [
+          "pool_ft",
+          "qwen3_5_9b"
+        ],
+        [
+          "pool_ft",
+          "mistral_7b"
+        ]
+      ],
+      "alpha": 0.05,
+      "min_items_for_significance_claim": 30
+    },
+    "deviations_from_han_gardent": [
+      "spaCy version: the fork pins spacy==2.1.9 (Python <= 3.8); this run uses the environment's spaCy 3.x and en_core_web_sm 3.x, recorded under environment. Lemmas differ between the two (e.g. -PRON-), so GED's node cost is the official algorithm over spaCy-3 lemmas.",
+      "GED budget: tested between the optimizer's approximations rather than by interrupting one (official @exit_after); an over-budget item is dropped from the GED mean as the official aggregator does, and every drop is counted.",
+      "Gold: MuSiQue's stored sub-questions, including the 'entity >> relation' (Zero-Shot RE) form. Han & Gardent rewrote those to natural language with their own templates, so absolute EM/SARI/GED are not on an identical gold; this is a property of the gold, not of the scorer.",
+      "Gold join: exp-030's per-item gold is joined by question text (issue #57); 6 dev question texts occur twice, 5 with differing gold. Carried unchanged."
+    ],
+    "_config_path": "/home/jahid/thesis/Thesis---QAv2/configs/break_hg_rescore_exp035.json"
+  },
+  "runs_root": "/home/jahid/thesis/Thesis---QAv2/runs",
+  "limit": null,
+  "workers": 6,
+  "started_utc": "2026-11-27T10:35:29.469356+00:00",
+  "git": {
+    "commit": "33ca4b8151aaf5e7e01e85a0a5fa9bfa256d5316",
+    "branch": "feature/35-break-rescore",
+    "dirty": false,
+    "dirty_file_count": 0,
+    "dirty_files": []
+  }
+}
