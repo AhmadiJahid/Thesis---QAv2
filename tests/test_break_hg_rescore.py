@@ -144,6 +144,9 @@ class TestAggregationAndFamily(unittest.TestCase):
         self.assertEqual(len(tests), 12)  # 1 pair x 4 strata x 3 metrics
         for t in tests:
             self.assertIn("p_holm", t)
+            # arm names survive on every row, including paired-t rows whose numeric
+            # system_a/system_b (the means) once overwrote them
+            self.assertEqual((t["arm_a"], t["arm_b"]), ("a", "b"))
 
     def test_family_refuses_misaligned_hops(self):
         a = self.rows([1, 0], [0.1, 0.2], [2, 3])

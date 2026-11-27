@@ -2,7 +2,7 @@
 """Print exp-035's tables (markdown) from the committed metrics.json. No computation beyond
 formatting and counting: every number printed is read off the file.
 
-    python experiments/exp-035/summarize.py experiments/exp-035/metrics.json
+    python experiments/exp-035/summarize.py experiments/exp-035/metrics.json experiments/exp-035/config.json
 """
 from __future__ import annotations
 
@@ -46,14 +46,34 @@ for a in arms:
           + " | ".join(f(s[h]["over_decomposition"]) for h in strata[1:]) + " |")
 
 fam = m["paired_family"]
+
+
+def arm_labels(tests, pairs):
+    """(arm_a, arm_b) per test. New files carry arm_a/arm_b. exp-035's run (33ca4b8) wrote the
+    arm names into system_a/system_b, which the paired-t rows' numeric means overwrote; the
+    names are recovered from the family's fixed order (pairs x STRATA x METRICS, the loop in
+    break_hg_rescore.family) and checked against every McNemar row, which kept its names."""
+    if all("arm_a" in t for t in tests):
+        return [(t["arm_a"], t["arm_b"]) for t in tests]
+    order = [(a, b) for a, b in pairs for _ in strata for _ in ("break_exact_match", "sari", "ged")]
+    assert len(order) == len(tests), "family size does not match the configured pairs"
+    for (a, b), t in zip(order, tests):
+        if t["metric"] == "break_exact_match":
+            assert (t["system_a"], t["system_b"]) == (a, b), "positional arm recovery failed"
+    return order
+
+
+pairs = m.get("paired_family_pairs") or json.load(
+    open(sys.argv[2], encoding="utf-8"))["config"]["paired_family"]["pairs"]
+labels = arm_labels(fam["tests"], pairs)
 print(f"\n## Paired family (hg_fork; {fam['size']} tests, {fam['size_with_p']} with p; Holm)\n")
 print("| A vs B | stratum | metric | A | B | diff | p | p_holm | sig (uncorr) | sig (Holm) |")
 print("|---|---|---|---|---|---|---|---|---|---|")
-for t in fam["tests"]:
+for (arm_a, arm_b), t in zip(labels, fam["tests"]):
     a_val = t.get("system_a_rate", t.get("system_a"))
     b_val = t.get("system_b_rate", t.get("system_b"))
     p = t.get("p_value")
-    print(f"| {t['system_a']} vs {t['system_b']} | {t['stratum']} | {t['metric']} | {f(a_val)} | {f(b_val)} | "
+    print(f"| {arm_a} vs {arm_b} | {t['stratum']} | {t['metric']} | {f(a_val)} | {f(b_val)} | "
           f"{f(t.get('difference'))} | {'—' if p is None else f'{p:.3g}'} | "
           f"{'—' if t['p_holm'] is None else f'{t['p_holm']:.3g}'} | {t['significant']} | {t['significant_holm']} |")
 sig_u = sum(1 for t in fam["tests"] if t["significant"])

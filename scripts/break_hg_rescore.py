@@ -370,8 +370,11 @@ def family(
             sub_b = stratum_rows(rows_b, stratum)
             for metric in METRICS:
                 row = paired_test(sub_a, sub_b, metric, alpha, min_items)
-                tests.append({"system_a": arm_a, "system_b": arm_b, "stratum": stratum,
-                              "metric": metric, **row})
+                # Arm names go AFTER the test row and under their own keys: the paired-t
+                # row carries numeric "system_a"/"system_b" (the means), which would
+                # otherwise overwrite the names (exp-035's metrics.json has that layout).
+                tests.append({**row, "arm_a": arm_a, "arm_b": arm_b, "stratum": stratum,
+                              "metric": metric})
     usable = [t for t in tests if t.get("p_value") is not None]
     adjusted = holm([t["p_value"] for t in usable])
     for t, p_adj in zip(usable, adjusted):
