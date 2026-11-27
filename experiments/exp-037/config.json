@@ -1,5 +1,5 @@
 {
-  "_note": "Pre-run config for exp-037 (count-first decomposition arm). Written before any run; the per-run config snapshots the runner writes (runs/exp-037/<arm>/decomposer/<ts>/config.json) are the record of what actually ran and are copied here after the run. ONE change against the paired baseline: --condition count_first instead of --condition unguided. Model, 4-bit precision, retrieval artifact (hence the exemplars), few-shot ordering, decoding, seed, step parser and evaluation set are those of exp-020 (Mistral) / exp-027 (Qwen3.5-9B).",
+  "_note": "Pre-run config for exp-037 (count-first decomposition arm). Written before any run; the per-run config snapshots the runner writes (runs/exp-037/<arm>/decomposer/<ts>/config.json) are the record of what actually ran and are copied here after the run. ONE change against the paired unguided arm: --condition count_first instead of --condition unguided. Model, 4-bit precision, retrieval artifact (hence the exemplars), few-shot ordering, decoding, seed, step parser and evaluation set are those of exp-020 (Mistral) / exp-027 (Qwen3.5-9B).",
   "exp_id": "exp-037",
   "design_source": "Jev memo at the repo root, section C1.3 'Hop-count-first structured output (self-guided oracle)': annotate exemplars with '[k hops]', the model must emit '[k hops]' first. The memo's format is followed ('[N hops]', not 'Hops: N').",
   "condition": {
@@ -22,17 +22,47 @@
     "step_parser": "scaffold_truncate_at ['Task:', 'Answer:'] (ADR 0039; the parser exp-032's re-parse applied to the baselines)"
   },
   "models": {
-    "mistral_7b_instruct": {"model_id": "mistralai/Mistral-7B-Instruct-v0.3", "paired_baseline": "exp-020 as re-parsed by exp-032 (runs/exp-032/exp-020/eval/eval_per_item.json)", "why": "exp-020 is the 4-bit unguided Mistral arm on this artifact; exp-015 is the same arm at fp16 (precision would move). exp-020 was scored with the old parser, so the comparable reading is exp-032's re-parse (ADR 0039 cross-parser rule)."},
-    "qwen3_5_9b": {"model_id": "Qwen/Qwen3.5-9B", "paired_baseline": "exp-027 as re-parsed by exp-032 (runs/exp-032/exp-027/eval/eval_per_item.json; 0/600 rows changed by the re-parse, so equal to exp-027's own eval)", "why": "exp-027 is the 4-bit unguided Qwen3.5-9B arm on this artifact; exp-005 is the v1 pool, unquantized - a different axis."}
+    "mistral_7b_instruct": {
+      "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+      "why": "exp-020 is the 4-bit unguided Mistral arm on this artifact; exp-015 is the same arm at fp16 (precision would move). exp-020 was scored with the old parser, so the comparable reading is exp-032's re-parse (ADR 0039 cross-parser rule).",
+      "comparator": "PRIMARY: the same-machine re-run of the baseline's command; SECONDARY: exp-020 as re-parsed by exp-032 (runs/exp-032/exp-020/eval/eval_per_item.json)"
+    },
+    "qwen3_5_9b": {
+      "model_id": "Qwen/Qwen3.5-9B",
+      "why": "exp-027 is the 4-bit unguided Qwen3.5-9B arm on this artifact; exp-005 is the v1 pool, unquantized - a different axis.",
+      "comparator": "PRIMARY: the same-machine re-run of the baseline's command; SECONDARY: exp-027 as re-parsed by exp-032 (runs/exp-032/exp-027/eval/eval_per_item.json; 0/600 rows changed by the re-parse, so equal to exp-027's own eval)"
+    }
   },
-  "steps": "experiments/exp-037/run.sh {mistral_count_first | mistral_unguided_rerun | qwen_count_first | qwen_unguided_rerun | compare | metrics}; on Colab via notebooks/exp-037_count_first_colab.ipynb",
-  "hardware_control": "The baselines ran on an RTX 3090 (docs/compute.md); exp-037 runs on Colab (L4 by default). Greedy 4-bit decoding is not guaranteed to be bit-identical across GPUs and library builds, so the same command as the baseline (condition unguided) is re-run on the same Colab machine (mistral_unguided_rerun, qwen_unguided_rerun). Its distance from the stored baseline (rows with different pred_steps, and the paired compare) is reported. Declared before any run: if the control shows the stored baseline is not reproduced, the primary result is reported as confounded by hardware and the sensitivity pair (count-first vs same-machine re-run) is reported next to it.",
+  "steps": "experiments/exp-037/run.sh {mistral_count_first | mistral_unguided_rerun | qwen_count_first | qwen_unguided_rerun | compare | metrics}; ALL FOUR decode steps are required. On Colab via notebooks/exp-037_count_first_colab.ipynb. Decodes are resumable (run_decomposer.py --resume; run.sh resumes an interrupted run dir automatically).",
+  "hardware_control": {
+    "_note": "The stored baselines ran on an RTX 3090 (docs/compute.md); exp-037 runs on Colab (L4 by default). Greedy 4-bit decoding is not guaranteed to be identical across GPUs and library builds.",
+    "arms": [
+      "mistral_unguided_rerun",
+      "qwen_unguided_rerun"
+    ],
+    "mandatory": true,
+    "reproduced_if": "the re-run's recorded 'decomposition' equals the stored baseline's re-parsed 'decomposition' (runs/exp-032/exp-020/reparse/results.json; runs/exp-032/exp-027/reparse/results.json) as exact strings for 600/600 query ids. Anything less is NOT reproduced.",
+    "consequence": "Declared before any run: the primary pairs are unaffected either way (both arms on the same machine). If a model's control is reproduced, its secondary pair (vs stored) carries the same outputs as the primary. If it is not reproduced, that model's secondary pair is labelled hardware-confounded, and the number of identical decompositions plus the control compare are reported."
+  },
   "holm_families": {
     "_note": "Fixed here before any p-value exists (ADR 0036 item 5). Holm is reported BESIDE the evaluator's uncorrected verdict, never instead of it.",
-    "F1_primary_overall": "for each primary pair that was run - mistral_count_first_vs_exp020, qwen_count_first_vs_exp027 - x the 8 metrics break_exact_match_rate (McNemar), sari_macro (t), ged_macro (t), chain_validity_macro (t), hop_count_exact_match_rate (McNemar), under_decomposition_rate (McNemar), over_decomposition_rate (McNemar), step_f1_macro (t); overall n=600. Size 16 if both models run, 8 if only Mistral.",
-    "F2_per_hop": "for each primary pair that was run x {hop_count_exact_match, under_decomposition} x gold hop {2,3,4}, exact McNemar per stratum (n=200). Size 12 or 6.",
-    "outside_families": "sensitivity (count-first vs same-machine re-run) and hardware control (re-run vs stored), uncorrected and labelled",
+    "F1_primary_overall": "primary pairs (mistral_count_first_vs_rerun, qwen_count_first_vs_rerun) x the 8 metrics break_exact_match_rate (McNemar), sari_macro (t), ged_macro (t), chain_validity_macro (t), hop_count_exact_match_rate (McNemar), under_decomposition_rate (McNemar), over_decomposition_rate (McNemar), step_f1_macro (t); overall n=600. Size 16.",
+    "F2_per_hop": "primary pairs x {hop_count_exact_match, under_decomposition} x gold hop {2,3,4}, exact McNemar per stratum (n=200). Size 12.",
+    "outside_families": "the secondary pairs, uncorrected and labelled",
     "pre_declared_primary_endpoints": "under_decomposition_rate and hop_count_exact_match_rate (memo C3 item 1); the others are secondary. No direction is asserted."
   },
-  "count_accuracy_reported": "from the count-first decomposer metrics.json count_first block: status counts; rows with/without a readable count; count == gold hop (all rows and parsed rows, overall and per gold hop); count below/above gold; count == steps emitted; gold x predicted confusion"
+  "count_accuracy_reported": "from the count-first decomposer metrics.json count_first block: status counts; rows with/without a readable count; count == gold hop (all rows and parsed rows, overall and per gold hop); count below/above gold; count == steps emitted; gold x predicted confusion",
+  "primary_pairs": {
+    "_note": "Declared before any run (code review of ed01caa, 2026-11-27). Both arms of a primary pair run on the same Colab GPU, environment and commit, so the pair moves exactly one factor: the condition.",
+    "mistral_count_first_vs_rerun": "mistral_count_first minus mistral_unguided_rerun (exp-020's exact command re-run on the same Colab GPU)",
+    "qwen_count_first_vs_rerun": "qwen_count_first minus qwen_unguided_rerun (exp-027's exact command re-run on the same Colab GPU)"
+  },
+  "secondary_pairs": {
+    "_note": "Reported uncorrected and labelled; never the headline.",
+    "mistral_count_first_vs_exp020": "count-first minus the stored exp-020 (3090; read through exp-032's re-parse)",
+    "qwen_count_first_vs_exp027": "count-first minus the stored exp-027 (3090; exp-032's re-parse, 0/600 rows changed)",
+    "mistral_rerun_vs_exp020": "hardware control",
+    "qwen_rerun_vs_exp027": "hardware control"
+  },
+  "approval": "Jahid approved running this arm in session on 2026-11-27 (memo C1.3); recorded in ADR 0043, which also records the departure from ADR 0041 item 1 ('Tier 0 only, no new arms')."
 }
