@@ -2112,6 +2112,15 @@ def _parse_args() -> argparse.Namespace:
         "comparison and is recorded as an override. This is also the second flag needed "
         f"alongside {ADAPTER_FEW_SHOT_OVERRIDE_FLAG}.",
     )
+    p.add_argument(
+        "--weight-edit",
+        default=None,
+        help="Edit spec JSON (exp-038 / ADR 0042, components/decomposer/weight_space_repair.py). "
+        "After the model and any --adapter are loaded, the adapter is merged and the spec's "
+        "weight edit is applied in place before generation; the spec, its sha256 and its "
+        "direction file's sha256 are recorded in the config snapshot and the metrics. "
+        "Omitted (the default): nothing changes.",
+    )
     p.add_argument("--output-root", default=None)
     p.add_argument(
         "--resume",
@@ -2767,6 +2776,7 @@ def main() -> None:
         "quantization": quantization,
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
+        "weight_edit_spec": args.weight_edit,
         "embed_model": embed_key,
         "embed_model_id": embed_model_id,
         "retrieval": {
@@ -3142,6 +3152,13 @@ def main() -> None:
     model = tokenizer = None
     size_record = unasserted_note("decomposer", require(model_cfg, "model_id"))
     adapter_base_model_record: dict[str, Any] | None = None
+    weight_edit_record: dict[str, Any] | None = None
+    if args.weight_edit:
+        # Validate the spec up front, dry runs included, so a bad spec fails before any
+        # weights load (ADR 0016 style).
+        from weight_space_repair import apply_edit_spec, load_spec
+
+        load_spec(args.weight_edit)
     if not args.dry_run:
         model_id = require(model_cfg, "model_id")
         print(f"Loading model: {model_id} on {device} (quantization={quantization}) ...")
@@ -3152,6 +3169,11 @@ def main() -> None:
                 model, args.adapter, model_id=model_id
             )
             model_id = f"{model_id}+adapter"
+        if args.weight_edit:
+            model, weight_edit_record = apply_edit_spec(
+                model, args.weight_edit, eos_token_id=int(tokenizer.eos_token_id)
+            )
+            model_id = f"{model_id}+weight_edit:{weight_edit_record['label']}"
         # With an adapter attached this counts base + adapter parameters, which is the
         # thing the ~8B ceiling is about.
         size_record = assert_within_ceiling(
@@ -3598,6 +3620,7 @@ def main() -> None:
         **adapter_record,
         "adapter_prompt_parity": adapter_prompt_parity,
         "adapter_base_model": adapter_base_model_record,
+        "weight_edit": weight_edit_record,
         "no_few_shot_ineffective": no_few_shot_ineffective,
         "model_size": size_record,
         "embedding_model_size": embed_size_record,
