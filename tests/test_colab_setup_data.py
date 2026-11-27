@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import subprocess
 import sys
 import tarfile
@@ -59,6 +60,58 @@ class TestColabSetupData(unittest.TestCase):
             )
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("MISSING", proc.stdout + proc.stderr)
+
+
+def _archive(path: Path, files: dict[str, bytes]) -> None:
+    with tarfile.open(path, "w:gz") as tar:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+
+
+def _setup(archive: Path, data_root: Path, runs_root: Path, *runs: str):
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--archive", str(archive), "--data-root", str(data_root),
+         "--runs-root", str(runs_root), "--parts", "musique", "--runs", *runs],
+        capture_output=True, text=True,
+    )
+
+
+class TestColabSetupDataSafety(unittest.TestCase):
+    def test_dotdot_and_absolute_members_are_refused(self) -> None:
+        for bad in (
+            "Thesis---QAv2/runs/exp-014/../../../escape.txt",
+            "Thesis---QA/MusiQue/Data/dev_data/../../../../escape.txt",
+            "/abs/escape.txt",
+            "C:/escape.txt",
+        ):
+            with self.subTest(member=bad), tempfile.TemporaryDirectory() as tmp:
+                tmp = Path(tmp)
+                _archive(tmp / "a.tar.gz", {**FILES, bad: b"x"})
+                (tmp / "in").mkdir()
+                proc = _setup(tmp / "a.tar.gz", tmp / "in" / "data", tmp / "in" / "runs",
+                              "exp-014")
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("refusing archive member", proc.stdout + proc.stderr)
+                self.assertEqual(list(tmp.rglob("escape.txt")), [])
+
+    def test_symlink_below_root_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            _archive(tmp / "a.tar.gz", FILES)
+            outside = tmp / "outside"
+            outside.mkdir()
+            runs_root = tmp / "runs"
+            runs_root.mkdir()
+            try:
+                os.symlink(outside, runs_root / "exp-032", target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"cannot create a symlink here: {exc}")
+            proc = _setup(tmp / "a.tar.gz", tmp / "data", runs_root, "exp-032/exp-020/eval")
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("is a symlink", proc.stdout + proc.stderr)
+            self.assertEqual(list(outside.rglob("*")), [])
 
 
 if __name__ == "__main__":

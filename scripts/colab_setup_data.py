@@ -17,9 +17,13 @@ them (no current decomposer/evaluator stage reads them). ``--runs`` restores cho
 ``Thesis---QAv2/runs/`` into this repo's ``runs/`` (gitignored), e.g. the retrieval artifact and
 the stored baseline evaluations an experiment compares against.
 
-One streaming pass over the archive; only matching members are extracted; extraction uses the
-tarfile 'data' filter (no absolute paths, no links out of the target). Existing files are left
-alone unless ``--overwrite``. Data never enters git: both targets are outside the tree or under
+One streaming pass over the archive; only matching regular files (and directories) are
+extracted, by reading each member's bytes and writing them to a destination this script
+computes - never ``tar.extract``. Every destination is checked before it is written
+(:func:`_safe_dest`): a member name that is absolute, drive-anchored or contains a ``..``
+part is refused, the resolved destination must lie inside its root, and no existing component
+of the path below the root may be a symlink. Links in the archive are skipped. Existing files
+are left alone unless ``--overwrite``. Data never enters git: both targets are outside the tree or under
 the ignored ``runs/``.
 
 Usage::
@@ -37,7 +41,7 @@ import json
 import sys
 import tarfile
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,6 +63,39 @@ REQUIRED_FOR_MUSIQUE = [
 ]
 
 
+class UnsafeMember(ValueError):
+    """An archive member whose name or destination would escape the target root."""
+
+
+def _check_member_name(name: str) -> None:
+    pure = PurePosixPath(name)
+    if (
+        name.startswith(("/", "\\"))
+        or pure.is_absolute()
+        or PureWindowsPath(name).drive
+        or PureWindowsPath(name).is_absolute()
+        or any(part == ".." for part in pure.parts)
+        or any(part == ".." for part in PureWindowsPath(name).parts)
+    ):
+        raise UnsafeMember(f"refusing archive member {name!r}: absolute or '..' path")
+
+
+def _safe_dest(root: Path, rel: str) -> Path:
+    """``root / rel``, refused unless it stays inside ``root`` with no symlink on the way."""
+    _check_member_name(rel)
+    root_resolved = root.resolve()
+    dest = root / PurePosixPath(rel)
+    # No existing component below the root may be a symlink (it could point anywhere).
+    cur = root
+    for part in PurePosixPath(rel).parts:
+        cur = cur / part
+        if cur.is_symlink():
+            raise UnsafeMember(f"refusing {rel!r}: {cur} is a symlink")
+    if not dest.resolve().is_relative_to(root_resolved):
+        raise UnsafeMember(f"refusing {rel!r}: resolves outside {root_resolved}")
+    return dest
+
+
 def _plan(member: str, parts: list[str], runs: list[str]) -> str | None:
     """Destination for one archive member: 'data:<rel>', 'runs:<rel>' or None (skip)."""
     for part in parts:
@@ -76,6 +113,36 @@ def _plan(member: str, parts: list[str], runs: list[str]) -> str | None:
             if rel == want or rel.startswith(want + "/"):
                 return "runs:" + rel
     return None
+
+
+def _extract(args, counts: dict, seen_runs: set) -> None:
+    with tarfile.open(args.archive, "r:gz") as tar:
+        for m in tar:
+            if not (m.isfile() or m.isdir()):
+                continue  # links (the archive has hardlinks under runs/pool_sweep) are not needed
+            _check_member_name(m.name)  # every member, wanted or not: a hostile archive is refused
+            target = _plan(m.name, args.parts, args.runs)
+            if target is None:
+                continue
+            kind, rel = target.split(":", 1)
+            root = args.data_root if kind == "data" else args.runs_root
+            root.mkdir(parents=True, exist_ok=True)
+            dest = _safe_dest(root, rel)
+            if m.isdir():
+                dest.mkdir(parents=True, exist_ok=True)
+                continue
+            if dest.exists() and not args.overwrite:
+                counts["skipped_existing"] += 1
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            src = tar.extractfile(m)
+            assert src is not None
+            with open(dest, "wb") as out:
+                while chunk := src.read(1 << 22):
+                    out.write(chunk)
+            counts[kind] += 1
+            if kind == "runs":
+                seen_runs.update(w for w in args.runs if rel.startswith(w.strip("/")))
 
 
 def main() -> int:
@@ -107,31 +174,10 @@ def main() -> int:
     started = time.time()
     counts = {"data": 0, "runs": 0, "skipped_existing": 0}
     seen_runs: set[str] = set()
-    with tarfile.open(args.archive, "r:gz") as tar:
-        for m in tar:
-            if not (m.isfile() or m.isdir()):
-                continue  # links (the archive has hardlinks under runs/pool_sweep) are not needed
-            target = _plan(m.name, args.parts, args.runs)
-            if target is None:
-                continue
-            kind, rel = target.split(":", 1)
-            root = args.data_root if kind == "data" else args.runs_root
-            dest = root / PurePosixPath(rel)
-            if m.isdir():
-                dest.mkdir(parents=True, exist_ok=True)
-                continue
-            if dest.exists() and not args.overwrite:
-                counts["skipped_existing"] += 1
-                continue
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            src = tar.extractfile(m)
-            assert src is not None
-            with open(dest, "wb") as out:
-                while chunk := src.read(1 << 22):
-                    out.write(chunk)
-            counts[kind] += 1
-            if kind == "runs":
-                seen_runs.update(w for w in args.runs if rel.startswith(w.strip("/")))
+    try:
+        _extract(args, counts, seen_runs)
+    except UnsafeMember as exc:
+        raise SystemExit(f"[setup] {exc}") from exc
 
     missing_runs = [w for w in args.runs if w not in seen_runs and not (args.runs_root / w).exists()]
     missing_data = []
