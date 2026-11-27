@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -174,14 +175,26 @@ _REV_REF = {
 }
 
 
-def render(topic: str, path: Sequence[Edge], phrasing: str) -> Optional[str]:
+def question_movie_prefix(question: str, topic: str) -> str:
+    """The "the film " / "the movie " / "film " / "movie " the question puts before its topic
+    entity, or "" (MetaQA: "who directed the film Patch Adams")."""
+    m = re.search(r"(?<![A-Za-z])((?:the\s+)?(?:film|movie)\s+)" + re.escape(topic), question, re.I)
+    return m.group(1) if m else ""
+
+
+def render(topic: str, path: Sequence[Edge], phrasing: str, question: str = "") -> Optional[str]:
+    """``phrasing`` is 'compiler', 'natural', or 'question_wording' (the natural templates,
+    with step 1 naming a movie topic the way the question does: "the film X")."""
     lines = []
+    base = "natural" if phrasing == "question_wording" else phrasing
     for k, (rel, direction) in enumerate(path, start=1):
         x = topic if k == 1 else f"[#{k - 1}]"
+        if k == 1 and direction == "fwd" and phrasing == "question_wording":
+            x = question_movie_prefix(question, topic) + topic
         if k == 1:
-            table = (_FWD_NAMED if direction == "fwd" else _REV_NAMED)[phrasing]
+            table = (_FWD_NAMED if direction == "fwd" else _REV_NAMED)[base]
         else:
-            table = _FWD_REF if direction == "fwd" else _REV_REF[phrasing]
+            table = _FWD_REF if direction == "fwd" else _REV_REF[base]
         if rel not in table:
             return None
         lines.append(f"{k}. " + table[rel].format(x=x))
@@ -298,7 +311,7 @@ def main() -> None:
             if path is None:
                 continue
             for ph in fixtures:
-                dec = render(r["topic"], [tuple(e) for e in path], ph)
+                dec = render(r["topic"], [tuple(e) for e in path], ph, r["question"])
                 if dec is not None:
                     fixtures[ph].append({"question": r["question"], "hop_count": hop, "decomposition": dec,
                                          "few_shot_source": "gold_path_oracle"})

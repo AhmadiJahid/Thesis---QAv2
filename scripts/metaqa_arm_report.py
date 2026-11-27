@@ -16,10 +16,17 @@ Per item:
     returns a set, not a ranking, so ranked Hits@1 is undefined here; this is the closest
     honest equivalent (ADR 0045).
 
-Per arm and hop: each rate with a seeded percentile-bootstrap 95% CI.
-Per declared comparison and hop: exact McNemar on ``em`` (the primary family, Holm over all
-declared comparisons x hops, ADR 0036) and a paired percentile bootstrap CI plus paired-t p on
-``jaccard`` (secondary family, Holm likewise). Holm is reported beside the uncorrected p.
+Per arm and hop: each rate with a seeded percentile-bootstrap 95% CI, and the arm's compile-
+and execution-failure reasons.
+Per declared comparison and hop (ADR 0045 items 6-7):
+  - PRIMARY: exact McNemar on ``em`` from the STRICT compile-execute run (``--arm``), Holm over
+    all declared comparisons x hops (ADR 0036);
+  - secondary: paired percentile bootstrap CI plus paired-t p on ``jaccard`` (own Holm family);
+  - secondary: EM restricted to the items BOTH arms compiled (the FT-vs-prompted wording
+    confound: compiler templates match the MetaQA pool wording only prompted arms see);
+  - secondary: EM from the LENIENT compile-execute run (``--arm-lenient``), with each arm's
+    repaired-item count.
+Holm is reported beside the uncorrected p, each family separately.
 """
 from __future__ import annotations
 
@@ -85,6 +92,37 @@ def score_arm(analysis_dir: Path, gold: Dict[str, tuple]) -> Dict[str, Dict[str,
     return rows
 
 
+def failure_reasons(analysis_dir: Path, gold: Dict[str, tuple]) -> Dict[str, Dict[str, Dict[str, int]]]:
+    """Per hop: compile-failure and execution-failure reason counts (the reason's class, the
+    text before the first ':')."""
+    out: Dict[str, Dict[str, Dict[str, int]]] = {}
+    for name, key in (("compile_fail.json", "compile"), ("exec_fail.json", "exec")):
+        for it in json.loads((analysis_dir / name).read_text(encoding="utf-8")):
+            hop = str(gold[it["question"]][0])
+            reason = str(it.get("error_reason", "unknown")).split(":", 1)[0]
+            cell = out.setdefault(hop, {"compile": {}, "exec": {}})[key]
+            cell[reason] = cell.get(reason, 0) + 1
+    return out
+
+
+def repaired_count(analysis_dir: Path, gold: Dict[str, tuple]) -> Dict[str, int]:
+    """Per hop: executed items with at least one repaired placeholder step (lenient runs)."""
+    out: Dict[str, int] = {}
+    for it in json.loads((analysis_dir / "success.json").read_text(encoding="utf-8")):
+        if it.get("repaired_steps"):
+            hop = str(gold[it["question"]][0])
+            out[hop] = out.get(hop, 0) + 1
+    return out
+
+
+def mcnemar_cell(ea: np.ndarray, eb: np.ndarray) -> Dict[str, Any]:
+    only_a, only_b = int(((ea == 1) & (eb == 0)).sum()), int(((ea == 0) & (eb == 1)).sum())
+    return {"n": int(len(ea)), "a": float(ea.mean()) if len(ea) else None,
+            "b": float(eb.mean()) if len(eb) else None,
+            "difference": float(ea.mean() - eb.mean()) if len(ea) else None,
+            "only_a": only_a, "only_b": only_b, "mcnemar_exact_p": mcnemar_exact_p(only_a, only_b)}
+
+
 def boot_ci(x: np.ndarray, rng: np.random.Generator, iters: int, alpha: float) -> List[float]:
     idx = rng.integers(0, len(x), size=(iters, len(x)))
     means = x[idx].mean(axis=1)
@@ -115,6 +153,8 @@ def main() -> None:
     ap.add_argument("--arm", action="append", default=[], metavar="NAME=RUN_DIR",
                     help="An arm's compile-execute run dir (holding analysis/). Repeatable; "
                          "every arm named in the config's comparisons must be given.")
+    ap.add_argument("--arm-lenient", action="append", default=[], metavar="NAME=RUN_DIR",
+                    help="The same arm's LENIENT compile-execute run (secondary EM, repaired count).")
     ap.add_argument("--run-dir", type=Path, default=None)
     args = ap.parse_args()
 
@@ -130,6 +170,8 @@ def main() -> None:
     gold = load_gold(paths_cfg, cfg, data_root)
     arms = dict(a.split("=", 1) for a in args.arm)
     scored = {name: score_arm(Path(d) / analysis_subdir, gold) for name, d in arms.items()}
+    lenient_dirs = dict(a.split("=", 1) for a in args.arm_lenient)
+    lenient = {name: score_arm(Path(d) / analysis_subdir, gold) for name, d in lenient_dirs.items()}
 
     per_arm: Dict[str, Any] = {}
     for name, rows in scored.items():
@@ -141,6 +183,14 @@ def main() -> None:
             for m in METRICS:
                 x = np.array([rows[q][m] for q in qs])
                 cell[m] = {"mean": float(x.mean()), "ci95": boot_ci(x, rng, iters, alpha)}
+            reasons = failure_reasons(Path(arms[name]) / analysis_subdir, gold).get(str(hop), {})
+            cell["compile_fail_reasons"] = reasons.get("compile", {})
+            cell["exec_fail_reasons"] = reasons.get("exec", {})
+            if name in lenient:
+                x = np.array([lenient[name][q]["em"] for q in qs])
+                cell["lenient_em"] = {"mean": float(x.mean()), "ci95": boot_ci(x, rng, iters, alpha),
+                                      "repaired_items": repaired_count(
+                                          Path(lenient_dirs[name]) / analysis_subdir, gold).get(str(hop), 0)}
             per_arm[name][str(hop)] = cell
 
     comparisons = []
@@ -159,24 +209,35 @@ def main() -> None:
             idx = rng.integers(0, len(d), size=(iters, len(d)))
             ci = [float(v) for v in np.percentile(d[idx].mean(axis=1), [100 * alpha / 2, 100 * (1 - alpha / 2)])]
             t_p = float(stats.ttest_rel(ja, jb).pvalue) if np.any(d != d[0]) else None
-            comparisons.append({
+            both = [i for i, q in enumerate(qs) if scored[a][q]["compiled"] and scored[b][q]["compiled"]]
+            row = {
                 "a": a, "b": b, "hop": hop, "n": len(qs),
                 "em": {"a": float(ea.mean()), "b": float(eb.mean()), "difference": float(ea.mean() - eb.mean()),
                        "only_a": only_a, "only_b": only_b, "mcnemar_exact_p": mcnemar_exact_p(only_a, only_b)},
                 "jaccard": {"a": float(ja.mean()), "b": float(jb.mean()), "difference": float(d.mean()),
                             "paired_bootstrap_ci95": ci, "paired_t_p": t_p},
-            })
+                "em_both_compiled": mcnemar_cell(ea[both], eb[both]),
+            }
+            if a in lenient and b in lenient:
+                row["em_lenient"] = mcnemar_cell(np.array([lenient[a][q]["em"] for q in qs]),
+                                                 np.array([lenient[b][q]["em"] for q in qs]))
+            comparisons.append(row)
     done = [c for c in comparisons if "skipped" not in c]
     for key, getter in (("em", lambda c: c["em"]["mcnemar_exact_p"]),
-                        ("jaccard", lambda c: c["jaccard"]["paired_t_p"])):
-        ps = [getter(c) if getter(c) is not None else 1.0 for c in done]
-        for c, h in zip(done, holm(ps)):
+                        ("jaccard", lambda c: c["jaccard"]["paired_t_p"]),
+                        ("em_both_compiled", lambda c: c["em_both_compiled"]["mcnemar_exact_p"]),
+                        ("em_lenient", lambda c: c["em_lenient"]["mcnemar_exact_p"] if "em_lenient" in c else None)):
+        fam = [c for c in done if key in c]
+        ps = [getter(c) if getter(c) is not None else 1.0 for c in fam]
+        for c, h in zip(fam, holm(ps)):
             c[key]["holm_p"] = h
             c[key]["holm_family_size"] = len(ps)
             c[key]["significant_holm"] = bool(h < alpha)
 
     out = {"script": Path(__file__).name, "created_utc": now_iso(), "seed": seed,
            "evaluation_set_size": len(gold), "arms": {k: str(v) for k, v in arms.items()},
+           "arms_lenient": {k: str(v) for k, v in lenient_dirs.items()},
+           "primary": "em (strict compile-execute), exact McNemar, Holm over the declared family",
            "per_arm": per_arm, "comparisons": comparisons,
            "declared_family_size": len(require(cfg, "comparisons")) * len(hops)}
     run_dir = args.run_dir or runs_path(paths_cfg, require(cfg, "run_subdir"))
@@ -185,12 +246,16 @@ def main() -> None:
     for name, cells in per_arm.items():
         for hop, c in cells.items():
             lines.append(f"- {name} hop {hop}: " + ", ".join(
-                f"{m} {c[m]['mean']:.3f} [{c[m]['ci95'][0]:.3f}, {c[m]['ci95'][1]:.3f}]" for m in METRICS))
+                f"{m} {c[m]['mean']:.3f} [{c[m]['ci95'][0]:.3f}, {c[m]['ci95'][1]:.3f}]" for m in METRICS)
+                + f"; compile-fail {c['compile_fail_reasons']}; exec-fail {c['exec_fail_reasons']}"
+                + (f"; lenient EM {c['lenient_em']['mean']:.3f} (repaired {c['lenient_em']['repaired_items']})"
+                   if "lenient_em" in c else ""))
     for c in done:
         lines.append(f"- {c['a']} vs {c['b']} hop {c['hop']}: EM {c['em']['difference']:+.3f} "
                      f"({c['em']['only_a']}:{c['em']['only_b']}, p={c['em']['mcnemar_exact_p']:.3g}, "
                      f"Holm p={c['em']['holm_p']:.3g}); Jaccard {c['jaccard']['difference']:+.3f} "
-                     f"CI {c['jaccard']['paired_bootstrap_ci95']}")
+                     f"CI {c['jaccard']['paired_bootstrap_ci95']}; both-compiled EM "
+                     f"{c['em_both_compiled']['difference']} on n={c['em_both_compiled']['n']}")
     print("\n".join(lines))
     write_run_artifacts(run_dir, config_snapshot={"script": Path(__file__).name, "config_path": cfg.get("_config_path"),
                                                   "arms": out["arms"], "seed": seed},

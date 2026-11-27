@@ -20,6 +20,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from evaluate_decompositions import (  # noqa: E402
     EmptyResultError,
+    KGExecutionError,
+    TypeMismatchError,
     build_reverse_index,
     compile_decomposition,
     evaluate_decomposition_rate,
@@ -143,3 +145,98 @@ class AttributeTemplatesTest(unittest.TestCase):
     def test_no_relation_and_no_template_is_still_cannot_infer_relation(self) -> None:
         with self.assertRaises(ValueError):
             compile_decomposition("1. Please summarise the plot.")
+
+
+PREC_KB = """Citizen Kane|directed_by|Orson Welles
+Citizen Kane|starred_actors|Joseph Cotten
+Citizen Kane|written_by|Herman Mankiewicz
+Touch of Evil|directed_by|Orson Welles
+Touch of Evil|starred_actors|Charlton Heston
+Touch of Evil|written_by|Whit Masterson
+The Trial|directed_by|Orson Welles
+The Trial|starred_actors|Anthony Perkins
+Psycho|directed_by|Alfred Hitchcock
+Psycho|starred_actors|Anthony Perkins
+Movie 43|directed_by|Peter Farrelly
+"""
+
+
+class PrecisionTest(unittest.TestCase):
+    """Code review of 2f9e2ce, finding 1: lenient direction repair scored type-mismatched
+    steps as gold. Strict mode (exp-039's primary, ADR 0045 item 7) must fail them as
+    type_mismatch; wrong-relation / missing-hop / swapped-order / extra-hop decompositions
+    must not reproduce the gold set in either mode."""
+
+    GOLD3 = {"Charlton Heston", "Anthony Perkins"}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.tmp = tempfile.TemporaryDirectory()
+        kb = Path(cls.tmp.name) / "kb.txt"
+        kb.write_text(PREC_KB, encoding="utf-8")
+        cls.kg = build_metaqa_kg(kb)
+        cls.rev = build_reverse_index(cls.kg)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.tmp.cleanup()
+
+    def outcome(self, dec: str, strict: bool):
+        try:
+            ops = compile_decomposition(dec, strict=strict)
+        except TypeMismatchError:
+            return "type_mismatch"
+        except (ValueError, NotImplementedError):
+            return "compile_fail"
+        try:
+            ids = exec_ops(self.kg, self.rev, ops, exclude_topic=True)
+        except (EmptyResultError, KeyError, KGExecutionError):
+            return "exec_fail"
+        return {self.kg.id_to_entity[i] for i in ids}
+
+    def test_gold_reproduces_in_both_modes(self) -> None:
+        dec = "1. Who directed Citizen Kane?\n2. What other films did [#1] direct?\n3. Who starred in [#2]?"
+        for strict in (True, False):
+            self.assertEqual(self.outcome(dec, strict), self.GOLD3)
+
+    def test_type_mismatched_steps_fail_strict_and_are_repaired_lenient(self) -> None:
+        cases = {
+            "who directed [#1] after people": "1. Who directed Citizen Kane?\n2. Who directed [#1]?\n3. Who starred in [#2]?",
+            "what genres are [#1] after people": "1. Who directed Citizen Kane?\n2. What genres are [#1]?\n3. Who starred in [#2]?",
+            "who acted in [#1] after actors": "1. Who acted in Psycho?\n2. Who acted in [#1]?",
+            "missing hop: who starred in [#1] after people": "1. Who directed Citizen Kane?\n2. Who starred in [#1]?",
+            "other movies by [#1] after movies": "1. What movies did Orson Welles direct?\n2. What other movies were directed by [#1]?",
+        }
+        for name, dec in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.outcome(dec, strict=True), "type_mismatch")
+                repairs: list = []
+                try:
+                    compile_decomposition(dec, strict=False, repairs=repairs)
+                except Exception:
+                    pass
+                if name != "other movies by [#1] after movies":
+                    self.assertTrue(repairs, "lenient mode must count the repaired step")
+
+    def test_wrong_decompositions_never_reproduce_gold(self) -> None:
+        cases = {
+            "wrong relation step 3": "1. Who directed Citizen Kane?\n2. What other films did [#1] direct?\n3. Who wrote [#2]?",
+            "wrong relation step 2": "1. Who directed Citizen Kane?\n2. What other films did [#1] act in?\n3. Who starred in [#2]?",
+            "swapped order": "1. Who starred in Citizen Kane?\n2. What other films did [#1] star in?\n3. Who directed [#2]?",
+            "extra hop": "1. Who directed Citizen Kane?\n2. What other films did [#1] direct?\n3. Who starred in [#2]?\n4. What movies did [#3] star in?",
+            "reference to a later step": "1. Who starred in [#2]?\n2. Who directed Citizen Kane?",
+        }
+        for name, dec in cases.items():
+            for strict in (True, False):
+                with self.subTest(name=name, strict=strict):
+                    self.assertNotEqual(self.outcome(dec, strict), self.GOLD3)
+
+    def test_the_film_prefix_is_stripped_in_every_movie_template(self) -> None:
+        for dec in ("1. Who directed the film Citizen Kane?", "1. Who wrote the movie Citizen Kane?",
+                    "1. Who starred in the film Citizen Kane?", "1. Who are the actors in the film Citizen Kane?",
+                    "1. What actors were in the movie Citizen Kane?", "1. Who is the director of the film Citizen Kane?"):
+            with self.subTest(dec=dec):
+                self.assertNotIn(self.outcome(dec, strict=True), ("compile_fail", "exec_fail", "type_mismatch"))
+
+    def test_a_title_that_starts_with_movie_resolves(self) -> None:
+        self.assertEqual(self.outcome("1. Who directed Movie 43?", strict=True), {"Peter Farrelly"})

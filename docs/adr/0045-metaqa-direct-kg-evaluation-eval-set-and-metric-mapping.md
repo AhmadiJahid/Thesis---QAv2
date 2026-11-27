@@ -2,6 +2,8 @@
 
 - **Status:** accepted (lead, 2026-11-27, under Jahid's free hand on technical calls; Jahid's to
   reverse). "Decided by the lead" items are the lead's; "Implementer defaults" are the implementer's.
+  Items 7-9 and the item 6 confound text were added after the code review of 2f9e2ce, the same
+  day, **before any GPU arm ran**.
 - **Context:** ADR 0006 gives MetaQA end-to-end evaluation only, through the supervisor's GRAG system.
   GRAG was never handed over (issue #16), so no MetaQA answer number exists in v2. The repo has a
   direct path (PR #42): `scripts/kg.py` builds the KG from `kb.txt`, `scripts/evaluate_decompositions.py`
@@ -36,11 +38,13 @@
    GRAG route stays open if GRAG ever arrives.
 2. **The executor follows MetaQA's gold convention.** For a chain of two or more steps, the entity
    step 1 names is removed from every later step's result (`configs/metaqa_kg_eval.json`
-   `exclude_topic_after_first_step: true`). Gate: gold-like decompositions reach EM 300/300 on the
-   v1 set in both wordings, and 734/734 on the reproducible rows of the exp-039 set.
+   `exclude_topic_after_first_step: true`). Gate: in strict compile mode (item 7), gold-like
+   decompositions reach EM 300/300 on the v1 set and 734/734 on the reproducible rows of the
+   exp-039 set, in each of three wordings: the compiler's templates, natural wording, and natural
+   wording that keeps the question's "the film X" phrasing (it differs from plain natural wording on 29/300 and 143/750 rows).
 3. **The other three defects are fixed, and empty results are failures.** `write` joins the writer
-   rule; a placeholder step's direction is decided by what the referenced step produces (values →
-   reverse lookup, movies → projection); KB names ending in "?" resolve; an empty final result is
+   rule; a placeholder step's direction is checked against what the referenced step produces
+   (item 7); KB names ending in "?" resolve; an empty final result is
    the execution error `empty_result`, never a success. MetaQA gold sets are never empty (0 of
    39,093 test lines).
 4. **Eval set: 250 per hop, one seeded draw from the official vanilla test split.** n comes from the
@@ -52,7 +56,11 @@
    100/100. Per-file sha256s are pinned in `configs/metaqa_eval_set.json`; the drawn line indices
    and question hashes are in `experiments/exp-039/eval_set_manifest.json`. Question texts that
    repeat within a hop (10 lines at 1-hop, with conflicting answers) are excluded before drawing.
-   The v1 set stays as a separate legacy set.
+   The v1 set stays as a separate legacy set. **Residual risk:** the mirror is a third-party
+   upload, not the authors' release. The checks above pin its test files' size and v1-overlapping
+   content, but lines 101 onward were not compared against the official files (which could not be
+   downloaded), so an edit there by the uploader would go undetected. If the official Drive files
+   are ever obtained, comparing their sha256 with the pinned ones closes this.
 5. **Metric mapping.** The primary answer metric is **exact set match** (EM = Jaccard 1.0) over all
    items, a failed row scoring 0. Reported beside it, on the same items: compile rate, execute rate,
    Jaccard, **any-hit** (P ∩ G non-empty) and **RHits@1** = |P ∩ G| / |P|, the expected Hits@1 of a
@@ -67,13 +75,36 @@
    `configs/metaqa_arm_report.json` before any arm ran. Secondary: paired bootstrap CI and paired-t
    p on Jaccard, the same six cells, Holm on its own. An arm that cannot run is reported as skipped;
    its two cells leave the family, and the family size used is stated.
+   **Confound, stated with the result:** the compiler's templates were written for MetaQA's own
+   wording, which the prompted arms also see in their MetaQA few-shot exemplars and the fine-tuned
+   arms (`--no-few-shot`, trained on MuSiQue) never see. A fine-tune can therefore lose EM by
+   writing correct steps the compiler cannot parse. Two pre-declared secondaries separate this:
+   **EM on the items both arms of a pair compiled** (exact McNemar, own Holm family of six), and
+   **each arm's compile- and execution-failure reasons per hop**.
+7. **Strict compile mode is primary.** A placeholder step's wording decides its direction: a step
+   asking for movies ("What (other) films did [#1] direct?") is a reverse lookup and needs `[#k]` to
+   hold values; any other ("Who directed [#1]?", "What genres are [#2]?") is a projection and needs
+   `[#k]` to hold movies. A step whose need contradicts what step k produced fails to compile as
+   `type_mismatch` (`configs/metaqa_kg_eval.json` `compile_mode: strict`). The review showed that
+   repairing such steps lets a type-mismatched decomposition ("2. Who directed [#1]?" after a set
+   of people) score as gold. The lenient (repairing) mode is the **secondary** answer metric
+   (`configs/metaqa_kg_eval_lenient.json`): every arm also runs it, and the report gives lenient EM
+   with each arm's repaired-item count per hop, plus a lenient McNemar family of six.
+8. **"the film / the movie" is stripped in every movie template**, with the unstripped name tried
+   first so a title that starts with the word ("Movie 43", "Film Geek") still resolves.
+9. **Junction safety.** Never recursive-delete `.worktrees/`, a worktree or a data junction; remove
+   a worktree with `git worktree remove` and a junction only with `cmd /c rmdir <link>`; never link
+   from a worktree to the main checkout's `runs/` or another real data folder (docs/compute.md;
+   a recursive delete through such a link emptied the main `runs/` on 2026-11-27).
 
 ## Implementer defaults
 
-- The compiler gained templates for genre / release year / language / tags steps (a random draw
-  asks for them; v1's legacy sample was 98% actor questions) and infers a relation without the
-  entity's own words, so a title like "A Star Is Born" cannot pick `starred_actors`.
-- The oracle arm uses the natural wording. For the 16 unreproducible 1-hop rows it executes the
+- The compiler gained templates for genre / release year / language / tags steps, because
+  MetaQA's schema (nine relations) and the repo's MetaQA few-shot pool ask for them and no template
+  compiled them. It also infers a relation without the entity's own words, so a title like "A Star
+  Is Born" cannot pick `starred_actors`.
+- The oracle arm uses the natural wording (the other two wordings are gated, not reported as
+  arms). For the 16 unreproducible 1-hop rows it executes the
   nearest-miss path, so its EM ceiling (0.936 at 1-hop) is measured, not assumed.
 - The MetaQA prompting path (KB masking + e5-small few-shot retrieval) has not run for real in v2;
   `run.sh smoke` decodes 6 rows end to end before the arms spend GPU time.

@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from metaqa_arm_report import holm, mcnemar_exact_p, score_arm  # noqa: E402
+from metaqa_arm_report import failure_reasons, holm, mcnemar_cell, mcnemar_exact_p, repaired_count, score_arm  # noqa: E402
 
 
 class ArmReportTest(unittest.TestCase):
@@ -45,6 +45,21 @@ class ArmReportTest(unittest.TestCase):
             (p / "exec_fail.json").write_text("[]")
             with self.assertRaises(SystemExit):
                 score_arm(p, gold)
+
+    def test_failure_reasons_and_repaired_count_per_hop(self) -> None:
+        gold = {"q1": (1, {"A"}), "q2": (2, {"B"}), "q3": (2, {"C"})}
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d)
+            (p / "success.json").write_text(json.dumps([{"question": "q1", "kg_results": ["A"], "repaired_steps": [2]}]))
+            (p / "compile_fail.json").write_text(json.dumps([{"question": "q2", "error_reason": "type_mismatch: step 2"}]))
+            (p / "exec_fail.json").write_text(json.dumps([{"question": "q3", "error_reason": "empty_result: x"}]))
+            self.assertEqual(failure_reasons(p, gold), {"2": {"compile": {"type_mismatch": 1}, "exec": {"empty_result": 1}}})
+            self.assertEqual(repaired_count(p, gold), {"1": 1})
+
+    def test_mcnemar_cell_on_a_subset(self) -> None:
+        import numpy as np
+        c = mcnemar_cell(np.array([1.0, 1.0, 0.0]), np.array([0.0, 1.0, 0.0]))
+        self.assertEqual((c["n"], c["only_a"], c["only_b"]), (3, 1, 0))
 
 
 if __name__ == "__main__":

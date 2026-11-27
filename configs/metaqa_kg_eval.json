@@ -7,6 +7,8 @@
   "run_subdir": "metaqa_decomposition_eval",
   "write_error_analysis": true,
   "exclude_topic_after_first_step": true,
+  "compile_mode": "strict",
+  "_compile_mode_note": "strict (exp-039's PRIMARY scoring mode, pre-declared in ADR 0045 item 7 before any GPU arm ran): a placeholder step's wording decides its direction, and a step whose wording needs the other kind of set than the step it references produces fails to compile as type_mismatch. 'lenient' (configs/metaqa_kg_eval_lenient.json, the SECONDARY mode) repairs such a step from what the referenced step produced and counts the repaired items.",
   "_exclude_topic_note": "MetaQA's gold convention: for a chain of 2+ steps, the entity step 1 names (the topic) is removed from every later step's result. Measured on the v1 100/hop set by scripts/metaqa_gold_path_check.py (exp-039 Phase A): without it 42/100 2-hop and 48/100 3-hop gold answer sets are reachable by no relation path, with it 100/100. ADR 0045.",
 
   "paths_config": "paths.json"

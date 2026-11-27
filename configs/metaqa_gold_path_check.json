@@ -1,13 +1,21 @@
 {
   "_note": "Config for scripts/metaqa_gold_path_check.py on the legacy v1 set (first 100 lines of each MetaQA vanilla test file): does the KG built by scripts/kg.py reproduce MetaQA's gold answer sets along some relation path from an entity named in the question? A substitute for executing official qa_*_qtype.txt gold paths, which are not available. The legacy question files carry no topic brackets, so topics_template_key is null and every KB entity mentioned is tried. min_entity_len skips one-character KB strings (e.g. '4') when matching mentions.",
   "seed": 42,
-  "hops": [1, 2, 3],
+  "hops": [
+    1,
+    2,
+    3
+  ],
   "questions_template_key": "metaqa_questions_template",
   "answers_template_key": "metaqa_answers_template",
   "topics_template_key": null,
   "answer_separator": "|",
   "min_entity_len": 2,
-  "phrasings": ["compiler", "natural"],
+  "phrasings": [
+    "compiler",
+    "natural",
+    "question_wording"
+  ],
   "run_subdir": "metaqa_gold_path_check",
   "paths_config": "paths.json"
 }

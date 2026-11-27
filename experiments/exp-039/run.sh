@@ -43,10 +43,21 @@ need_eval_set() {
 }
 
 compile_execute() {  # $1 arm, $2 predictions json
-  if [ -f "$R/$1/ce/metaqa_e2e_metrics.json" ]; then log "compile-execute already complete: $R/$1/ce"; return; fi
-  log "compile-execute $1"
-  $PY scripts/run_metaqa_compile_execute.py --config metaqa_compile_execute_eval250.json \
-    --predictions "$2" --run-dir "$R/$1/ce" --seed 42
+  # ce = STRICT compile mode (primary, ADR 0045 item 7); ce_lenient = repaired (secondary).
+  if [ -f "$R/$1/ce/metaqa_e2e_metrics.json" ]; then
+    log "compile-execute (strict) already complete: $R/$1/ce"
+  else
+    log "compile-execute (strict) $1"
+    $PY scripts/run_metaqa_compile_execute.py --config metaqa_compile_execute_eval250.json \
+      --predictions "$2" --run-dir "$R/$1/ce" --seed 42
+  fi
+  if [ -f "$R/$1/ce_lenient/metaqa_e2e_metrics.json" ]; then
+    log "compile-execute (lenient) already complete: $R/$1/ce_lenient"
+  else
+    log "compile-execute (lenient) $1"
+    $PY scripts/run_metaqa_compile_execute.py --config metaqa_compile_execute_eval250_lenient.json \
+      --predictions "$2" --run-dir "$R/$1/ce_lenient" --seed 42
+  fi
 }
 
 decompose() {  # $1 arm, $2 model folder, rest: extra run_decomposer args
@@ -130,6 +141,7 @@ PYEOF
     args=()
     for arm in oracle qwen_prompted mistral_prompted mistral_ft qwen_ft; do
       [ -f "$R/$arm/ce/metaqa_e2e_metrics.json" ] && args+=(--arm "$arm=$R/$arm/ce")
+      [ -f "$R/$arm/ce_lenient/metaqa_e2e_metrics.json" ] && args+=(--arm-lenient "$arm=$R/$arm/ce_lenient")
     done
     $PY scripts/metaqa_arm_report.py --config metaqa_arm_report.json "${args[@]}" --run-dir "$R/report"
     ;;
