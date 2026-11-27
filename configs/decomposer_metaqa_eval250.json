@@ -1,0 +1,58 @@
+{
+  "_note": "exp-039 (ADR 0045): configs/decomposer.json with the questions pointed at the MetaQA eval set (250/hop drawn from the vanilla test split). Every other key is decomposer.json's, unchanged, so the MetaQA prompting path is exactly the one v1 and decomposer.json define.",
+  "seed": 42,
+  "guided": false,
+  "sample_size": null,
+  "hops": [
+    1,
+    2,
+    3
+  ],
+  "questions_template_key": "metaqa_eval250_questions_template",
+  "questions_format": "lines",
+  "unguided_hop_placeholder": "Unknown",
+  "hop_source": "gold",
+  "hop_predictions": {
+    "file": null,
+    "id_field": "query_id",
+    "hop_field": "predicted_hop"
+  },
+  "_hop_source_note": "'gold' is the MetaQA path's behaviour, unchanged: a guided run injects the hop depth of the question file the question was read from. The router-guided source ('predictions', joined on a query id) is a MuSiQue condition and needs a question source that carries ids, which 'lines' files do not; the field names are declared here anyway so this config states the interface rather than leaving a required key missing.",
+  "few_shot_exemplar_hop_count": "query",
+  "_few_shot_exemplar_hop_count_note": "v1 behaviour, unchanged: in a guided MetaQA run every few-shot exemplar's 'Hop count:' line states the QUERY's hop count. Jahid's 2026-08-19 decision to state each exemplar's own gold step count instead was taken for the MuSiQue conditions (configs/decomposer_musique.json sets 'exemplar_gold'), so it is not applied here: changing it would change MetaQA guided prompts, which no one asked for. Verified 2026-08-19 that this path renders exactly as before.",
+  "embed_models": {
+    "minilm": "sentence-transformers/all-MiniLM-L6-v2",
+    "e5-small": "intfloat/e5-small-v2"
+  },
+  "embed_model": "e5-small",
+  "retrieval": {
+    "input": null,
+    "mode": "typed",
+    "k": 5,
+    "modes": [
+      "raw",
+      "typed",
+      "uniform"
+    ],
+    "hop_fallback": 2
+  },
+  "few_shot": {
+    "ordering": "as_is",
+    "_ordering_note": "Present the k retrieved exemplars in retrieval-rank order, highest similarity first - the MetaQA path's behaviour since v1, unchanged. The key exists in both shared configs because run_decomposer.py requires it rather than defaulting it; the full statement of what the values mean, and why 'complexity_asc' is reserved but refused, is in configs/decomposer_musique.json where the ordering experiment lives (supervisor assignment A5, ADR 0032 item 5)."
+  },
+  "step_parser": {
+    "scaffold_truncate_at": [],
+    "_note": "Empty: the MetaQA path's step parsing is unchanged. The scaffold-label fix of issue #60 / ADR 0039 item 4 was measured on MuSiQue arms only and is set in configs/decomposer_musique.json, where its reasoning is stated. The key exists here because run_decomposer.py requires it in every shared config rather than defaulting it."
+  },
+  "few_shot_pool_key": "few_shot_decompositions",
+  "embedding_cache_key": "embedding_cache_dir",
+  "masking_config": "masking.json",
+  "logging": {
+    "anchor_ids_file": null,
+    "_anchor_ids_file_note": "Anchor prompt logging is OFF on the MetaQA path, and null is the way to say so rather than the way to leave it unsaid - the runner requires this key in every shared config. The 45 anchor ids (ADR 0033) are MuSiQue ids drawn from the ADR 0007 pinned 600, and this path's questions come from a 'lines' file that carries no ids at all, so there is nothing to join them onto. A MetaQA run therefore logs exactly what it logged before: the every-Nth prompt sample of the per-model 'logging.prompt_log_every'. Its metrics record anchor_prompts_logged 0 / anchor_prompts_expected 0. If an anchor set is ever drawn for MetaQA, point this key at it."
+  },
+  "output_subdir": "decomposer",
+  "progress_every": 10,
+  "model_limits_config": "model_limits.json",
+  "paths_config": "paths.json"
+}
