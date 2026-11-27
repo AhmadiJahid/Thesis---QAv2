@@ -156,9 +156,10 @@ def check_conditions(cfg: dict) -> None:
     print("[conditions]")
     conditions = require(cfg, "conditions")
     check(
-        "the three conditions briefed for issue #12, plus issue #27's router_guided",
+        "the three conditions briefed for issue #12, plus issue #27's router_guided and "
+        "exp-037's count_first",
         sorted(conditions) == [
-            "oracle_guided", "router_guided", "unguided", "unguided_capped"
+            "count_first", "oracle_guided", "router_guided", "unguided", "unguided_capped"
         ],
         str(sorted(conditions)),
     )
@@ -171,6 +172,8 @@ def check_conditions(cfg: dict) -> None:
         "oracle_guided": (True, None, "gold"),
         "unguided_capped": (False, 8, "gold"),
         "router_guided": (True, None, "predictions"),
+        # exp-037: unguided plus a self-stated count; covered in tests/test_count_first.py.
+        "count_first": (False, None, "gold"),
     }
     for name, (want_guided, want_cap, want_hop_source) in expected.items():
         got_name, block = rd.resolve_condition(cfg, name)

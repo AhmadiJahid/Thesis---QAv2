@@ -669,6 +669,25 @@ def _stages() -> list[Stage]:
             note="MuSiQue conditions: the hop count in the prompt comes from a router "
             "predictions file, joined by query id (issue #27)",
         ),
+        Stage(
+            name="decomposer_dry_run_musique_count_first",
+            cmd=[
+                sys.executable, COMPONENTS / "decomposer" / "run_decomposer.py",
+                "--model", "mistral_7b_instruct", "--config", "decomposer_musique.json",
+                "--condition", "count_first", "--dry-run", "--dry-run-limit", "9",
+                "--retrieval-input", MUSIQUE_CONDITIONS_RETRIEVAL,
+                "--allow-unpinned-eval-set",
+                "--output-root", decomposer_musique / "count_first",
+            ],
+            expect_dir_globs=[
+                (decomposer_musique / "count_first", "*/results.json"),
+                (decomposer_musique / "count_first", "*/metrics.json"),
+                (decomposer_musique / "count_first", "*/config.json"),
+            ],
+            note="MuSiQue conditions: exp-037 count-first - exemplars carry '[N hops]' and "
+            "the model is asked to state its own count first (parser: "
+            "tests/test_count_first.py)",
+        ),
         # The MuSiQue answering backend of issue #16: execute a decomposition and score the
         # answer it leads to. Dry runs, so the join, the context assembly and the [#k]
         # substitution chain all run with no weights loaded; EM/F1 are therefore null (a dry

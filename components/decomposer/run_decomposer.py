@@ -60,6 +60,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import os
 import random
 import re
 import statistics
@@ -71,6 +72,13 @@ from typing import Any, Callable, Sequence, TypeVar
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from count_first import (  # noqa: E402
+    CountFirstParse,
+    format_count_line,
+    insert_instruction_line,
+    parse_count_first,
+    summarize_count_first,
+)
 from anchor_set import (  # noqa: E402
     ANCHOR_PROMPT_PREFIX,
     AnchorSetError,
@@ -79,7 +87,7 @@ from anchor_set import (  # noqa: E402
 )
 from hop_matching import HOP_SOURCES, load_predicted_hops  # noqa: E402
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
-from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
+from run_artifacts import git_provenance, now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import (  # noqa: E402
     data_path,
     load_config,
@@ -122,7 +130,14 @@ _WORD_RX = re.compile(r"[A-Za-z]{2,}")
 #: ``hop_source`` belongs here for the same reason ``guided`` does - it says *which* hop
 #: count the prompt carries (the gold depth, or a router's prediction), which is exactly
 #: what separates the oracle-guided arm from the router-guided one (issue #27).
-_CONDITION_KEYS = frozenset({"guided", "stop_after_step_lines", "hop_source", "_note"})
+#: ``count_first`` (exp-037) belongs here for the same reason: it changes only what the prompt
+#: says about the hop count - the model is asked to STATE its own count before the steps -
+#: and how that statement is read back off the output. Absent means off, which is every
+#: condition that existed before it, so their prompts are byte-identical to before
+#: (tests/test_count_first.py checks that against golden hashes).
+_CONDITION_KEYS = frozenset(
+    {"guided", "stop_after_step_lines", "hop_source", "count_first", "_note"}
+)
 
 
 # --------------------------------------------------------------------------- IO
@@ -425,6 +440,57 @@ def resolve_step_line_cap(condition_name: str | None, condition: dict) -> int | 
             f"condition {condition_name!r}: stop_after_step_lines must be positive, got {cap}"
         )
     return cap
+
+
+def resolve_count_first(
+    condition_name: str | None,
+    condition: dict,
+    *,
+    guided: bool,
+    stop_after_step_lines: int | None,
+) -> dict | None:
+    """The condition's count-first settings, or None when the arm is not count-first.
+
+    A count-first arm (exp-037; the memo at the repo root, C1.3) shows each exemplar's
+    decomposition with a first line ``[N hops]`` (N = that exemplar's own gold step count),
+    adds ONE rule line to the prompt asking for that line, and strips the line the model
+    writes before its steps are scored. The count the model writes is its own prediction.
+
+    Refused combinations, because each would make the arm something other than "the
+    unguided arm plus a self-stated count":
+
+    - a guided arm (the prompt would carry the gold or a router's count as well),
+    - a step-line cap (the cap's stopper would count the count line as a step),
+
+    and, checked later in ``main`` where the facts are known, a run with no few-shot block
+    (the format would never be demonstrated) and an adapter run.
+    """
+    block = condition.get("count_first")
+    if block is None or block is False:
+        return None
+    src = f"condition {condition_name!r}"
+    if not isinstance(block, dict):
+        raise SystemExit(
+            f"{src}: count_first must be an object with 'instruction' and 'insert_after', "
+            f"got {block!r}"
+        )
+    unknown = sorted(set(block) - {"instruction", "insert_after", "_note"})
+    if unknown:
+        raise SystemExit(f"{src}: count_first sets unknown key(s) {unknown}")
+    for key in ("instruction", "insert_after"):
+        if not isinstance(block.get(key), str) or not block[key].strip():
+            raise SystemExit(f"{src}: count_first.{key} must be a non-empty string")
+    if guided:
+        raise SystemExit(
+            f"{src}: count_first is refused in a guided arm - the prompt would then carry a "
+            "hop count from outside the model as well as the model's own."
+        )
+    if stop_after_step_lines:
+        raise SystemExit(
+            f"{src}: count_first is refused with stop_after_step_lines - the step-line "
+            "stopper would count the '[N hops]' line as a step."
+        )
+    return {"instruction": block["instruction"], "insert_after": block["insert_after"]}
 
 
 def hop_bearing_lines(template: str) -> list[str]:
@@ -923,6 +989,7 @@ def format_few_shot_examples(
     ordering: str,
     ordering_seed: int | None = None,
     query_id: Any = None,
+    count_first: bool = False,
 ) -> str:
     """Format (question, decomposition) pairs. Omit the hop line when unguided.
 
@@ -940,12 +1007,19 @@ def format_few_shot_examples(
     :data:`FEW_SHOT_ORDERINGS`). This is the ONE place it is applied, for every few-shot
     source - reranked, bi-encoder and random alike - so that a run's ordering cannot be
     applied twice and cancel itself.
+
+    ``count_first`` (exp-037, unguided only) puts ``[N hops]`` as the first line of each
+    exemplar's decomposition, N being that exemplar's own gold step count
+    (:func:`exemplar_gold_hop_count`, the evaluator's splitter) - never the query's. False,
+    the default, leaves every block exactly as before.
     """
     if exemplar_hop_mode not in EXEMPLAR_HOP_MODES:
         raise SystemExit(
             f"unknown exemplar hop mode {exemplar_hop_mode!r} (expected one of "
             f"{list(EXEMPLAR_HOP_MODES)})"
         )
+    if count_first and hop_count is not None:
+        raise SystemExit("count_first exemplars are for unguided prompts only")
     blocks = []
     for ex in order_few_shot_examples(
         examples, ordering, ordering_seed=ordering_seed, query_id=query_id
@@ -960,6 +1034,11 @@ def format_few_shot_examples(
                 f"Hop count: {exemplar_hop}\n"
                 f"Question: {ex['question']}\n"
                 f"Decomposition:\n{ex['decomposition']}"
+            )
+        elif count_first:
+            block = (
+                f"Question: {ex['question']}\nDecomposition:\n"
+                f"{format_count_line(exemplar_gold_hop_count(ex))}\n{ex['decomposition']}"
             )
         else:
             block = f"Question: {ex['question']}\nDecomposition:\n{ex['decomposition']}"
@@ -2035,6 +2114,17 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--output-root", default=None)
     p.add_argument(
+        "--resume",
+        default=None,
+        help="Continue an interrupted run in this run directory (one that has "
+        f"{RESUME_KEY_FILE} and {PARTIAL_RESULTS_FILE} but no results.json). Refused unless "
+        "this invocation's resume key (git commit, effective prompt template, seed, retrieval "
+        "sha256, model, condition, decoding, query ids, ...) equals the recorded one. Rows "
+        "already in the partial file are kept as they are and not generated again; "
+        "results.json and metrics.json are built from all rows. Not combinable with "
+        "--output-root.",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="Assemble prompts and write artifacts without loading a model or generating.",
@@ -2058,6 +2148,70 @@ def _parse_args() -> argparse.Namespace:
         "before.",
     )
     return p.parse_args()
+
+
+#: Written into every run directory before the first row is generated; ``--resume`` compares
+#: it field by field with the resuming invocation's own key and refuses on any difference.
+RESUME_KEY_FILE = "resume_key.json"
+#: One JSON object per finished row, appended (flush + fsync) as each row completes, so a run
+#: that dies mid-decode keeps every row it finished.
+PARTIAL_RESULTS_FILE = "results.partial.jsonl"
+
+
+def resume_key(**fields: Any) -> dict[str, Any]:
+    """The identity a resumed run must share with the run it continues.
+
+    Everything that decides what a row's output is: code (git commit + the dirty file list),
+    the effective prompt template, seed, model, condition, quantization, few-shot ordering,
+    retrieval input and hop predictions (by sha256), decoding, the step parser, and the exact
+    ordered list of query ids. Values are JSON-normalised so a key read back from disk compares
+    equal to a freshly built one.
+    """
+    return json.loads(json.dumps(fields, sort_keys=True, default=str))
+
+
+def load_partial_results(output_dir: Path, *, expected_ids: Sequence[str]) -> dict[str, dict]:
+    """Rows already finished in ``output_dir`` (from ``results.partial.jsonl``), by query id.
+
+    A truncated LAST line (the process died while writing it) is dropped and the file is
+    rewritten without it; that row is simply generated again. Any other unreadable line, a
+    duplicate query id, or a query id that is not in this run's rows is a refusal.
+    """
+    path = output_dir / PARTIAL_RESULTS_FILE
+    if not path.exists():
+        return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    rows: list[dict] = []
+    for n, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            if n == len(lines) - 1:
+                print(f"[decomposer] --resume: dropping a truncated last line of {path}")
+                path.write_text(
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                    encoding="utf-8",
+                )
+                break
+            raise SystemExit(f"--resume: line {n + 1} of {path} is not valid JSON")
+    wanted = set(expected_ids)
+    out: dict[str, dict] = {}
+    for r in rows:
+        qid = str(r.get("query_id"))
+        if qid in out:
+            raise SystemExit(f"--resume: query id {qid!r} appears twice in {path}")
+        if qid not in wanted:
+            raise SystemExit(f"--resume: query id {qid!r} in {path} is not among this run's rows")
+        out[qid] = r
+    return out
+
+
+def append_partial_row(handle, row: dict) -> None:
+    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
 
 
 def sha256_file(path: Path) -> str:
@@ -2312,6 +2466,14 @@ def main() -> None:
     seed = args.seed if args.seed is not None else int(require(cfg, "seed"))
     guided = resolve_guided(args.guided, condition_name, condition, cfg)
     stop_after_step_lines = resolve_step_line_cap(condition_name, condition)
+    count_first = resolve_count_first(
+        condition_name, condition, guided=guided, stop_after_step_lines=stop_after_step_lines
+    )
+    if count_first and args.adapter:
+        raise SystemExit(
+            "count_first is refused with --adapter: the adapter was trained on a prompt and "
+            "a target without the '[N hops]' line."
+        )
     hop_source_record = resolve_hop_source(
         condition_name,
         condition,
@@ -2409,6 +2571,15 @@ def main() -> None:
         else runs_path(paths_cfg, require(cfg, "output_subdir"), args.model)
     )
     output_dir = output_root / current_run_id
+    if args.resume is not None:
+        if args.output_root is not None:
+            raise SystemExit("--resume and --output-root are exclusive: the run dir is given")
+        output_dir = Path(args.resume)
+        output_root = output_dir.parent
+        if not (output_dir / RESUME_KEY_FILE).exists():
+            raise SystemExit(f"--resume: {output_dir / RESUME_KEY_FILE} not found")
+        if (output_dir / "results.json").exists():
+            raise SystemExit(f"--resume: {output_dir} already has results.json (run complete)")
 
     # Prompt file: the unguided variant when one exists and the run is unguided.
     unguided_prompt_file = require(model_cfg, "unguided_prompt_file")
@@ -2470,6 +2641,37 @@ def main() -> None:
         and "{few_shot_examples}" in prompt_template
         and not args.no_few_shot
     )
+
+    # Count-first (exp-037): one rule line added to the unguided template, after the prompt
+    # guards above ran on the unmodified file. The file's own sha256 stays prompt_sha256;
+    # the effective template is hashed separately so the arm's prompt is checkable.
+    count_first_record: dict[str, Any] | None = None
+    if count_first:
+        if not few_shot_enabled:
+            raise SystemExit(
+                f"condition {condition_name!r}: count_first needs a few-shot block - the "
+                "'[N hops]' format is demonstrated by the exemplars, and this run has none "
+                "(few_shot.enabled false, no {few_shot_examples} slot, or --no-few-shot)."
+            )
+        try:
+            prompt_template = insert_instruction_line(
+                prompt_template,
+                instruction=count_first["instruction"],
+                insert_after=count_first["insert_after"],
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                f"condition {condition_name!r}: count_first cannot be applied to "
+                f"{prompt_path}: {exc}"
+            ) from exc
+        count_first_record = {
+            **count_first,
+            "count_line_format": "[{n} hops]",
+            "exemplar_count": "each exemplar's own gold step count (exemplar_gold_hop_count)",
+            "effective_template_sha256": hashlib.sha256(
+                prompt_template.encode("utf-8")
+            ).hexdigest(),
+        }
 
     # Computed once here rather than inline in the snapshot: the adapter prompt-parity guard
     # below compares it against the training record's own prompt_sha256 when that record
@@ -2547,6 +2749,8 @@ def main() -> None:
         "guided": guided,
         "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
+        # Only on a count-first arm, so every other arm's snapshot keeps its schema.
+        **({"count_first": count_first_record} if count_first_record else {}),
         "seed": seed,
         "seeded": seeded,
         "sample_size": sample_size,
@@ -2881,6 +3085,59 @@ def main() -> None:
     if args.dry_run:
         inference_rows = inference_rows[: max(0, args.dry_run_limit)]
 
+    # ---- resume key: checked BEFORE the model loads, so a refused resume costs nothing ----
+    git_record = git_provenance()
+    this_key = resume_key(
+        git_commit=git_record.get("commit"),
+        git_dirty_files=git_record.get("dirty_files"),
+        effective_template_sha256=hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
+        seed=seed,
+        model=args.model,
+        model_id=require(model_cfg, "model_id"),
+        adapter=args.adapter,
+        no_few_shot=bool(args.no_few_shot),
+        condition=condition_name,
+        condition_settings=condition,
+        guided=guided,
+        quantization=quantization,
+        few_shot_ordering=few_shot_ordering,
+        few_shot_ordering_seed=few_shot_ordering_seed,
+        retrieval_sha256=retrieval_sha256,
+        retrieval_mode=retrieval_mode,
+        retrieval_k=retrieval_k,
+        hop_predictions_sha256=hop_source_record.get("predictions_file_sha256"),
+        generation=generation,
+        post_process=post_cfg,
+        stop_after_step_lines=stop_after_step_lines,
+        dry_run=bool(args.dry_run),
+        query_ids=[str(r["query_id"]) for r in inference_rows],
+    )
+    resumed_rows: dict[str, dict] = {}
+    if args.resume is not None:
+        if any(r["query_id"] is None for r in inference_rows):
+            raise SystemExit("--resume needs a query id on every row")
+        recorded = json.loads((output_dir / RESUME_KEY_FILE).read_text(encoding="utf-8"))
+        differ = sorted(k for k in set(recorded) | set(this_key) if recorded.get(k) != this_key.get(k))
+        if differ:
+            raise SystemExit(
+                f"--resume refused: this invocation differs from the run in {output_dir} on "
+                f"{differ}. A resumed run must be the same run."
+            )
+        resumed_rows = load_partial_results(
+            output_dir, expected_ids=[str(r["query_id"]) for r in inference_rows]
+        )
+        print(
+            f"[decomposer] --resume: {len(resumed_rows)} of {len(inference_rows)} rows already "
+            f"finished in {output_dir}; generating the rest"
+        )
+        snapshot["resume"] = {
+            "resumed": True,
+            "rows_from_partial": len(resumed_rows),
+            "resume_attempt_run_id": current_run_id,
+        }
+        snapshot["run_id"] = output_dir.name
+        snapshot["output_root"] = str(output_root)
+
     # ---- model ----
     model = tokenizer = None
     size_record = unasserted_note("decomposer", require(model_cfg, "model_id"))
@@ -2905,6 +3162,11 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     prompts_dir = output_dir / "prompts_log"
     prompts_dir.mkdir(exist_ok=True)
+    if args.resume is None:
+        (output_dir / RESUME_KEY_FILE).write_text(
+            json.dumps(this_key, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    partial_handle = open(output_dir / PARTIAL_RESULTS_FILE, "a", encoding="utf-8")
 
     results: list[dict] = []
     fallback_rng = new_rng(seed)
@@ -2983,6 +3245,7 @@ def main() -> None:
                 ordering=few_shot_ordering,
                 ordering_seed=few_shot_ordering_seed,
                 query_id=row.get("query_id"),
+                count_first=bool(count_first),
             )
             if sampled
             else ""
@@ -3000,6 +3263,22 @@ def main() -> None:
                 shuffle_tally["equal_to_reversed"] += permutation == list(
                     range(len(permutation) - 1, -1, -1)
                 )
+        if str(row.get("query_id")) in resumed_rows:
+            # Finished in an earlier attempt: keep its row exactly as recorded, and count its
+            # anchor prompt file if that attempt wrote one.
+            for log_path in select_prompt_log_paths(
+                prompts_dir,
+                position=i + 1,
+                gold_hop=gold_hop,
+                query_id=row.get("query_id"),
+                prompt_log_every=prompt_log_every,
+                anchor_ids=anchor_ids,
+                dry_run=args.dry_run,
+            ):
+                if log_path.name.startswith(ANCHOR_PROMPT_PREFIX) and log_path.exists():
+                    anchor_prompts_logged += 1
+            results.append(resumed_rows[str(row.get("query_id"))])
+            continue
         cost: dict[str, Any] = {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -3056,6 +3335,15 @@ def main() -> None:
                 )
             )
         decomposition = gen["decomposition"] if gen else ""
+        step_lines_row = gen["step_lines"] if gen else 0
+        cf_parse: CountFirstParse | None = None
+        if count_first and gen:
+            # The count line is removed BEFORE anything is recorded as the decomposition,
+            # so the evaluator scores the steps only. A row with no readable count is kept
+            # and scored like any other; its status is counted in metrics.json.
+            cf_parse = parse_count_first(decomposition)
+            decomposition = cf_parse.steps_text
+            step_lines_row = step_line_count(decomposition)
         if gen:
             cost = {k: gen[k] for k in cost}
 
@@ -3143,7 +3431,7 @@ def main() -> None:
                 # Same fields in all three arms, whether or not a cap applies. The raw
                 # generation is kept because `decomposition` may have been trimmed.
                 "decomposition_raw": gen["text"] if gen else "",
-                "step_lines": gen["step_lines"] if gen else 0,
+                "step_lines": step_lines_row,
                 "hit_max_new_tokens": gen["hit_max_new_tokens"] if gen else None,
                 "stopped_at_step_line_cap": gen["stopped_at_step_line_cap"] if gen else None,
                 **cost,
@@ -3158,8 +3446,28 @@ def main() -> None:
                     if few_shot_ordering_seed is not None
                     else {}
                 ),
+                # Only on a count-first arm (exp-037), so every other results.json keeps its
+                # schema. Null on a dry run, which generates nothing to parse.
+                **(
+                    {
+                        "count_first_status": cf_parse.status if cf_parse else None,
+                        "count_first_predicted_hops": (
+                            cf_parse.predicted_hops if cf_parse else None
+                        ),
+                        "count_first_line": cf_parse.count_line if cf_parse else None,
+                        "count_first_extra_count_lines": (
+                            cf_parse.extra_count_lines if cf_parse else None
+                        ),
+                    }
+                    if count_first
+                    else {}
+                ),
             }
         )
+
+        append_partial_row(partial_handle, results[-1])
+
+    partial_handle.close()
 
     # The anchor sheet's coverage claim is only worth something if it is checked. It is
     # checked, but NOT here: the refusal is deferred to the very end of the run, after
@@ -3220,6 +3528,19 @@ def main() -> None:
         # the routed one, and which predictions file produced it.
         "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
+        # exp-037: the self-predicted count's accuracy vs the gold hop count, its agreement
+        # with the steps actually emitted, and how many rows had no readable count (kept and
+        # scored, never dropped). Only on a count-first arm; null on a dry run.
+        **(
+            {
+                "count_first": (
+                    summarize_count_first(results) if not args.dry_run else None
+                ),
+                "count_first_settings": count_first_record,
+            }
+            if count_first
+            else {}
+        ),
         # Two different questions, deliberately reported separately:
         #   rows_at_step_line_cap        - how many decompositions HAVE cap-many steps, by the
         #                                  evaluator's step normalization (src/step_lines.py).
