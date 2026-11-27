@@ -186,9 +186,10 @@ class TestGoldComparison(unittest.TestCase):
     From ``tests/fixtures/data_root/metaqa/kb.txt``: Ada Mireles directed Glass Harbor,
     Winter Marbles and The Tin Compass; their languages are Esperanto, Volapuk and Esperanto.
     So the three executable fixture rows produce ``{Ada Mireles}``,
-    ``{Glass Harbor, Winter Marbles, The Tin Compass}`` and ``{Esperanto, Volapuk}``, which
-    are exactly the gold answer sets in ``answers_{1,2,3}hop.txt`` — 3 exact matches, mean
-    Jaccard 1.0. Coverage per hop is 1 answered of 3 / 2 / 2 gold questions.
+    ``{Winter Marbles, The Tin Compass}`` (the topic movie Glass Harbor is dropped after step
+    1, MetaQA's gold convention — ADR 0045; the fixture gold used to include it, which
+    contradicted the real data) and ``{Esperanto, Volapuk}``, which are exactly the gold
+    answer sets in ``answers_{1,2,3}hop.txt`` — 3 exact matches, mean Jaccard 1.0. Coverage per hop is 1 answered of 3 / 2 / 2 gold questions.
     """
 
     @classmethod

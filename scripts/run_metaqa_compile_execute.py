@@ -422,6 +422,7 @@ def main() -> None:
         # Always written: the gold comparison below reads success.json. They hold question
         # and answer text and land under the gitignored runs root, never in git.
         output_dir=analysis_dir,
+        exclude_topic=bool(require(kg_cfg, "exclude_topic_after_first_step")),
     )
     coverage = rate.as_dict()
 
@@ -647,6 +648,7 @@ def main() -> None:
         "created_utc": now_iso(),
         "config_path": cfg.get("_config_path"),
         "kg_eval_config_path": kg_cfg.get("_config_path"),
+        "exclude_topic_after_first_step": require(kg_cfg, "exclude_topic_after_first_step"),
         "answer_accuracy_config_path": acc_cfg.get("_config_path"),
         "backend_label": backend_label,
         "grag_wired": GRAG_WIRED,

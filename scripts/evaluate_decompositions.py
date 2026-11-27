@@ -94,7 +94,9 @@ REL_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\b(director|directed|direct)\b", re.I), "directed_by"),
 
     # Writers / screenwriters
-    (re.compile(r"\b(writer|writers|wrote|written|screenwriter|screenwriters|scriptwriter|scriptwriters|screenplay)\b", re.I), "written_by"),
+    # "write"/"writes"/"writing" were missing: "What movies did X write?" failed as
+    # cannot_infer_relation (exp-039 Phase A, 21/100 gold-like 2-hop rows).
+    (re.compile(r"\b(writer|writers|write|writes|writing|wrote|written|screenwriter|screenwriters|scriptwriter|scriptwriters|screenplay)\b", re.I), "written_by"),
 
     # Genres / types (MetaQA uses has_genre)
     (re.compile(r"\b(genre|genres|type|types)\b", re.I), "has_genre"),
@@ -106,7 +108,7 @@ REL_RULES: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"\b(release year|release years|released|release date|release dates|year|years)\b", re.I), "release_year"),
 
     # Tags / ratings / votes
-    (re.compile(r"\b(tags?)\b", re.I), "has_tags"),
+    (re.compile(r"\b(tags?|tagged)\b", re.I), "has_tags"),
     (re.compile(r"\b(imdb rating)\b", re.I), "has_imdb_rating"),
     (re.compile(r"\b(imdb votes)\b", re.I), "has_imdb_votes"),
 ]
@@ -154,6 +156,25 @@ RX_WHO_IS_THE_X_OF_MOVIE = re.compile(r"^who\s+is\s+the\s+.+?\s+of\s+(?P<movie>.
 RX_WHAT_MOVIES_WAS_MOVIE_DIRECTED_BY = re.compile(r"^what\s+movies?\s+was\s+(?P<movie>.+?)\s+directed\s+by\??$", re.I)
 RX_WHAT_MOVIES_WAS_MOVIE_WRITTEN_BY = re.compile(r"^what\s+movies?\s+was\s+(?P<movie>.+?)\s+(?:screenplay\s+)?written\s+by\??$", re.I)
 
+# F) Movie -> attribute values, and attribute value -> movies (exp-039, ADR 0045).
+# v1 covered only the people relations by name; a random draw from the vanilla test split
+# also asks for genre, release year, language and tags (1-hop: 99/250 rows of the exp-039
+# eval set), which no template compiled. The optional "the movie"/"the film" prefix is
+# stripped, but a bare leading "The" is part of the title ("The Order") and is kept.
+_MOVIE_PREFIX = r"(?:(?:the\s+)?(?:movie|film)\s+)?"
+RX_WHAT_IS_THE_X_OF_MOVIE = re.compile(
+    r"^(?:what|which)\s+(?:is|are|was|were)\s+the\s+.+?\s+of\s+" + _MOVIE_PREFIX + r"(?P<movie>.+?)\??$", re.I)
+RX_WHAT_ATTR_IS_MOVIE = re.compile(
+    r"^(?:what|which)\s+(?:genres?|types?|languages?)\s+(?:is|are|was|were)\s+" + _MOVIE_PREFIX
+    + r"(?P<movie>.+?)(?:\s+in)?\??$", re.I)
+RX_WHEN_WAS_MOVIE_RELEASED = re.compile(
+    r"^(?:when|what\s+year)\s+(?:was|were)\s+" + _MOVIE_PREFIX + r"(?P<movie>.+?)\s+released\??$", re.I)
+RX_WORDS_DESCRIBE_MOVIE = re.compile(
+    r"^(?:(?:what|which)\s+(?:words|terms|tags)\s+(?:describe|are\s+applicable\s+to|apply\s+to)\s+|describe\s+)"
+    + _MOVIE_PREFIX + r"(?P<movie>.+?)[?.]?$", re.I)
+RX_MOVIES_ABOUT_VALUE = re.compile(
+    r"^what\s+(?:movies|films)\s+(?:are\s+about|have\s+the\s+tags?)\s+(?P<value>.+?)\??$", re.I)
+
 # E) Placeholder-based steps
 # "What other movies were directed by [#1]?" -> MOVIES_WITH_VALUE(ref_step=1)
 RX_OTHER_MOVIES_BY_PLACEHOLDER = re.compile(r"^what\s+other\s+(movies|films).*\bby\b\s+\[#(?P<k>\d+)\]\??$", re.I)
@@ -163,13 +184,42 @@ RX_OTHER_MOVIES_BY_PLACEHOLDER = re.compile(r"^what\s+other\s+(movies|films).*\b
 RX_PROJECT_VALUES_FROM_MOVIESET = re.compile(r"^(who|what|when).*\[#(?P<k>\d+)\].*$", re.I)
 
 
+#: What each op produces. MetaQA's KB is bipartite: every triple is movie -> value, so a
+#: step's output is either a movie set or a value set (people, genres, years, ...).
+_OUTPUT_KIND = {
+    "VALUES_OF_MOVIE": "values",
+    "MOVIES_WITH_VALUE": "movies",
+    "PROJECT_VALUES_FROM_MOVIES": "values",
+}
+
+
 def compile_decomposition(decomposition: str) -> List[StepOp]:
+    """Compile a numbered decomposition into KG ops.
+
+    A placeholder step's direction is decided by what the step it references produces,
+    not by its wording alone. If ``[#k]`` holds values (people, genres, ...), the only
+    reading with a non-empty answer in a bipartite movie KB is the reverse lookup
+    value -> movies ("What movies did [#1] direct?"); compiling it as a forward
+    projection from those values - as the v1 compiler did unless the step said
+    "what other movies ... by [#k]" - executes to an empty set for every such step
+    (exp-039 Phase A: 71/100 natural-phrasing 3-hop gold-like rows). If ``[#k]`` holds
+    movies, the step is a projection movie -> values. A reference to a step that does
+    not exist yet keeps the projection op, so execution reports it as a bad reference.
+    """
     lines = [ln.strip() for ln in decomposition.split("\n") if ln.strip()]
     ops: List[StepOp] = []
 
     for ln in lines:
         step = normalize_step_text(ln)
-        rel = infer_relation(step)
+        # Inferred lazily: a template with a fixed relation ("Which words describe M?")
+        # must not fail on a step whose wording names no relation keyword. A step that
+        # needs an inferred relation and has none still fails as cannot_infer_relation,
+        # and so does a step that matches no template and names no relation (unchanged).
+        try:
+            rel: Optional[str] = infer_relation(step)
+            rel_error: Optional[ValueError] = None
+        except ValueError as exc:
+            rel, rel_error = None, exc
 
         ph = PLACEHOLDER_RX.search(step)
         has_ph = ph is not None
@@ -178,20 +228,23 @@ def compile_decomposition(decomposition: str) -> List[StepOp]:
         m = RX_OTHER_MOVIES_BY_PLACEHOLDER.match(step)
         if m:
             # reverse lookup: values from step k -> movies
-            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=rel, ref_step=int(m.group("k"))))
+            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=_need(rel, rel_error), ref_step=int(m.group("k"))))
             continue
 
         if has_ph:
-            ops.append(
-                StepOp(op="PROJECT_VALUES_FROM_MOVIES", relation=rel, ref_step=int(ph.group(1)))
-            )
+            k = int(ph.group(1))
+            ref_kind = _OUTPUT_KIND[ops[k - 1].op] if 1 <= k <= len(ops) else None
+            if ref_kind == "values":
+                ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=_need(rel, rel_error), ref_step=k))
+            else:
+                ops.append(StepOp(op="PROJECT_VALUES_FROM_MOVIES", relation=_need(rel, rel_error), ref_step=k))
             continue
 
         # ----- 2) Non-placeholder steps -----
         m = RX_PERSON_DID_VERB_IN.match(step)
         if m:
             person = m.group("person").strip().rstrip("?")
-            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=rel, entity=person))
+            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=_need(rel, rel_error), entity=person))
             continue
 
         m = RX_PERSON_WAS_IN.match(step)
@@ -204,7 +257,7 @@ def compile_decomposition(decomposition: str) -> List[StepOp]:
         m = RX_PERSON_DIRECT_WRITE.match(step)
         if m:
             person = m.group("person").strip().rstrip("?")
-            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=rel, entity=person))
+            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation=_need(rel, rel_error), entity=person))
             continue
 
         m = RX_WHO_DIRECTED_MOVIE.match(step)
@@ -237,7 +290,8 @@ def compile_decomposition(decomposition: str) -> List[StepOp]:
 
         m = RX_WHO_IS_THE_X_OF_MOVIE.match(step)
         if m:
-            ops.append(StepOp(op="VALUES_OF_MOVIE", relation=rel, movie=m.group("movie").strip().rstrip("?")))
+            movie = m.group("movie").strip().rstrip("?")
+            ops.append(StepOp(op="VALUES_OF_MOVIE", relation=_infer_without(step, movie), movie=movie))
             continue
 
         m = RX_WHAT_MOVIES_WAS_MOVIE_DIRECTED_BY.match(step)
@@ -254,9 +308,44 @@ def compile_decomposition(decomposition: str) -> List[StepOp]:
             )
             continue
 
+        m = RX_WHAT_IS_THE_X_OF_MOVIE.match(step) or RX_WHAT_ATTR_IS_MOVIE.match(step)
+        if m:
+            movie = m.group("movie").strip().rstrip("?")
+            ops.append(StepOp(op="VALUES_OF_MOVIE", relation=_infer_without(step, movie), movie=movie))
+            continue
+
+        m = RX_WHEN_WAS_MOVIE_RELEASED.match(step)
+        if m:
+            ops.append(StepOp(op="VALUES_OF_MOVIE", relation="release_year", movie=m.group("movie").strip()))
+            continue
+
+        m = RX_WORDS_DESCRIBE_MOVIE.match(step)
+        if m:
+            ops.append(StepOp(op="VALUES_OF_MOVIE", relation="has_tags", movie=m.group("movie").strip().rstrip("?.")))
+            continue
+
+        m = RX_MOVIES_ABOUT_VALUE.match(step)
+        if m:
+            ops.append(StepOp(op="MOVIES_WITH_VALUE", relation="has_tags", entity=m.group("value").strip().rstrip("?")))
+            continue
+
+        if rel is None:
+            raise rel_error  # type: ignore[misc]
         raise NotImplementedError(f"Unsupported step template: {step!r}")
 
     return ops
+
+
+def _need(rel: Optional[str], err: Optional[ValueError]) -> str:
+    if rel is None:
+        raise err if err is not None else ValueError("no relation")
+    return rel
+
+
+def _infer_without(step: str, entity: str) -> str:
+    """Infer the relation from the step with the entity's own words removed, so a title
+    such as "A Star Is Born" cannot select starred_actors."""
+    return infer_relation(step.replace(entity, " "))
 
 
 # ============================================================
@@ -268,26 +357,72 @@ class KGExecutionError(Exception):
     pass
 
 
+class EmptyResultError(Exception):
+    """The chain ran but its final step produced no entity.
+
+    MetaQA gold answer sets are never empty, so an empty result is a failure of the
+    decomposition (or of its compilation), never an answer. It is reported as its own
+    execution-error class so it cannot pass as a silent success.
+    """
+
+
 def must_entity_id(kg: MetaQAKG, name: str) -> int:
-    if name not in kg.entity_to_id:
-        raise KeyError(name)
-    return kg.entity_to_id[name]
+    if name in kg.entity_to_id:
+        return kg.entity_to_id[name]
+    # The compiler strips a trailing "?" (the step's question mark), which also strips it
+    # from KB names that end in one, e.g. "What Ever Happened to Baby Jane?". Retry with it
+    # restored; a name is only ever matched exactly as the KB spells it.
+    if name + "?" in kg.entity_to_id:
+        return kg.entity_to_id[name + "?"]
+    raise KeyError(name)
+
+
+def topic_entity_id(kg: MetaQAKG, ops: List[StepOp]) -> Optional[int]:
+    """The KB id of the entity the first step names (its movie or value), if any."""
+    if not ops:
+        return None
+    name = ops[0].movie if ops[0].op == "VALUES_OF_MOVIE" else ops[0].entity
+    if name is None:
+        return None
+    try:
+        return must_entity_id(kg, name)
+    except KeyError:
+        return None
 
 
 def exec_ops(
     kg: MetaQAKG,
     reverse_index: Dict[Tuple[str, int], Set[int]],
     ops: List[StepOp],
+    exclude_topic: bool = False,
 ) -> Set[int]:
-    """Execute ops sequentially; returns the ID set produced by the last op."""
+    """Execute ops sequentially; returns the ID set produced by the last op.
+
+    With ``exclude_topic``, the entity named by step 1 (the question's topic entity) is
+    removed from the result of every later step. This is MetaQA's gold convention for
+    multi-hop questions: "who co-directed with X" does not answer X, and "genres of films
+    by the director of M" ranges over the director's *other* films. Measured on the v1
+    100/hop set (exp-039 Phase A, scripts/metaqa_gold_path_check.py): without it 42/100
+    2-hop and 48/100 3-hop gold sets are reachable by no relation path; with it 100/100
+    are. A one-step chain is untouched (1-hop gold keeps the topic, e.g. the documentary
+    "Lemmy" starring Lemmy).
+
+    Raises ``EmptyResultError`` when the final step produces no entity.
+    """
     results: Dict[int, Set[int]] = {}
+    topic = topic_entity_id(kg, ops) if exclude_topic else None
+
+    def _store(i: int, ids: Set[int]) -> None:
+        if topic is not None and i > 1:
+            ids = ids - {topic}
+        results[i] = ids
 
     for i, op in enumerate(ops, start=1):
         if op.op == "VALUES_OF_MOVIE":
             if not op.movie:
                 raise KGExecutionError(f"Step {i} missing movie")
             mid = must_entity_id(kg, op.movie)
-            results[i] = {oid for rel, oid in kg.out_adj[mid] if rel == op.relation}
+            _store(i, {oid for rel, oid in kg.out_adj[mid] if rel == op.relation})
             continue
 
         if op.op == "MOVIES_WITH_VALUE":
@@ -296,7 +431,7 @@ def exec_ops(
             if op.entity is not None:
                 vid = must_entity_id(kg, op.entity)
                 movie_ids |= reverse_index.get((op.relation, vid), set())
-                results[i] = movie_ids
+                _store(i, movie_ids)
                 continue
 
             if op.ref_step is not None:
@@ -305,7 +440,7 @@ def exec_ops(
                     raise KGExecutionError(f"Step {i} refers to missing step #{op.ref_step}")
                 for vid in prev_vals:
                     movie_ids |= reverse_index.get((op.relation, vid), set())
-                results[i] = movie_ids
+                _store(i, movie_ids)
                 continue
 
             raise KGExecutionError(f"Step {i} missing entity/ref")
@@ -322,12 +457,15 @@ def exec_ops(
                 for rel, oid in kg.out_adj[mid]:
                     if rel == op.relation:
                         vals.add(oid)
-            results[i] = vals
+            _store(i, vals)
             continue
 
         raise KGExecutionError(f"Unknown op: {op.op}")
 
-    return results[len(ops)]
+    final = results[len(ops)]
+    if not final:
+        raise EmptyResultError(f"step {len(ops)} produced no entity")
+    return final
 
 
 # ============================================================
@@ -364,6 +502,7 @@ def evaluate_decomposition_rate(
     results_json_path: str | Path,
     max_items: Optional[int] = None,
     output_dir: Optional[str | Path] = None,
+    exclude_topic: bool = False,
 ) -> DecompositionMetrics:
     items = json.loads(Path(results_json_path).read_text(encoding="utf-8"))
     if not isinstance(items, list):
@@ -411,7 +550,7 @@ def evaluate_decomposition_rate(
         compiled_ok += 1
 
         try:
-            results = exec_ops(kg, reverse_index, ops)
+            results = exec_ops(kg, reverse_index, ops, exclude_topic=exclude_topic)
             executed_ok += 1
             readable = [kg.id_to_entity[rid] for rid in results]
             success_items.append({**it, "ops": [str(o) for o in ops], "kg_results": readable})
@@ -420,6 +559,12 @@ def evaluate_decomposition_rate(
             exec_fail_reasons["entity_not_in_kb"] += 1
             exec_fail_items.append(
                 {**it, "ops": [str(o) for o in ops], "error_reason": f"entity_not_in_kb: {exc}"}
+            )
+        except EmptyResultError as exc:
+            exec_fail += 1
+            exec_fail_reasons["empty_result"] += 1
+            exec_fail_items.append(
+                {**it, "ops": [str(o) for o in ops], "error_reason": f"empty_result: {exc}"}
             )
         except KGExecutionError as exc:
             exec_fail += 1
@@ -527,6 +672,7 @@ def main() -> None:
         args.predictions,
         max_items=int(max_items) if max_items is not None else None,
         output_dir=run_dir if require(cfg, "write_error_analysis") else None,
+        exclude_topic=bool(require(cfg, "exclude_topic_after_first_step")),
     )
     print_metrics(metrics_obj)
 
@@ -551,6 +697,7 @@ def main() -> None:
         "run_dir": str(run_dir),
         "seed": seed,
         "write_error_analysis": require(cfg, "write_error_analysis"),
+        "exclude_topic_after_first_step": require(cfg, "exclude_topic_after_first_step"),
     }
     write_run_artifacts(
         run_dir,

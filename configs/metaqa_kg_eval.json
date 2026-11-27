@@ -6,6 +6,8 @@
   "max_items": null,
   "run_subdir": "metaqa_decomposition_eval",
   "write_error_analysis": true,
+  "exclude_topic_after_first_step": true,
+  "_exclude_topic_note": "MetaQA's gold convention: for a chain of 2+ steps, the entity step 1 names (the topic) is removed from every later step's result. Measured on the v1 100/hop set by scripts/metaqa_gold_path_check.py (exp-039 Phase A): without it 42/100 2-hop and 48/100 3-hop gold answer sets are reachable by no relation path, with it 100/100. ADR 0045.",
 
   "paths_config": "paths.json"
 }
