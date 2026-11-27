@@ -158,34 +158,198 @@ class TestComparePlan(unittest.TestCase):
             with self.subTest(family=name):
                 self.assertEqual(fam["size"], len(fam["pairs"]) * len(fam["strata"]) * n_metrics)
                 for p in fam["pairs"]:
-                    self.assertTrue(RUN_CONFIG["compare"]["pairs"][p]["in_families"])
+                    if p != "difference_of_differences":
+                        self.assertTrue(RUN_CONFIG["compare"]["pairs"][p]["in_families"])
 
     def test_context_pairs_are_in_no_family(self) -> None:
         in_fam = {p for f in RUN_CONFIG["compare"]["families"].values() for p in f["pairs"]}
         for name, p in RUN_CONFIG["compare"]["pairs"].items():
             self.assertEqual(name in in_fam, p["in_families"], name)
 
-    def test_fp16_only_drops_the_4bit_pairs_and_says_so(self) -> None:
-        pairs, families = self.cmp.plan(RUN_CONFIG, fp16_only=True)
+    def test_pair_b_is_the_one_primary_and_heads_the_first_family(self) -> None:
+        pairs = RUN_CONFIG["compare"]["pairs"]
+        self.assertEqual([k for k, v in pairs.items() if v.get("primary")], ["b_finetune_gain_qwen"])
+        b = pairs["b_finetune_gain_qwen"]
+        self.assertEqual((b["system_a"], b["system_b"]), ("exp036_4bit", "exp027_qwen35_9b_prompting_4bit"))
+        self.assertEqual(RUN_CONFIG["compare"]["families"]["F1_primary_overall"]["pairs"], ["b_finetune_gain_qwen"])
+        self.assertIn("PRIMARY", RUN_CONFIG["eval"]["4bit"]["role"])
+
+    def test_dod_is_qwen_gain_minus_mistral_gain_and_is_its_own_family(self) -> None:
+        dod = RUN_CONFIG["compare"]["difference_of_differences"]
+        b = RUN_CONFIG["compare"]["pairs"]["b_finetune_gain_qwen"]
+        self.assertEqual(dod["qwen_gain"], {"system_a": b["system_a"], "system_b": b["system_b"]})
+        self.assertEqual(dod["mistral_gain"], {"system_a": "exp026_mistral_pool_ft_fp16",
+                                               "system_b": "exp015_mistral_prompting_fp16"})
+        files = {**{f"exp036_{k}": v for k, v in RUN_CONFIG["compare"]["exp036_per_item"].items()},
+                 **RUN_CONFIG["compare"]["comparators"]}
+        for g in ("qwen_gain", "mistral_gain"):
+            for s in dod[g].values():
+                self.assertIn(s, files)
+        self.assertEqual(RUN_CONFIG["compare"]["families"]["F3_cross_family_dod"]["pairs"],
+                         ["difference_of_differences"])
+
+    def test_the_4bit_eval_cannot_be_skipped(self) -> None:
+        import inspect
+        self.assertNotIn("fp16_only", inspect.signature(self.cmp.plan).parameters)
+        pairs, families = self.cmp.plan(RUN_CONFIG, fp16_failed_gate=True)
+        self.assertIn("b_finetune_gain_qwen", pairs)
+        self.assertIn("F3_cross_family_dod", families)
+
+    def test_fp16_failed_gate_drops_the_fp16_pairs_and_says_so(self) -> None:
+        pairs, families = self.cmp.plan(RUN_CONFIG, fp16_failed_gate=True)
         for p in pairs.values():
-            self.assertNotIn("exp036_4bit", (p["system_a"], p["system_b"]))
-        self.assertEqual(families["F1_overall"]["pairs"], ["a_family_contrast"])
-        self.assertEqual(families["F1_overall"]["dropped_pairs_4bit_eval_not_run"], ["b_finetune_gain_qwen"])
+            self.assertNotIn("exp036_fp16", (p["system_a"], p["system_b"]))
+        self.assertNotIn("F4_secondary_vs_exp026", families)
+        self.assertEqual(families["F1_primary_overall"]["pairs"], ["b_finetune_gain_qwen"])
 
     def test_full_plan_keeps_every_pair(self) -> None:
-        pairs, families = self.cmp.plan(RUN_CONFIG, fp16_only=False)
+        pairs, families = self.cmp.plan(RUN_CONFIG, fp16_failed_gate=False)
         self.assertEqual(set(pairs), set(RUN_CONFIG["compare"]["pairs"]))
-        self.assertEqual(families["F1_overall"]["pairs"], RUN_CONFIG["compare"]["families"]["F1_overall"]["pairs"])
+        self.assertEqual(set(families), set(RUN_CONFIG["compare"]["families"]))
+
+    def test_dod_arithmetic_on_fabricated_items(self) -> None:
+        """Mean DoD and its paired t on four tiny fabricated systems, checked independently."""
+        import numpy as np
+        from scipy import stats
+
+        metrics = ["sari", "break_exact_match"]
+
+        def system(vals):
+            return {f"2hop__{i}": {"gold_hop_count": 2, "sari": v[0], "break_exact_match": v[1]}
+                    for i, v in enumerate(vals)}
+
+        q4 = system([(0.9, 1), (0.8, 0), (0.7, 1), (0.6, 1)])
+        p27 = system([(0.5, 0), (0.6, 0), (0.5, 1), (0.4, 0)])
+        m26 = system([(0.7, 1), (0.7, 0), (0.6, 0), (0.6, 1)])
+        p15 = system([(0.6, 0), (0.5, 0), (0.6, 0), (0.5, 1)])
+        systems = {"exp036_4bit": q4, "exp027_qwen35_9b_prompting_4bit": p27,
+                   "exp026_mistral_pool_ft_fp16": m26, "exp015_mistral_prompting_fp16": p15}
+        out = self.cmp.difference_of_differences(RUN_CONFIG["compare"]["difference_of_differences"],
+                                                 systems, metrics, ("overall",))
+        cell = out["strata"]["overall"]
+        for m in metrics:
+            d = [(q4[i][m] - p27[i][m]) - (m26[i][m] - p15[i][m]) for i in sorted(q4)]
+            self.assertAlmostEqual(cell["bootstrap"][m]["difference"], float(np.mean(d)))
+            self.assertAlmostEqual(cell["t_test"][m]["p_value"], float(stats.ttest_1samp(d, 0).pvalue))
+
+
+def _notebook_cells() -> list[str]:
+    nb = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+    return ["".join(c["source"]) for c in nb["cells"]]
+
+
+def _notebook_function(name: str, env: dict) -> dict:
+    """exec one top-level def from the notebook (stdlib only) into env."""
+    import re
+    src = next(c for c in _notebook_cells() if f"def {name}(" in c)
+    start = src.index(f"def {name}(")
+    m = re.search(r"\n(?=\S)", src[start:])
+    exec(src[start:start + m.start()] if m else src[start:], env)
+    return env
 
 
 class TestNotebook(unittest.TestCase):
     def test_notebook_is_valid_json_and_reads_the_plan(self) -> None:
-        nb = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
-        src = "\n".join("".join(c["source"]) for c in nb["cells"])
+        src = "\n".join(_notebook_cells())
         self.assertIn("experiments/exp-036/run_config.json", src)
         self.assertIn("feature/50-qwen-pool-finetune", src)
-        self.assertIn(RUN_CONFIG["model"]["hf_revision"], json.dumps(RUN_CONFIG))
         self.assertIn("hf_revision", src)
+        self.assertIn('"huggingface_hub": "1.11.0"', src)
+
+    def test_4bit_eval_is_mandatory_and_runs_before_fp16(self) -> None:
+        cells = _notebook_cells()
+        self.assertNotIn("RUN_4BIT_EVAL", "\n".join(cells))
+        i4 = next(i for i, c in enumerate(cells) if c.strip().startswith('run_eval("4bit")'))
+        i16 = next(i for i, c in enumerate(cells) if c.strip().startswith('run_eval("fp16")'))
+        self.assertLess(i4, i16)
+
+    def test_commit_is_pinned_and_checked_at_train_and_eval(self) -> None:
+        src = "\n".join(_notebook_cells())
+        self.assertIn('COMMIT = ""', src)
+        self.assertIn("checkout --detach {SHA}", src)
+        self.assertIn('"commit": tm["git"]["commit"] == SHA', src)
+        self.assertIn('"same_commit_as_training": dc["git"]["commit"] == TRAIN_COMMIT == SHA', src)
+
+    def test_data_extraction_is_decided_from_this_vms_disk(self) -> None:
+        src = "\n".join(_notebook_cells())
+        self.assertIn('DATA_MARKER = f"{DATA}/.exp036_data_ok"', src)
+        self.assertNotIn('done("data")', src)
+
+    def test_eval_done_is_keyed_on_metrics_json(self) -> None:
+        self.assertIn('glob.glob(f"{out_root(tag)}/*/metrics.json")', "\n".join(_notebook_cells()))
+
+
+class TestNotebookRoute(unittest.TestCase):
+    """The archive router refuses path traversal and maps the documented layout."""
+
+    def setUp(self) -> None:
+        import os
+        import re
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        (base / "repo" / "runs").mkdir(parents=True)
+        self.env = {"os": os, "re": re, "DATA": str(base / "data"), "RUNS": str(base / "repo" / "runs"),
+                    "pinned_runs": [RUN_CONFIG["inputs"]["pool"]["path_under_runs"],
+                                    RUN_CONFIG["inputs"]["retrieval"]["path_under_runs"]]}
+        _notebook_function("route", self.env)
+        self.route = self.env["route"]
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_traversal_and_anchored_names_are_refused(self) -> None:
+        for name in ("Thesis---QA/Data/../../../../root/.bashrc",
+                     "Thesis---QA/MusiQue/Data/../../../../../etc/passwd",
+                     "../Thesis---QA/Data/kb.txt",
+                     "/root/Thesis---QA/Data/kb.txt",
+                     "C:/Thesis---QA/Data/kb.txt",
+                     "Thesis---QA\\Data\\kb.txt"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.route(name)
+
+    def test_documented_layout_is_mapped_under_data_and_runs(self) -> None:
+        d, r = self.env["DATA"], self.env["RUNS"]
+        pool = RUN_CONFIG["inputs"]["pool"]["path_under_runs"]
+        cases = {
+            "./Thesis---QA/MusiQue/Data/emb_cache/a.npy": f"{d}/cache/emb_cache/a.npy",
+            "Thesis---QA/MusiQue/Data/dev_data/x.jsonl": f"{d}/musique/dev_data/x.jsonl",
+            "backup/Thesis---QA/Data/kb.txt": f"{d}/metaqa/kb.txt",
+            "Thesis---QA/Pool/p.json": f"{d}/metaqa/pool/p.json",
+            f"Thesis---QAv2/runs/{pool}": f"{r}/{pool}",
+            "Thesis---QAv2/runs/exp-020/x": None,
+            "Thesis---QAv2/Slides/a.pdf": None,
+            "Thesis---QA/MusiQue/scripts/a.py": None,
+        }
+        for name, want in cases.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.route(name), want)
+
+
+class TestOutputHealth(unittest.TestCase):
+    def setUp(self) -> None:
+        self.gate = RUN_CONFIG["eval"]["gate"]["output_health"]
+        self.env = {"json": json}
+        _notebook_function("output_health", self.env)
+
+    def test_degenerate_and_empty_rows_are_counted(self) -> None:
+        import tempfile
+        rows = [{"decomposition": "a\nb", "decomposition_raw": "a\nb", "hit_max_new_tokens": False},
+                {"decomposition": "", "decomposition_raw": "Question: x", "hit_max_new_tokens": False},
+                {"decomposition": "!!!!!!!!!!", "decomposition_raw": "!" * 1024, "hit_max_new_tokens": True}]
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "results.json").write_text(json.dumps(rows), encoding="utf-8")
+            health = self.env["output_health"](t, self.gate)
+        self.assertEqual(health, {"rows": 3, "empty": 1, "degenerate": 1, "at_max_new_tokens": 1})
+
+    def test_threshold_is_exp027s_recorded_empty_count(self) -> None:
+        self.assertEqual(self.gate["max_rows_with_empty_decomposition"], 1)
+        self.assertEqual(self.gate["max_rows_degenerate"], 0)
+        m = REPO_ROOT / "runs" / "exp-027" / "decomposer" / "20260920_102503" / "metrics.json"
+        if not m.exists():
+            self.skipTest("exp-027 run directory is not on this machine (runs/ is gitignored)")
+        self.assertEqual(json.loads(m.read_text(encoding="utf-8"))["rows_with_empty_decomposition"],
+                         self.gate["max_rows_with_empty_decomposition"])
 
 
 if __name__ == "__main__":
