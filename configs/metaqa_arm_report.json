@@ -1,0 +1,17 @@
+{
+  "_note": "Config for scripts/metaqa_arm_report.py: exp-039 per-arm metrics and the pre-declared comparisons (ADR 0045). Arm names: oracle (gold-like decompositions, CPU), qwen_prompted (Qwen3.5-9B unguided), mistral_prompted (Mistral-7B unguided), mistral_ft (exp-026 MuSiQue pool adapter on Mistral-7B), qwen_ft (exp-036 MuSiQue adapter on Qwen3.5-9B; conditional on the adapter existing). Primary family: exact McNemar on answer EM for the two comparisons below x 3 hops = 6 tests, Holm (ADR 0036). Secondary families (ADR 0045 items 6-7), each its own Holm family of six: paired-t p on Jaccard; exact McNemar on EM over the items BOTH arms compiled (the FT-vs-prompted wording confound); exact McNemar on LENIENT-mode EM (with per-arm repaired-item counts). Per-arm compile- and execution-failure reasons per hop are reported. Primary EM is from the STRICT compile-execute run. Fixed here before any arm has run.",
+  "seed": 42,
+  "hops": [1, 2, 3],
+  "questions_template_key": "metaqa_eval250_questions_template",
+  "answers_template_key": "metaqa_eval250_answers_template",
+  "answer_separator": "|",
+  "analysis_subdir": "analysis",
+  "bootstrap_iterations": 10000,
+  "alpha": 0.05,
+  "comparisons": [
+    ["mistral_ft", "mistral_prompted"],
+    ["qwen_ft", "qwen_prompted"]
+  ],
+  "run_subdir": "exp-039/arm_report",
+  "paths_config": "paths.json"
+}

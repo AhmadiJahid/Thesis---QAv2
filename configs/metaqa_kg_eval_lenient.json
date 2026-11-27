@@ -1,0 +1,12 @@
+{
+  "_note": "Lenient twin of metaqa_kg_eval.json for exp-039's SECONDARY answer metric (ADR 0045 item 7). Identical except compile_mode: a placeholder step whose wording needs the other kind of set than the referenced step produces is repaired (direction follows the referenced step) instead of failing as type_mismatch; repaired_items counts them.",
+  "seed": 42,
+  "kb_key": "metaqa_kb",
+  "max_items": null,
+  "run_subdir": "metaqa_decomposition_eval",
+  "write_error_analysis": true,
+  "exclude_topic_after_first_step": true,
+  "compile_mode": "lenient",
+  "_exclude_topic_note": "MetaQA's gold convention: for a chain of 2+ steps, the entity step 1 names (the topic) is removed from every later step's result. Measured on the v1 100/hop set by scripts/metaqa_gold_path_check.py (exp-039 Phase A): without it 42/100 2-hop and 48/100 3-hop gold answer sets are reachable by no relation path, with it 100/100. ADR 0045.",
+  "paths_config": "paths.json"
+}

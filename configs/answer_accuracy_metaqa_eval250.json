@@ -1,0 +1,17 @@
+{
+  "_note": "Config for scripts/compare_answer_accuracy.py on the exp-039 MetaQA eval set (250/hop from the vanilla test split, ADR 0045). Identical to answer_accuracy.json except for the question/answer templates, which point at the eval250 files.",
+  "seed": 42,
+  "hops": [
+    1,
+    2,
+    3
+  ],
+  "questions_template_key": "metaqa_eval250_questions_template",
+  "answers_template_key": "metaqa_eval250_answers_template",
+  "answer_separator": "|",
+  "exact_match_jaccard": 1.0,
+  "analysis_subdir": "analysis",
+  "reports_subdir": "answer_accuracy_reports",
+  "figure_dpi": 150,
+  "paths_config": "paths.json"
+}
