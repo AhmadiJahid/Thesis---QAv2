@@ -1,0 +1,38 @@
+{
+  "_note": "Pre-run config for exp-037 (count-first decomposition arm). Written before any run; the per-run config snapshots the runner writes (runs/exp-037/<arm>/decomposer/<ts>/config.json) are the record of what actually ran and are copied here after the run. ONE change against the paired baseline: --condition count_first instead of --condition unguided. Model, 4-bit precision, retrieval artifact (hence the exemplars), few-shot ordering, decoding, seed, step parser and evaluation set are those of exp-020 (Mistral) / exp-027 (Qwen3.5-9B).",
+  "exp_id": "exp-037",
+  "design_source": "Jev memo at the repo root, section C1.3 'Hop-count-first structured output (self-guided oracle)': annotate exemplars with '[k hops]', the model must emit '[k hops]' first. The memo's format is followed ('[N hops]', not 'Hops: N').",
+  "condition": {
+    "name": "count_first",
+    "defined_in": "configs/decomposer_musique.json conditions.count_first",
+    "exemplar_count_line": "'[N hops]' as the first line of each exemplar's decomposition; N = that exemplar's own gold step count (run_decomposer.py::exemplar_gold_hop_count, the evaluator's splitter src/step_lines.py)",
+    "instruction_line": "- Before the steps, write the number of steps on its own line as [N hops].  (inserted after '- One step per line.' in the model folder's unguided prompt; nothing else in the template changes)",
+    "count_is": "self-predicted by the model; NOT the gold count (oracle guidance is exp-004/005, a different question)",
+    "parser": "src/count_first.py::parse_count_first on the post-processed generation; the count line is removed before 'decomposition' is recorded, so the report card scores the steps only. Rows with an absent/malformed/empty count line are kept and scored; their number is in the decomposer metrics.json count_first.status_counts and rows_without_count."
+  },
+  "fixed_from_baseline": {
+    "retrieval_artifact": "runs/exp-014/retrieval/s2_pinned600_imbalanced_rerank_top5.jsonl (sha256 3f95c7dc18c14fc6bea3473f1be5c0d7fb21b7b2f2b2a1175dbfaebb5092fdb0; size2000_imbalanced pool, e5-small-v2 bi-encoder top-20 -> cross-encoder top-5, typed masking; checked by run.sh before every decompose)",
+    "eval_set": "ADR 0007 pinned 600 (200/hop), asserted by id by the runner",
+    "retrieval_mode": "typed",
+    "retrieval_k": 5,
+    "few_shot_ordering": "as_is (config default, not passed)",
+    "quantization": "4bit (--quantization 4bit, bitsandbytes NF4)",
+    "decoding": "do_sample false, temperature 0.0, top_p 1.0, max_new_tokens 1024 (generation_overrides)",
+    "seed": 42,
+    "step_parser": "scaffold_truncate_at ['Task:', 'Answer:'] (ADR 0039; the parser exp-032's re-parse applied to the baselines)"
+  },
+  "models": {
+    "mistral_7b_instruct": {"model_id": "mistralai/Mistral-7B-Instruct-v0.3", "paired_baseline": "exp-020 as re-parsed by exp-032 (runs/exp-032/exp-020/eval/eval_per_item.json)", "why": "exp-020 is the 4-bit unguided Mistral arm on this artifact; exp-015 is the same arm at fp16 (precision would move). exp-020 was scored with the old parser, so the comparable reading is exp-032's re-parse (ADR 0039 cross-parser rule)."},
+    "qwen3_5_9b": {"model_id": "Qwen/Qwen3.5-9B", "paired_baseline": "exp-027 as re-parsed by exp-032 (runs/exp-032/exp-027/eval/eval_per_item.json; 0/600 rows changed by the re-parse, so equal to exp-027's own eval)", "why": "exp-027 is the 4-bit unguided Qwen3.5-9B arm on this artifact; exp-005 is the v1 pool, unquantized - a different axis."}
+  },
+  "steps": "experiments/exp-037/run.sh {mistral_count_first | mistral_unguided_rerun | qwen_count_first | qwen_unguided_rerun | compare | metrics}; on Colab via notebooks/exp-037_count_first_colab.ipynb",
+  "hardware_control": "The baselines ran on an RTX 3090 (docs/compute.md); exp-037 runs on Colab (L4 by default). Greedy 4-bit decoding is not guaranteed to be bit-identical across GPUs and library builds, so the same command as the baseline (condition unguided) is re-run on the same Colab machine (mistral_unguided_rerun, qwen_unguided_rerun). Its distance from the stored baseline (rows with different pred_steps, and the paired compare) is reported. Declared before any run: if the control shows the stored baseline is not reproduced, the primary result is reported as confounded by hardware and the sensitivity pair (count-first vs same-machine re-run) is reported next to it.",
+  "holm_families": {
+    "_note": "Fixed here before any p-value exists (ADR 0036 item 5). Holm is reported BESIDE the evaluator's uncorrected verdict, never instead of it.",
+    "F1_primary_overall": "for each primary pair that was run - mistral_count_first_vs_exp020, qwen_count_first_vs_exp027 - x the 8 metrics break_exact_match_rate (McNemar), sari_macro (t), ged_macro (t), chain_validity_macro (t), hop_count_exact_match_rate (McNemar), under_decomposition_rate (McNemar), over_decomposition_rate (McNemar), step_f1_macro (t); overall n=600. Size 16 if both models run, 8 if only Mistral.",
+    "F2_per_hop": "for each primary pair that was run x {hop_count_exact_match, under_decomposition} x gold hop {2,3,4}, exact McNemar per stratum (n=200). Size 12 or 6.",
+    "outside_families": "sensitivity (count-first vs same-machine re-run) and hardware control (re-run vs stored), uncorrected and labelled",
+    "pre_declared_primary_endpoints": "under_decomposition_rate and hop_count_exact_match_rate (memo C3 item 1); the others are secondary. No direction is asserted."
+  },
+  "count_accuracy_reported": "from the count-first decomposer metrics.json count_first block: status counts; rows with/without a readable count; count == gold hop (all rows and parsed rows, overall and per gold hop); count below/above gold; count == steps emitted; gold x predicted confusion"
+}
