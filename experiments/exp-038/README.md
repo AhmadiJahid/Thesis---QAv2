@@ -24,7 +24,7 @@ Mistral-7B arm at 4 hops has under 0.285 and over 0.415 on the pinned subset
 
 | # | stage | where | what | estimate (not measured) |
 |---|---|---|---|---|
-| 0–3 | setup | Colab | mount Drive, clone this branch, install pinned deps (Colab's torch kept, recorded), extract only the needed files from `thesis-backup.tar.gz` (sha256-checked), GPU check | ~15 min (tarball copy + extract) |
+| 0–3 | setup | Colab | mount Drive, clone `main`, install pinned deps (Colab's torch kept, recorded), extract only the needed files from `thesis-backup.tar.gz` (sha256-checked), GPU check | ~15 min (tarball copy + extract) |
 | 1 | `split` | CPU | locate 400/hop, val_select 100/hop, val_confirm 100/hop from MuSiQue **train**, minus the adapter's 2,000 rows; 16 disjointness checks against dev / pinned 600 / pool | seconds |
 | 2 | `locate` | GPU | greedy generation on all three splits, batched 16, and residual stream after every layer at every step boundary of locate and val_select | 15–25 min |
 | 3 | `directions` | CPU | per-layer stratum-matched difference-of-means (two kinds), val AUROC, cosines, proposed sweep | a few min |
@@ -72,6 +72,6 @@ metrics and a run note. Activations, generations and per-item files stay on Driv
 
 ## Before running
 
-1. Push this branch (the notebook clones it; the repo is public, so no GitHub token is used). Put `HF_TOKEN` in Colab secrets.
+1. The notebook clones `main` (the repo is public, so no GitHub token is used). Put `HF_TOKEN` in Colab secrets.
 2. The lead reserves exp-038 and ADR 0042 on `main` before merge (ADR 0040 item 2).
 3. Code review of the `--weight-edit` runner change (Gate 1), since it touches shared pipeline code.
