@@ -52,9 +52,18 @@
       "guided": false,
       "stop_after_step_lines": 8,
       "_note": "Same prompt as 'unguided'. Generation is stopped once 8 step lines are complete - a transformers StoppingCriteria during decoding, plus a trim of the partial line the criterion can leave behind after it fires. Step lines are counted with the evaluator's own step normalization (src/step_lines.py), after <think>/tail post-processing, so 8 means 8 of the steps that get scored. The supervisor's example in the 2026-08-12 meeting used a cap of 6; 8 is Jahid's plan default and is the value set here - see docs/meetings/2026-08-12-supervisor-meeting-transcript-crosscheck.md and docs/adr/0013."
+    },
+    "count_first": {
+      "guided": false,
+      "count_first": {
+        "instruction": "- Before the steps, write the number of steps on its own line as [N hops].",
+        "insert_after": "- One step per line.",
+        "_note": "exp-037. The instruction line is inserted into the model folder's UNGUIDED prompt directly after the insert_after line (which must occur exactly once), and nothing else in the template changes."
+      },
+      "_note": "exp-037, the count-first arm (memo at the repo root, C1.3 'Hop-count-first structured output'). Identical to 'unguided' except: (1) each few-shot exemplar's decomposition starts with a line '[N hops]', N = that exemplar's OWN gold step count (exemplar_gold_hop_count, the evaluator's splitter) - never the query's; (2) the one instruction line above is added to the rules; (3) the first line the model writes is parsed as its self-predicted hop count and REMOVED before 'decomposition' is recorded, so the evaluator scores only the steps. Rows with a missing or malformed count line are kept and scored; their number is reported in metrics.json count_first.status_counts. The count is the model's own prediction, not the oracle (that is oracle_guided, exp-004/005). Refused with guided, with a step-line cap, with no few-shot block, and with --adapter (run_decomposer.py::resolve_count_first)."
     }
   },
-  "_conditions_note": "A condition may set only 'guided', 'hop_source' and 'stop_after_step_lines' (plus '_note'). Decoding, model and seed are deliberately NOT per-condition: run_decomposer.py rejects any other key so the arms cannot drift apart. 'hop_source' is allowed there because it says WHICH hop count the prompt carries (gold or a router's prediction), which is precisely what separates oracle_guided from router_guided.",
+  "_conditions_note": "A condition may set only 'guided', 'hop_source', 'stop_after_step_lines' and 'count_first' (plus '_note'). Decoding, model and seed are deliberately NOT per-condition: run_decomposer.py rejects any other key so the arms cannot drift apart. 'hop_source' is allowed there because it says WHICH hop count the prompt carries (gold or a router's prediction), which is precisely what separates oracle_guided from router_guided. 'count_first' (exp-037) is allowed for the same reason: it changes only what the prompt says about the hop count (the model states its own) and strips that statement before scoring.",
 
   "generation_overrides": {
     "max_new_tokens": 1024

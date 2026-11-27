@@ -71,6 +71,13 @@ from typing import Any, Callable, Sequence, TypeVar
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
+from count_first import (  # noqa: E402
+    CountFirstParse,
+    format_count_line,
+    insert_instruction_line,
+    parse_count_first,
+    summarize_count_first,
+)
 from anchor_set import (  # noqa: E402
     ANCHOR_PROMPT_PREFIX,
     AnchorSetError,
@@ -122,7 +129,14 @@ _WORD_RX = re.compile(r"[A-Za-z]{2,}")
 #: ``hop_source`` belongs here for the same reason ``guided`` does - it says *which* hop
 #: count the prompt carries (the gold depth, or a router's prediction), which is exactly
 #: what separates the oracle-guided arm from the router-guided one (issue #27).
-_CONDITION_KEYS = frozenset({"guided", "stop_after_step_lines", "hop_source", "_note"})
+#: ``count_first`` (exp-037) belongs here for the same reason: it changes only what the prompt
+#: says about the hop count - the model is asked to STATE its own count before the steps -
+#: and how that statement is read back off the output. Absent means off, which is every
+#: condition that existed before it, so their prompts are byte-identical to before
+#: (tests/test_count_first.py checks that against golden hashes).
+_CONDITION_KEYS = frozenset(
+    {"guided", "stop_after_step_lines", "hop_source", "count_first", "_note"}
+)
 
 
 # --------------------------------------------------------------------------- IO
@@ -425,6 +439,57 @@ def resolve_step_line_cap(condition_name: str | None, condition: dict) -> int | 
             f"condition {condition_name!r}: stop_after_step_lines must be positive, got {cap}"
         )
     return cap
+
+
+def resolve_count_first(
+    condition_name: str | None,
+    condition: dict,
+    *,
+    guided: bool,
+    stop_after_step_lines: int | None,
+) -> dict | None:
+    """The condition's count-first settings, or None when the arm is not count-first.
+
+    A count-first arm (exp-037; the memo at the repo root, C1.3) shows each exemplar's
+    decomposition with a first line ``[N hops]`` (N = that exemplar's own gold step count),
+    adds ONE rule line to the prompt asking for that line, and strips the line the model
+    writes before its steps are scored. The count the model writes is its own prediction.
+
+    Refused combinations, because each would make the arm something other than "the
+    unguided arm plus a self-stated count":
+
+    - a guided arm (the prompt would carry the gold or a router's count as well),
+    - a step-line cap (the cap's stopper would count the count line as a step),
+
+    and, checked later in ``main`` where the facts are known, a run with no few-shot block
+    (the format would never be demonstrated) and an adapter run.
+    """
+    block = condition.get("count_first")
+    if block is None or block is False:
+        return None
+    src = f"condition {condition_name!r}"
+    if not isinstance(block, dict):
+        raise SystemExit(
+            f"{src}: count_first must be an object with 'instruction' and 'insert_after', "
+            f"got {block!r}"
+        )
+    unknown = sorted(set(block) - {"instruction", "insert_after", "_note"})
+    if unknown:
+        raise SystemExit(f"{src}: count_first sets unknown key(s) {unknown}")
+    for key in ("instruction", "insert_after"):
+        if not isinstance(block.get(key), str) or not block[key].strip():
+            raise SystemExit(f"{src}: count_first.{key} must be a non-empty string")
+    if guided:
+        raise SystemExit(
+            f"{src}: count_first is refused in a guided arm - the prompt would then carry a "
+            "hop count from outside the model as well as the model's own."
+        )
+    if stop_after_step_lines:
+        raise SystemExit(
+            f"{src}: count_first is refused with stop_after_step_lines - the step-line "
+            "stopper would count the '[N hops]' line as a step."
+        )
+    return {"instruction": block["instruction"], "insert_after": block["insert_after"]}
 
 
 def hop_bearing_lines(template: str) -> list[str]:
@@ -923,6 +988,7 @@ def format_few_shot_examples(
     ordering: str,
     ordering_seed: int | None = None,
     query_id: Any = None,
+    count_first: bool = False,
 ) -> str:
     """Format (question, decomposition) pairs. Omit the hop line when unguided.
 
@@ -940,12 +1006,19 @@ def format_few_shot_examples(
     :data:`FEW_SHOT_ORDERINGS`). This is the ONE place it is applied, for every few-shot
     source - reranked, bi-encoder and random alike - so that a run's ordering cannot be
     applied twice and cancel itself.
+
+    ``count_first`` (exp-037, unguided only) puts ``[N hops]`` as the first line of each
+    exemplar's decomposition, N being that exemplar's own gold step count
+    (:func:`exemplar_gold_hop_count`, the evaluator's splitter) - never the query's. False,
+    the default, leaves every block exactly as before.
     """
     if exemplar_hop_mode not in EXEMPLAR_HOP_MODES:
         raise SystemExit(
             f"unknown exemplar hop mode {exemplar_hop_mode!r} (expected one of "
             f"{list(EXEMPLAR_HOP_MODES)})"
         )
+    if count_first and hop_count is not None:
+        raise SystemExit("count_first exemplars are for unguided prompts only")
     blocks = []
     for ex in order_few_shot_examples(
         examples, ordering, ordering_seed=ordering_seed, query_id=query_id
@@ -960,6 +1033,11 @@ def format_few_shot_examples(
                 f"Hop count: {exemplar_hop}\n"
                 f"Question: {ex['question']}\n"
                 f"Decomposition:\n{ex['decomposition']}"
+            )
+        elif count_first:
+            block = (
+                f"Question: {ex['question']}\nDecomposition:\n"
+                f"{format_count_line(exemplar_gold_hop_count(ex))}\n{ex['decomposition']}"
             )
         else:
             block = f"Question: {ex['question']}\nDecomposition:\n{ex['decomposition']}"
@@ -2312,6 +2390,14 @@ def main() -> None:
     seed = args.seed if args.seed is not None else int(require(cfg, "seed"))
     guided = resolve_guided(args.guided, condition_name, condition, cfg)
     stop_after_step_lines = resolve_step_line_cap(condition_name, condition)
+    count_first = resolve_count_first(
+        condition_name, condition, guided=guided, stop_after_step_lines=stop_after_step_lines
+    )
+    if count_first and args.adapter:
+        raise SystemExit(
+            "count_first is refused with --adapter: the adapter was trained on a prompt and "
+            "a target without the '[N hops]' line."
+        )
     hop_source_record = resolve_hop_source(
         condition_name,
         condition,
@@ -2471,6 +2557,37 @@ def main() -> None:
         and not args.no_few_shot
     )
 
+    # Count-first (exp-037): one rule line added to the unguided template, after the prompt
+    # guards above ran on the unmodified file. The file's own sha256 stays prompt_sha256;
+    # the effective template is hashed separately so the arm's prompt is checkable.
+    count_first_record: dict[str, Any] | None = None
+    if count_first:
+        if not few_shot_enabled:
+            raise SystemExit(
+                f"condition {condition_name!r}: count_first needs a few-shot block - the "
+                "'[N hops]' format is demonstrated by the exemplars, and this run has none "
+                "(few_shot.enabled false, no {few_shot_examples} slot, or --no-few-shot)."
+            )
+        try:
+            prompt_template = insert_instruction_line(
+                prompt_template,
+                instruction=count_first["instruction"],
+                insert_after=count_first["insert_after"],
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                f"condition {condition_name!r}: count_first cannot be applied to "
+                f"{prompt_path}: {exc}"
+            ) from exc
+        count_first_record = {
+            **count_first,
+            "count_line_format": "[{n} hops]",
+            "exemplar_count": "each exemplar's own gold step count (exemplar_gold_hop_count)",
+            "effective_template_sha256": hashlib.sha256(
+                prompt_template.encode("utf-8")
+            ).hexdigest(),
+        }
+
     # Computed once here rather than inline in the snapshot: the adapter prompt-parity guard
     # below compares it against the training record's own prompt_sha256 when that record
     # carries one, so both must be the same number.
@@ -2547,6 +2664,8 @@ def main() -> None:
         "guided": guided,
         "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
+        # Only on a count-first arm, so every other arm's snapshot keeps its schema.
+        **({"count_first": count_first_record} if count_first_record else {}),
         "seed": seed,
         "seeded": seeded,
         "sample_size": sample_size,
@@ -2983,6 +3102,7 @@ def main() -> None:
                 ordering=few_shot_ordering,
                 ordering_seed=few_shot_ordering_seed,
                 query_id=row.get("query_id"),
+                count_first=bool(count_first),
             )
             if sampled
             else ""
@@ -3056,6 +3176,15 @@ def main() -> None:
                 )
             )
         decomposition = gen["decomposition"] if gen else ""
+        step_lines_row = gen["step_lines"] if gen else 0
+        cf_parse: CountFirstParse | None = None
+        if count_first and gen:
+            # The count line is removed BEFORE anything is recorded as the decomposition,
+            # so the evaluator scores the steps only. A row with no readable count is kept
+            # and scored like any other; its status is counted in metrics.json.
+            cf_parse = parse_count_first(decomposition)
+            decomposition = cf_parse.steps_text
+            step_lines_row = step_line_count(decomposition)
         if gen:
             cost = {k: gen[k] for k in cost}
 
@@ -3143,7 +3272,7 @@ def main() -> None:
                 # Same fields in all three arms, whether or not a cap applies. The raw
                 # generation is kept because `decomposition` may have been trimmed.
                 "decomposition_raw": gen["text"] if gen else "",
-                "step_lines": gen["step_lines"] if gen else 0,
+                "step_lines": step_lines_row,
                 "hit_max_new_tokens": gen["hit_max_new_tokens"] if gen else None,
                 "stopped_at_step_line_cap": gen["stopped_at_step_line_cap"] if gen else None,
                 **cost,
@@ -3156,6 +3285,22 @@ def main() -> None:
                         "few_shot_permutation": permutation,
                     }
                     if few_shot_ordering_seed is not None
+                    else {}
+                ),
+                # Only on a count-first arm (exp-037), so every other results.json keeps its
+                # schema. Null on a dry run, which generates nothing to parse.
+                **(
+                    {
+                        "count_first_status": cf_parse.status if cf_parse else None,
+                        "count_first_predicted_hops": (
+                            cf_parse.predicted_hops if cf_parse else None
+                        ),
+                        "count_first_line": cf_parse.count_line if cf_parse else None,
+                        "count_first_extra_count_lines": (
+                            cf_parse.extra_count_lines if cf_parse else None
+                        ),
+                    }
+                    if count_first
                     else {}
                 ),
             }
@@ -3220,6 +3365,19 @@ def main() -> None:
         # the routed one, and which predictions file produced it.
         "hop_source": hop_source_record,
         "stop_after_step_lines": stop_after_step_lines,
+        # exp-037: the self-predicted count's accuracy vs the gold hop count, its agreement
+        # with the steps actually emitted, and how many rows had no readable count (kept and
+        # scored, never dropped). Only on a count-first arm; null on a dry run.
+        **(
+            {
+                "count_first": (
+                    summarize_count_first(results) if not args.dry_run else None
+                ),
+                "count_first_settings": count_first_record,
+            }
+            if count_first
+            else {}
+        ),
         # Two different questions, deliberately reported separately:
         #   rows_at_step_line_cap        - how many decompositions HAVE cap-many steps, by the
         #                                  evaluator's step normalization (src/step_lines.py).

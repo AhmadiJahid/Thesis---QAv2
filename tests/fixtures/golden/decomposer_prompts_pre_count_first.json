@@ -1,0 +1,93 @@
+{
+  "_note": "Golden sha256 of the rendered prompt bodies (prompts_log, header excluded) and the results.json row keys of three --dry-run arms over tests/fixtures/retrieval/top5_musique_conditions.jsonl, produced by the decomposer at 118d777 (main, BEFORE the count-first condition existed). tests/test_count_first.py re-runs the same arms on the current code and requires byte-identical prompts and the same row keys: the proof that the count-first flag, default off, changes nothing for existing conditions. Regenerate only if a deliberate, reviewed prompt change lands.",
+  "commit": "118d777",
+  "arms": {
+    "unguided__mistral_7b_instruct": {
+      "prompts_sha256": {
+        "prompt_idx0001_hop2.txt": "77c6af6348e0c3e2dc943b739f730565707bb782d109a48df28425ed9e3bd736",
+        "prompt_idx0002_hop2.txt": "7047c37da65e20d9db1e6830049ba1b176e998797237fc7a6e0881773e50ec08",
+        "prompt_idx0003_hop2.txt": "c71ba6340d7df4a04c305ad0a7b1680f6dba7595b647261e5260d3e4330736b4",
+        "prompt_idx0004_hop3.txt": "d4c9edaad8961eb17ae4b54fd188b1f4504c918d8e27f582e7c4d618961499f9",
+        "prompt_idx0005_hop3.txt": "2a73bc992a678e03b959d5dfb3515d15851297a38486ccf9404eece1ed7b8a87",
+        "prompt_idx0006_hop3.txt": "f8c5f425c06ef0100f0b20fde667a250d07c84fadf5676e5f2cdf961c44b23e0",
+        "prompt_idx0007_hop4.txt": "22fcc38a545bffeb33c51310c2d95e8d8ee94e3bbe93b2569bdbc00f093bf013",
+        "prompt_idx0008_hop4.txt": "ee373bc14f4cad0cba878c4ab70fe5a81d7f4f046dadbae5da2125402d5145e0",
+        "prompt_idx0009_hop4.txt": "2e9f3bf23d2a6497dc480337c8006a629326bde47d92b3ec1d55a1d7bd9490b0"
+      },
+      "results_row_keys": [
+        "completion_tokens",
+        "decomposition",
+        "decomposition_raw",
+        "few_shot_source",
+        "hit_max_new_tokens",
+        "hop_count",
+        "hop_count_source",
+        "latency_seconds",
+        "prompt_hop_count",
+        "prompt_tokens",
+        "query_id",
+        "question",
+        "step_lines",
+        "stopped_at_step_line_cap"
+      ]
+    },
+    "unguided__qwen3_5_9b": {
+      "prompts_sha256": {
+        "prompt_idx0001_hop2.txt": "e2a912d952663f1093d135ecdebf259a766e3e6efd14e25954abbcd162c075c0",
+        "prompt_idx0002_hop2.txt": "2aabc076f9c64bc333ba7dd84a5c753a0013491737ff8d2a42a8f7db1d4a5965",
+        "prompt_idx0003_hop2.txt": "d95891c2321179b050bf321bb19c5f20aafba544667a3603c180096d5fb4ac83",
+        "prompt_idx0004_hop3.txt": "083e78c29a98727bfa5017f2765835097f87eb271c956d6397bb1df4bab45ac5",
+        "prompt_idx0005_hop3.txt": "8ba459bc7c4a92f0a478a0afd9cb3b39603307db83df5190c22a247b652f1ed4",
+        "prompt_idx0006_hop3.txt": "a229985df21616b2c382f325624653cc4bc3e735042f05acd81b31414d80aa99",
+        "prompt_idx0007_hop4.txt": "50d1cd88827a7f2d773227304239088fe46ff1526d8d066540a13cdceddc493c",
+        "prompt_idx0008_hop4.txt": "e136920ac917d0c80fe4864dd47330115b69ee93c976b8327c67b40e177dcca8",
+        "prompt_idx0009_hop4.txt": "88cf42bced6e9c5f80bcca3cd8e214fbbaeb61ea103cb212e8b4d52099677475"
+      },
+      "results_row_keys": [
+        "completion_tokens",
+        "decomposition",
+        "decomposition_raw",
+        "few_shot_source",
+        "hit_max_new_tokens",
+        "hop_count",
+        "hop_count_source",
+        "latency_seconds",
+        "prompt_hop_count",
+        "prompt_tokens",
+        "query_id",
+        "question",
+        "step_lines",
+        "stopped_at_step_line_cap"
+      ]
+    },
+    "oracle_guided__mistral_7b_instruct": {
+      "prompts_sha256": {
+        "prompt_idx0001_hop2.txt": "b2d481759e4a607ce611761db6f24c457dda2197cfeb039e289a463fbac99773",
+        "prompt_idx0002_hop2.txt": "34d759707e543ecbfc3a2f495d8ef5d4d7bf49a67f19876e9b0aa1570cc8a149",
+        "prompt_idx0003_hop2.txt": "2574e98fc26494ca4f88594b2ab258cb1179ced5adb3e89fd12acef9059b4cea",
+        "prompt_idx0004_hop3.txt": "7c9b388d8156207312d062febdc5365aea661bbf1face2d906d149a6fcae0dca",
+        "prompt_idx0005_hop3.txt": "7cc29b89eaa709545a51e3c492f9ed8fd47cd3ee3a08086b0a29df735591746a",
+        "prompt_idx0006_hop3.txt": "aa2850e6b72d2c927c4a7be61ca9c23b3adcdbfdc1945e7ae22637aff5c08c52",
+        "prompt_idx0007_hop4.txt": "7a64bcdfe08524522276cd6d0d3e91889409eb7ec5e2f44a73375e61c5f4fd27",
+        "prompt_idx0008_hop4.txt": "eb1c1a90a8c852a3525681c53b13b8ea6855c6f34c4f3901d0dd56c502207209",
+        "prompt_idx0009_hop4.txt": "bc69a473bae86b6f2ae4e2941ae4b279a71bc1d500f967c97ce4b732efdf50fc"
+      },
+      "results_row_keys": [
+        "completion_tokens",
+        "decomposition",
+        "decomposition_raw",
+        "few_shot_source",
+        "hit_max_new_tokens",
+        "hop_count",
+        "hop_count_source",
+        "latency_seconds",
+        "prompt_hop_count",
+        "prompt_tokens",
+        "query_id",
+        "question",
+        "step_lines",
+        "stopped_at_step_line_cap"
+      ]
+    }
+  }
+}
