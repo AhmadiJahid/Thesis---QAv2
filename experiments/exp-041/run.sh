@@ -60,11 +60,11 @@ launch_clean() {
 # "GPU busy, nothing started": re-run the step when the other job has finished.
 vram_gate() {  # $1 GiB needed, $2 label
   local q total used
-  q=$(nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader,nounits | head -n 1)     || { echo "nvidia-smi failed - no GPU?" >&2; exit 4; }
+  q=$(nvidia-smi --query-gpu=memory.total,memory.used --format=csv,noheader,nounits | head -n 1) \
+    || { echo "nvidia-smi failed - no GPU?" >&2; exit 4; }
   total=${q%%,*}; used=${q##*,}
   if ! awk -v t="$total" -v u="$used" -v n="$1" 'BEGIN { exit !((t - u) / 1024 >= n) }'; then
-    awk -v t="$total" -v u="$used" -v n="$1" -v l="$2" 'BEGIN { printf "refusing %s: %.1f GiB free on the GPU (%.1f total, %.1f in use by other processes), need >= %s GiB. Nothing was started; re-run this step when the GPU is free.
-", l, (t-u)/1024, t/1024, u/1024, n }' >&2
+    awk -v t="$total" -v u="$used" -v n="$1" -v l="$2" 'BEGIN { printf "refusing %s: %.1f GiB free on the GPU (%.1f total, %.1f in use by other processes), need >= %s GiB. Nothing was started; re-run this step when the GPU is free.\n", l, (t-u)/1024, t/1024, u/1024, n }' >&2
     exit 4
   fi
   log "free VRAM OK for $2 ($(( (total - used) / 1024 )) GiB free, need $1)"
