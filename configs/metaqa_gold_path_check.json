@@ -1,0 +1,10 @@
+{
+  "_note": "Config for scripts/metaqa_gold_path_check.py: does the KG built by scripts/kg.py reproduce MetaQA's gold answer sets along some relation path from an entity named in the question? A substitute for executing official qa_*_qtype.txt gold paths, which are not in the data root. min_entity_len skips one-character KB strings (e.g. the year-like '4') when matching entity mentions.",
+  "seed": 42,
+  "hops": [1, 2, 3],
+  "answer_separator": "|",
+  "min_entity_len": 2,
+  "phrasings": ["compiler", "natural"],
+  "run_subdir": "metaqa_gold_path_check",
+  "paths_config": "paths.json"
+}
