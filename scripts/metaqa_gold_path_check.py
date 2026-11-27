@@ -116,14 +116,38 @@ class PathOracle:
 # ---- gold-like decomposition rendering -------------------------------------------
 
 _FWD_NAMED = {
-    "directed_by": "Who directed {x}?",
-    "written_by": "Who wrote {x}?",
-    "starred_actors": "Who starred in {x}?",
+    "compiler": {
+        "directed_by": "Who directed {x}?",
+        "written_by": "Who wrote {x}?",
+        "starred_actors": "Who starred in {x}?",
+        "has_genre": "What is the genre of {x}?",
+        "in_language": "What is the language of {x}?",
+        "release_year": "What is the release year of {x}?",
+        "has_tags": "What are the tags of {x}?",
+    },
+    "natural": {
+        "directed_by": "Who directed {x}?",
+        "written_by": "Who wrote {x}?",
+        "starred_actors": "Who starred in {x}?",
+        "has_genre": "What genre is {x}?",
+        "in_language": "What language is {x} in?",
+        "release_year": "When was {x} released?",
+        "has_tags": "Which words describe {x}?",
+    },
 }
 _REV_NAMED = {
-    "directed_by": "What movies did {x} direct?",
-    "written_by": "What movies did {x} write?",
-    "starred_actors": "What movies did {x} star in?",
+    "compiler": {
+        "directed_by": "What movies did {x} direct?",
+        "written_by": "What movies did {x} write?",
+        "starred_actors": "What movies did {x} star in?",
+        "has_tags": "What movies have the tag {x}?",
+    },
+    "natural": {
+        "directed_by": "What movies did {x} direct?",
+        "written_by": "What movies did {x} write?",
+        "starred_actors": "What movies did {x} star in?",
+        "has_tags": "What movies are about {x}?",
+    },
 }
 _FWD_REF = {
     "directed_by": "Who directed {x}?",
@@ -139,11 +163,13 @@ _REV_REF = {
         "directed_by": "What other movies were directed by {x}?",
         "written_by": "What other movies were written by {x}?",
         "starred_actors": "What other movies were starred by {x}?",
+        "has_tags": "What other movies have the tags {x}?",
     },
     "natural": {
         "directed_by": "What movies did {x} direct?",
         "written_by": "What movies did {x} write?",
         "starred_actors": "What movies did {x} star in?",
+        "has_tags": "What movies are tagged with {x}?",
     },
 }
 
@@ -153,7 +179,7 @@ def render(topic: str, path: Sequence[Edge], phrasing: str) -> Optional[str]:
     for k, (rel, direction) in enumerate(path, start=1):
         x = topic if k == 1 else f"[#{k - 1}]"
         if k == 1:
-            table = _FWD_NAMED if direction == "fwd" else _REV_NAMED
+            table = (_FWD_NAMED if direction == "fwd" else _REV_NAMED)[phrasing]
         else:
             table = _FWD_REF if direction == "fwd" else _REV_REF[phrasing]
         if rel not in table:
@@ -162,30 +188,42 @@ def render(topic: str, path: Sequence[Edge], phrasing: str) -> Optional[str]:
     return "\n".join(lines)
 
 
-def load_hop(paths_cfg: dict, data_root: Path, hop: int, sep: str) -> Tuple[List[str], List[Set[str]]]:
-    q = resolve_path(require(paths_cfg, "datasets.metaqa_questions_template").format(hop=hop), data_root)
-    a = resolve_path(require(paths_cfg, "datasets.metaqa_answers_template").format(hop=hop), data_root)
-    qs = [ln.strip() for ln in q.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    ans = [{x.strip() for x in ln.split(sep) if x.strip()} for ln in a.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    if len(qs) != len(ans):
-        raise SystemExit(f"hop {hop}: {len(qs)} questions vs {len(ans)} answer lines")
-    return qs, ans
+def load_hop(paths_cfg: dict, cfg: dict, data_root: Path, hop: int, sep: str
+             ) -> Tuple[List[str], List[Set[str]], Optional[List[str]]]:
+    def _lines(key: str) -> List[str]:
+        f = resolve_path(require(paths_cfg, "datasets." + key).format(hop=hop), data_root)
+        return [ln.strip() for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    qs = _lines(require(cfg, "questions_template_key"))
+    ans = [{x.strip() for x in ln.split(sep) if x.strip()} for ln in _lines(require(cfg, "answers_template_key"))]
+    topics_key = require(cfg, "topics_template_key")
+    topics = _lines(topics_key) if topics_key else None
+    if len(qs) != len(ans) or (topics is not None and len(topics) != len(qs)):
+        raise SystemExit(f"hop {hop}: question / answer / topic line counts differ")
+    return qs, ans, topics
 
 
-def check(kg: MetaQAKG, questions: List[str], answers: List[Set[str]], hop: int, min_len: int) -> dict:
+def check(kg: MetaQAKG, questions: List[str], answers: List[Set[str]], hop: int, min_len: int,
+          topics: Optional[List[str]] = None) -> dict:
+    """With ``topics`` (MetaQA's bracketed topic entity, line-aligned) only that entity is
+    tried; without it, every KB entity named in the question is tried, longest first."""
     oracle = PathOracle(kg)
     entities = list(kg.entity_to_id)
     conv_counts: Counter = Counter()
     path_types: Counter = Counter()
     rows = []
     n_reproduced = n_longest = n_gold_missing = 0
-    for q, gold_names in zip(questions, answers):
+    for idx, (q, gold_names) in enumerate(zip(questions, answers)):
         missing = [g for g in gold_names if g not in kg.entity_to_id]
         n_gold_missing += len(missing)
         gold = {kg.entity_to_id[g] for g in gold_names if g in kg.entity_to_id}
-        cands = entity_mentions(q, entities, min_len)
+        if topics is not None:
+            cands = [topics[idx]] if topics[idx] in kg.entity_to_id else []
+        else:
+            cands = entity_mentions(q, entities, min_len)
         row = {"question": q, "hop": hop, "candidates": cands[:5], "topic": None,
-               "topic_rank": None, "conventions": [], "path": None}
+               "topic_rank": None, "conventions": [], "path": None,
+               "best_path": None, "best_jaccard": None}
         if not missing:
             for rank, t in enumerate(cands):
                 hits = oracle.matches(kg.entity_to_id[t], hop, gold)
@@ -195,6 +233,20 @@ def check(kg: MetaQAKG, questions: List[str], answers: List[Set[str]], hop: int,
                     pref = "drop_topic_everywhere" if hits["drop_topic_everywhere"] else ok[0]
                     row.update(topic=t, topic_rank=rank, conventions=ok, path=[list(e) for e in sorted(hits[pref])[0]])
                     break
+            if row["path"] is None and cands:
+                # Nearest miss from the first candidate under MetaQA's convention, so the
+                # oracle arm still answers the row (and its EM ceiling is measured, not assumed).
+                t = cands[0]
+                tid = kg.entity_to_id[t]
+                best = None
+                for path, image in oracle.paths(tid, hop, drop_intermediate=True):
+                    got = image - {tid} if hop > 1 else image
+                    u = len(got | gold)
+                    j = len(got & gold) / u if u else 1.0
+                    if best is None or j > best[0]:
+                        best = (j, path)
+                if best is not None:
+                    row.update(topic=t, best_jaccard=round(best[0], 4), best_path=[list(e) for e in best[1]])
         if row["path"] is not None:
             n_reproduced += 1
             n_longest += row["topic_rank"] == 0
@@ -210,6 +262,7 @@ def check(kg: MetaQAKG, questions: List[str], answers: List[Set[str]], hop: int,
         "distinct_path_types": len(path_types),
         "path_types": dict(path_types.most_common()),
         "unreproduced": [r["question"] for r in rows if r["path"] is None],
+        "unreproduced_best_jaccard": [r["best_jaccard"] for r in rows if r["path"] is None],
         "_rows": rows,
     }
 
@@ -238,13 +291,14 @@ def main() -> None:
     per_hop = {}
     fixtures: Dict[str, list] = {ph: [] for ph in require(cfg, "phrasings")}
     for hop in require(cfg, "hops"):
-        qs, ans = load_hop(paths_cfg, data_root, int(hop), require(cfg, "answer_separator"))
-        res = check(kg, qs, ans, int(hop), int(require(cfg, "min_entity_len")))
+        qs, ans, topics = load_hop(paths_cfg, cfg, data_root, int(hop), require(cfg, "answer_separator"))
+        res = check(kg, qs, ans, int(hop), int(require(cfg, "min_entity_len")), topics)
         for r in res.pop("_rows"):
-            if r["path"] is None:
+            path = r["path"] or r["best_path"]
+            if path is None:
                 continue
             for ph in fixtures:
-                dec = render(r["topic"], [tuple(e) for e in r["path"]], ph)
+                dec = render(r["topic"], [tuple(e) for e in path], ph)
                 if dec is not None:
                     fixtures[ph].append({"question": r["question"], "hop_count": hop, "decomposition": dec,
                                          "few_shot_source": "gold_path_oracle"})
@@ -256,6 +310,9 @@ def main() -> None:
         (run_dir / f"gold_like_decompositions_{ph}.json").write_text(
             json.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"wrote {len(rows)} gold-like decompositions ({ph}) to {run_dir}")
+        unrendered = sum(v["n"] for v in per_hop.values()) - len(rows)
+        if unrendered:
+            print(f"  {unrendered} rows have no path, or a path edge no {ph} template renders")
 
     metrics = {"script": Path(__file__).name, "created_utc": now_iso(), "seed": seed, "seeded": seeded,
                "kb_path": str(kb_path), "kg_entities": len(kg.id_to_entity), "kg_triples": len(kg.triples),

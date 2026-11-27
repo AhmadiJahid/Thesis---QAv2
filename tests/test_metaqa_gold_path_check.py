@@ -70,12 +70,13 @@ class GoldPathCheckTest(unittest.TestCase):
         self.assertEqual([o.op for o in ops], ["VALUES_OF_MOVIE", "MOVIES_WITH_VALUE", "PROJECT_VALUES_FROM_MOVIES"])
         self.assertEqual([o.relation for o in ops], ["directed_by", "directed_by", "has_genre"])
 
-    def test_natural_phrasing_of_a_reverse_ref_step_is_misread_as_a_projection(self) -> None:
-        # Documents the compiler gap measured on real data: "What movies did [#1] direct?"
-        # compiles to a forward projection from people, which executes to an empty set.
+    def test_natural_phrasing_of_a_reverse_ref_step_compiles_to_a_reverse_lookup(self) -> None:
+        # "What movies did [#1] direct?" with [#1] = people: before exp-039's fix this
+        # compiled to a forward projection from people and executed to an empty set.
         dec = render("Glass Harbor", [("directed_by", "fwd"), ("directed_by", "rev")], "natural")
         ops = compile_decomposition(dec)
-        self.assertEqual(ops[1].op, "PROJECT_VALUES_FROM_MOVIES")
+        self.assertEqual(ops[1].op, "MOVIES_WITH_VALUE")
+        self.assertEqual(ops[1].ref_step, 1)
 
 
 if __name__ == "__main__":

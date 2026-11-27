@@ -10,6 +10,11 @@
     "metaqa_questions_template": "metaqa/refined_{hop}hop.txt",
     "metaqa_answers_template": "metaqa/answers_{hop}hop.txt",
     "metaqa_pool_dir": "metaqa/pool",
+    "metaqa_vanilla_dir": "metaqa/vanilla_mirror",
+    "metaqa_eval250_dir": "metaqa/eval250",
+    "metaqa_eval250_questions_template": "metaqa/eval250/refined_{hop}hop.txt",
+    "metaqa_eval250_answers_template": "metaqa/eval250/answers_{hop}hop.txt",
+    "metaqa_eval250_topics_template": "metaqa/eval250/topics_{hop}hop.txt",
 
     "musique_train": "musique/musique_ans_v1.0_train.jsonl",
     "musique_dev": "musique/musique_ans_v1.0_dev.jsonl",
