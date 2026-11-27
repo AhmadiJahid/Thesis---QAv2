@@ -60,6 +60,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import os
 import random
 import re
 import statistics
@@ -86,7 +87,7 @@ from anchor_set import (  # noqa: E402
 )
 from hop_matching import HOP_SOURCES, load_predicted_hops  # noqa: E402
 from model_size import assert_within_ceiling, load_limits, unasserted_note  # noqa: E402
-from run_artifacts import now_iso, run_id, write_run_artifacts  # noqa: E402
+from run_artifacts import git_provenance, now_iso, run_id, write_run_artifacts  # noqa: E402
 from run_config import (  # noqa: E402
     data_path,
     load_config,
@@ -2113,6 +2114,17 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--output-root", default=None)
     p.add_argument(
+        "--resume",
+        default=None,
+        help="Continue an interrupted run in this run directory (one that has "
+        f"{RESUME_KEY_FILE} and {PARTIAL_RESULTS_FILE} but no results.json). Refused unless "
+        "this invocation's resume key (git commit, effective prompt template, seed, retrieval "
+        "sha256, model, condition, decoding, query ids, ...) equals the recorded one. Rows "
+        "already in the partial file are kept as they are and not generated again; "
+        "results.json and metrics.json are built from all rows. Not combinable with "
+        "--output-root.",
+    )
+    p.add_argument(
         "--dry-run",
         action="store_true",
         help="Assemble prompts and write artifacts without loading a model or generating.",
@@ -2136,6 +2148,70 @@ def _parse_args() -> argparse.Namespace:
         "before.",
     )
     return p.parse_args()
+
+
+#: Written into every run directory before the first row is generated; ``--resume`` compares
+#: it field by field with the resuming invocation's own key and refuses on any difference.
+RESUME_KEY_FILE = "resume_key.json"
+#: One JSON object per finished row, appended (flush + fsync) as each row completes, so a run
+#: that dies mid-decode keeps every row it finished.
+PARTIAL_RESULTS_FILE = "results.partial.jsonl"
+
+
+def resume_key(**fields: Any) -> dict[str, Any]:
+    """The identity a resumed run must share with the run it continues.
+
+    Everything that decides what a row's output is: code (git commit + the dirty file list),
+    the effective prompt template, seed, model, condition, quantization, few-shot ordering,
+    retrieval input and hop predictions (by sha256), decoding, the step parser, and the exact
+    ordered list of query ids. Values are JSON-normalised so a key read back from disk compares
+    equal to a freshly built one.
+    """
+    return json.loads(json.dumps(fields, sort_keys=True, default=str))
+
+
+def load_partial_results(output_dir: Path, *, expected_ids: Sequence[str]) -> dict[str, dict]:
+    """Rows already finished in ``output_dir`` (from ``results.partial.jsonl``), by query id.
+
+    A truncated LAST line (the process died while writing it) is dropped and the file is
+    rewritten without it; that row is simply generated again. Any other unreadable line, a
+    duplicate query id, or a query id that is not in this run's rows is a refusal.
+    """
+    path = output_dir / PARTIAL_RESULTS_FILE
+    if not path.exists():
+        return {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    rows: list[dict] = []
+    for n, line in enumerate(lines):
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            if n == len(lines) - 1:
+                print(f"[decomposer] --resume: dropping a truncated last line of {path}")
+                path.write_text(
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                    encoding="utf-8",
+                )
+                break
+            raise SystemExit(f"--resume: line {n + 1} of {path} is not valid JSON")
+    wanted = set(expected_ids)
+    out: dict[str, dict] = {}
+    for r in rows:
+        qid = str(r.get("query_id"))
+        if qid in out:
+            raise SystemExit(f"--resume: query id {qid!r} appears twice in {path}")
+        if qid not in wanted:
+            raise SystemExit(f"--resume: query id {qid!r} in {path} is not among this run's rows")
+        out[qid] = r
+    return out
+
+
+def append_partial_row(handle, row: dict) -> None:
+    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    handle.flush()
+    os.fsync(handle.fileno())
 
 
 def sha256_file(path: Path) -> str:
@@ -2495,6 +2571,15 @@ def main() -> None:
         else runs_path(paths_cfg, require(cfg, "output_subdir"), args.model)
     )
     output_dir = output_root / current_run_id
+    if args.resume is not None:
+        if args.output_root is not None:
+            raise SystemExit("--resume and --output-root are exclusive: the run dir is given")
+        output_dir = Path(args.resume)
+        output_root = output_dir.parent
+        if not (output_dir / RESUME_KEY_FILE).exists():
+            raise SystemExit(f"--resume: {output_dir / RESUME_KEY_FILE} not found")
+        if (output_dir / "results.json").exists():
+            raise SystemExit(f"--resume: {output_dir} already has results.json (run complete)")
 
     # Prompt file: the unguided variant when one exists and the run is unguided.
     unguided_prompt_file = require(model_cfg, "unguided_prompt_file")
@@ -3000,6 +3085,59 @@ def main() -> None:
     if args.dry_run:
         inference_rows = inference_rows[: max(0, args.dry_run_limit)]
 
+    # ---- resume key: checked BEFORE the model loads, so a refused resume costs nothing ----
+    git_record = git_provenance()
+    this_key = resume_key(
+        git_commit=git_record.get("commit"),
+        git_dirty_files=git_record.get("dirty_files"),
+        effective_template_sha256=hashlib.sha256(prompt_template.encode("utf-8")).hexdigest(),
+        seed=seed,
+        model=args.model,
+        model_id=require(model_cfg, "model_id"),
+        adapter=args.adapter,
+        no_few_shot=bool(args.no_few_shot),
+        condition=condition_name,
+        condition_settings=condition,
+        guided=guided,
+        quantization=quantization,
+        few_shot_ordering=few_shot_ordering,
+        few_shot_ordering_seed=few_shot_ordering_seed,
+        retrieval_sha256=retrieval_sha256,
+        retrieval_mode=retrieval_mode,
+        retrieval_k=retrieval_k,
+        hop_predictions_sha256=hop_source_record.get("predictions_file_sha256"),
+        generation=generation,
+        post_process=post_cfg,
+        stop_after_step_lines=stop_after_step_lines,
+        dry_run=bool(args.dry_run),
+        query_ids=[str(r["query_id"]) for r in inference_rows],
+    )
+    resumed_rows: dict[str, dict] = {}
+    if args.resume is not None:
+        if any(r["query_id"] is None for r in inference_rows):
+            raise SystemExit("--resume needs a query id on every row")
+        recorded = json.loads((output_dir / RESUME_KEY_FILE).read_text(encoding="utf-8"))
+        differ = sorted(k for k in set(recorded) | set(this_key) if recorded.get(k) != this_key.get(k))
+        if differ:
+            raise SystemExit(
+                f"--resume refused: this invocation differs from the run in {output_dir} on "
+                f"{differ}. A resumed run must be the same run."
+            )
+        resumed_rows = load_partial_results(
+            output_dir, expected_ids=[str(r["query_id"]) for r in inference_rows]
+        )
+        print(
+            f"[decomposer] --resume: {len(resumed_rows)} of {len(inference_rows)} rows already "
+            f"finished in {output_dir}; generating the rest"
+        )
+        snapshot["resume"] = {
+            "resumed": True,
+            "rows_from_partial": len(resumed_rows),
+            "resume_attempt_run_id": current_run_id,
+        }
+        snapshot["run_id"] = output_dir.name
+        snapshot["output_root"] = str(output_root)
+
     # ---- model ----
     model = tokenizer = None
     size_record = unasserted_note("decomposer", require(model_cfg, "model_id"))
@@ -3024,6 +3162,11 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     prompts_dir = output_dir / "prompts_log"
     prompts_dir.mkdir(exist_ok=True)
+    if args.resume is None:
+        (output_dir / RESUME_KEY_FILE).write_text(
+            json.dumps(this_key, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    partial_handle = open(output_dir / PARTIAL_RESULTS_FILE, "a", encoding="utf-8")
 
     results: list[dict] = []
     fallback_rng = new_rng(seed)
@@ -3120,6 +3263,22 @@ def main() -> None:
                 shuffle_tally["equal_to_reversed"] += permutation == list(
                     range(len(permutation) - 1, -1, -1)
                 )
+        if str(row.get("query_id")) in resumed_rows:
+            # Finished in an earlier attempt: keep its row exactly as recorded, and count its
+            # anchor prompt file if that attempt wrote one.
+            for log_path in select_prompt_log_paths(
+                prompts_dir,
+                position=i + 1,
+                gold_hop=gold_hop,
+                query_id=row.get("query_id"),
+                prompt_log_every=prompt_log_every,
+                anchor_ids=anchor_ids,
+                dry_run=args.dry_run,
+            ):
+                if log_path.name.startswith(ANCHOR_PROMPT_PREFIX) and log_path.exists():
+                    anchor_prompts_logged += 1
+            results.append(resumed_rows[str(row.get("query_id"))])
+            continue
         cost: dict[str, Any] = {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -3305,6 +3464,10 @@ def main() -> None:
                 ),
             }
         )
+
+        append_partial_row(partial_handle, results[-1])
+
+    partial_handle.close()
 
     # The anchor sheet's coverage claim is only worth something if it is checked. It is
     # checked, but NOT here: the refusal is deferred to the very end of the run, after
